@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"net/http"
+	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -66,13 +67,15 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	if data.Endpoint.IsNull() {
 		data.Endpoint = types.StringValue("https://api.supabase.com")
 	}
+	if data.AccessToken.IsNull() {
+		data.AccessToken = types.StringValue(os.Getenv("SUPABASE_ACCESS_TOKEN"))
+	}
 
 	// Example client configuration for data sources and resources
-	client := http.DefaultClient
-	client, err := api.NewClientWithResponses(
-		data.Endpoint.String(),
+	client, _ := api.NewClientWithResponses(
+		data.Endpoint.ValueString(),
 		api.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
-			req.Header.Set("Authorization", "Bearer "+data.AccessToken.String())
+			req.Header.Set("Authorization", "Bearer "+data.AccessToken.ValueString())
 			req.Header.Set("User-Agent", "TFProvider/"+p.version)
 			return nil
 		}),
@@ -89,7 +92,7 @@ func (p *SupabaseProvider) Resources(ctx context.Context) []func() resource.Reso
 
 func (p *SupabaseProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		NewProjectDataSource,
+		NewBranchDataSource,
 	}
 }
 
