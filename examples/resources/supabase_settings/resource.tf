@@ -1,19 +1,19 @@
 resource "supabase_settings" "production" {
   project_ref = "mayuaycdtijbctgqbycg"
 
-  api = {
-    schemas           = ["public", "storage", "graphql_public"]
-    extra_search_path = ["public", "extensions"]
-    max_rows          = 1000
-  }
+  api = jsonencode({
+    db_schema            = "public,storage,graphql_public"
+    db_extra_search_path = "public,extensions"
+    max_rows             = 1000
+  })
 
-  auth = {
-    site_url = "https://example.com"
-  }
+  # auth = jsonencode({
+  #   site_url = "https://example.com"
+  # })
 
-  storage = {
-    file_size_limit = "50MB"
-  }
+  # storage = jsonencode({
+  #   file_size_limit = "50MB"
+  # })
 
   # Webhooks, pooler, etc.
 }

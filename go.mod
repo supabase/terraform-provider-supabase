@@ -1,14 +1,15 @@
-module github.com/hashicorp/terraform-provider-scaffolding-framework
+module github.com/supabase/terraform-provider
 
 go 1.20
 
 require (
 	github.com/hashicorp/terraform-plugin-docs v0.16.0
 	github.com/hashicorp/terraform-plugin-framework v1.5.0
+	github.com/hashicorp/terraform-plugin-framework-jsontypes v0.1.0
 	github.com/hashicorp/terraform-plugin-go v0.20.0
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-testing v1.6.0
-	github.com/supabase/cli v1.136.1
+	github.com/supabase/cli v1.136.2
 	gopkg.in/h2non/gock.v1 v1.1.2
 )
 

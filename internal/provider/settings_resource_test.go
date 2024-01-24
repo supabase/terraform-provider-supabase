@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-provider-scaffolding-framework/examples"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider/examples"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -18,10 +18,30 @@ func TestAccSettingsResource(t *testing.T) {
 	defer gock.OffAll()
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+		Times(3).
+		Reply(http.StatusOK).
+		JSON(api.PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           1000,
+		})
+	// Mock update request
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Persist().
 		Reply(http.StatusOK).
 		JSON(api.PostgrestConfigResponse{
-			MaxRows: 1000,
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           100,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+		Reply(http.StatusOK).
+		JSON(api.PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           100,
 		})
 	// Run test
 	resource.Test(t, resource.TestCase{
@@ -45,7 +65,7 @@ func TestAccSettingsResource(t *testing.T) {
 			{
 				Config: testAccSettingsResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.branch", "api.max_rows", "1000"),
+					resource.TestCheckResourceAttrSet("supabase_settings.production", "api"),
 				),
 			},
 			// Delete testing automatically occurs in TestCase
@@ -54,15 +74,17 @@ func TestAccSettingsResource(t *testing.T) {
 }
 
 const testAccSettingsResourceConfig = `
-resource "supabase_settings" "branch" {
+resource "supabase_settings" "production" {
   project_ref = "mayuaycdtijbctgqbycg"
 
-  api = {
-	max_rows = 1000
-  }
+  api = jsonencode({
+	db_schema            = "public,storage,graphql_public"
+    db_extra_search_path = "public,extensions"
+	max_rows             = 100
+  })
 
-  auth = {
-	site_url = "http://localhost:3000"
-  }
+  # auth = jsonencode({
+  #   site_url = "http://localhost:3000"
+  # })
 }
 `

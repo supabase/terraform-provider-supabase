@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-provider-scaffolding-framework/examples"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider/examples"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -18,7 +18,7 @@ func TestAccBranchDataSource(t *testing.T) {
 	defer gock.OffAll()
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/branches").
-		Persist().
+		Times(3).
 		Reply(http.StatusOK).
 		JSON([]api.BranchResponse{{Id: "test"}})
 	// Run test

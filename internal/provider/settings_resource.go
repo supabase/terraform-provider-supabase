@@ -5,16 +5,17 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/supabase/cli/pkg/api"
 )
@@ -34,11 +35,11 @@ type SettingsResource struct {
 
 // SettingsResourceModel describes the resource data model.
 type SettingsResourceModel struct {
-	ProjectRef types.String `tfsdk:"project_ref"`
-	Storage    types.Object `tfsdk:"storage"`
-	Auth       types.Object `tfsdk:"auth"`
-	Api        types.Object `tfsdk:"api"`
-	Id         types.String `tfsdk:"id"`
+	ProjectRef types.String         `tfsdk:"project_ref"`
+	Storage    jsontypes.Normalized `tfsdk:"storage"`
+	Auth       jsontypes.Normalized `tfsdk:"auth"`
+	Api        jsontypes.Normalized `tfsdk:"api"`
+	Id         types.String         `tfsdk:"id"`
 }
 
 func (r *SettingsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -55,23 +56,20 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 				MarkdownDescription: "Project reference ID",
 				Required:            true,
 			},
-			"storage": schema.SingleNestedAttribute{
+			"storage": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
 				MarkdownDescription: "Storage settings",
 				Optional:            true,
 			},
-			"auth": schema.SingleNestedAttribute{
+			"auth": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
 				MarkdownDescription: "Auth settings",
 				Optional:            true,
 			},
-			"api": schema.SingleNestedAttribute{
+			"api": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
 				MarkdownDescription: "API settings",
 				Optional:            true,
-				Attributes: map[string]schema.Attribute{
-					"max_rows": schema.Int64Attribute{
-						MarkdownDescription: "PostgREST max rows",
-						Optional:            true,
-					},
-				},
 			},
 			"id": schema.StringAttribute{
 				MarkdownDescription: "Project identifier",
@@ -146,21 +144,11 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	// If applicable, this is a great opportunity to initialize any necessary
 	// provider client data and make a call using it.
-	httpResp, err := r.client.GetPostgRESTConfigWithResponse(ctx, data.Id.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read api settings, got error: %s", err))
+	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
+
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	api, diag := types.ObjectValue(map[string]attr.Type{
-		"max_rows": types.Int64Type,
-	}, map[string]attr.Value{
-		"max_rows": types.Int64Value(int64(httpResp.JSON200.MaxRows)),
-	})
-	if diag.HasError() {
-		resp.Diagnostics.Append(diag...)
-		return
-	}
-	data.Api = api
 
 	data.ProjectRef = data.Id
 
@@ -181,21 +169,11 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	// If applicable, this is a great opportunity to initialize any necessary
 	// provider client data and make a call using it.
 	if !data.Api.IsNull() {
-		var body api.UpdatePostgrestConfigBody
-		resp.Diagnostics.Append(data.Api.As(ctx, &body, basetypes.ObjectAsOptions{})...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
+		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
+	}
 
-		httpResp, err := r.client.UpdatePostgRESTConfigWithResponse(ctx, data.ProjectRef.ValueString(), body)
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update api settings, got error: %s", err))
-			return
-		}
-		if httpResp.JSON200 == nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update api settings, got error: %s", httpResp.Body))
-			return
-		}
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Save updated data into Terraform state
@@ -223,4 +201,51 @@ func (r *SettingsResource) Delete(ctx context.Context, req resource.DeleteReques
 
 func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func readApiConfig(ctx context.Context, data *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.GetPostgRESTConfigWithResponse(ctx, data.Id.ValueString())
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read api settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read api settings, got error: %s", httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	value, err := json.Marshal(*httpResp.JSON200)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read api settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	data.Api = jsontypes.NewNormalizedValue(string(value))
+	return nil
+}
+
+func updateApiConfig(ctx context.Context, data *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	var body api.UpdatePostgrestConfigBody
+	if diags := data.Api.Unmarshal(&body); diags.HasError() {
+		return diags
+	}
+
+	httpResp, err := client.UpdatePostgRESTConfigWithResponse(ctx, data.ProjectRef.ValueString(), body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update api settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to update api settings, got error: %s", httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	value, err := json.Marshal(*httpResp.JSON200)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update api settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	data.Api = jsontypes.NewNormalizedValue(string(value))
+	return nil
 }
