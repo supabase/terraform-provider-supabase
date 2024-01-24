@@ -49,7 +49,7 @@ func (d *BranchDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 				Required:            true,
 			},
 			"branches": schema.SetNestedAttribute{
-				MarkdownDescription: "Set of branch databases",
+				MarkdownDescription: "Branch databases",
 				Computed:            true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{

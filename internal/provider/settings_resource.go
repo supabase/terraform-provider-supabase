@@ -59,22 +59,22 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 			},
 			"pooler": schema.StringAttribute{
 				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Pooler settings",
+				MarkdownDescription: "Pooler settings as serialised JSON",
 				Optional:            true,
 			},
 			"storage": schema.StringAttribute{
 				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Storage settings",
+				MarkdownDescription: "Storage settings as serialised JSON",
 				Optional:            true,
 			},
 			"auth": schema.StringAttribute{
 				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Auth settings",
+				MarkdownDescription: "Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig)",
 				Optional:            true,
 			},
 			"api": schema.StringAttribute{
 				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "API settings",
+				MarkdownDescription: "API settings as [serialised JSON](https://api.supabase.com/api/v1#/services/updatePostgRESTConfig)",
 				Optional:            true,
 			},
 			"id": schema.StringAttribute{

@@ -21,16 +21,6 @@ resource "supabase_settings" "production" {
     db_extra_search_path = "public,extensions"
     max_rows             = 1000
   })
-
-  # auth = jsonencode({
-  #   site_url = "https://example.com"
-  # })
-
-  # storage = jsonencode({
-  #   file_size_limit = "50MB"
-  # })
-
-  # Webhooks, pooler, etc.
 }
 ```
 
@@ -43,9 +33,10 @@ resource "supabase_settings" "production" {
 
 ### Optional
 
-- `api` (String) API settings
-- `auth` (String) Auth settings
-- `storage` (String) Storage settings
+- `api` (String) API settings as [serialised JSON](https://api.supabase.com/api/v1#/services/updatePostgRESTConfig)
+- `auth` (String) Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig)
+- `pooler` (String) Pooler settings as serialised JSON
+- `storage` (String) Storage settings as serialised JSON
 
 ### Read-Only
 

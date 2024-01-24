@@ -13,7 +13,7 @@ Branch data source
 ## Example Usage
 
 ```terraform
-data "supabase_branch" "preview" {
+data "supabase_branch" "all" {
   parent_project_ref = "mayuaycdtijbctgqbycg"
 }
 ```
@@ -27,7 +27,7 @@ data "supabase_branch" "preview" {
 
 ### Read-Only
 
-- `branches` (Attributes Set) Set of branch databases (see [below for nested schema](#nestedatt--branches))
+- `branches` (Attributes Set) Branch databases (see [below for nested schema](#nestedatt--branches))
 
 <a id="nestedatt--branches"></a>
 ### Nested Schema for `branches`
