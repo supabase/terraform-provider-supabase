@@ -38,7 +38,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/supabase/terraform-provider",
+		Address: "registry.terraform.io/supabase/provider",
 		Debug:   debug,
 	}
 
