@@ -51,21 +51,19 @@ Then commit the changes to `go.mod` and `go.sum`.
 terraform {
   required_providers {
     supabase = {
-      source  = "supabase/provider"
+      source  = "supabase/supabase"
       version = "~> 1.0"
     }
   }
 }
 
 provider "supabase" {
-  # Defaults to nvironment variable: SUPABASE_ACCESS_TOKEN
-  access_token = file("~/.supabase/access-token")
+  access_token = file("${path.module}/access-token")
 }
 
 # Define a linked project variable as user input
 variable "linked_project" {
   type    = string
-  default = "mayuaycdtijbctgqbycg"
 }
 
 # Configure api settings for the linked project
@@ -86,9 +84,9 @@ data "supabase_branch" "all" {
 
 # Override settings for each preview branch
 resource "supabase_settings" "branch" {
-  for_each = data.supabase_branch.all.branches
+  for_each = { for b in data.supabase_branch.all.branches : b.project_ref => b }
 
-  project_ref = each.key.project_ref
+  project_ref = each.key
 
   api = jsonencode({
     db_schema            = "public,storage,graphql_public"

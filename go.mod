@@ -1,4 +1,4 @@
-module github.com/supabase/terraform-provider
+module github.com/supabase/terraform-provider-supabase
 
 go 1.20
 

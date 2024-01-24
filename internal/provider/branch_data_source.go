@@ -116,6 +116,9 @@ func (d *BranchDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 
 	var branches []BranchDataSourceModel
 	for _, branch := range *httpResp.JSON200 {
+		if branch.IsDefault {
+			continue
+		}
 		branches = append(branches, BranchDataSourceModel{
 			Id:         types.StringValue(branch.Id),
 			GitBranch:  types.StringPointerValue(branch.GitBranch),

@@ -36,6 +36,7 @@ type SettingsResource struct {
 // SettingsResourceModel describes the resource data model.
 type SettingsResourceModel struct {
 	ProjectRef types.String         `tfsdk:"project_ref"`
+	Pooler     jsontypes.Normalized `tfsdk:"pooler"`
 	Storage    jsontypes.Normalized `tfsdk:"storage"`
 	Auth       jsontypes.Normalized `tfsdk:"auth"`
 	Api        jsontypes.Normalized `tfsdk:"api"`
@@ -55,6 +56,11 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 			"project_ref": schema.StringAttribute{
 				MarkdownDescription: "Project reference ID",
 				Required:            true,
+			},
+			"pooler": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
+				MarkdownDescription: "Pooler settings",
+				Optional:            true,
 			},
 			"storage": schema.StringAttribute{
 				CustomType:          jsontypes.NormalizedType{},
@@ -114,11 +120,13 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 
 	// If applicable, this is a great opportunity to initialize any necessary
 	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create example, got error: %s", err))
-	//     return
-	// }
+	if !data.Api.IsNull() {
+		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
+	}
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// For the purposes of this example code, hardcoding a response value to
 	// save into the Terraform state.

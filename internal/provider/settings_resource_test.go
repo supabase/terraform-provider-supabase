@@ -9,26 +9,50 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/supabase/cli/pkg/api"
-	"github.com/supabase/terraform-provider/examples"
+	"github.com/supabase/terraform-provider-supabase/examples"
 	"gopkg.in/h2non/gock.v1"
 )
 
 func TestAccSettingsResource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
+	// Step 1: create
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
-		Times(3).
 		Reply(http.StatusOK).
 		JSON(api.PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
 		})
-	// Mock update request
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
-		Persist().
+		Reply(http.StatusOK).
+		JSON(api.PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           1000,
+		})
+	// Step 2: read
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+		Reply(http.StatusOK).
+		JSON(api.PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           1000,
+		})
+	// Step 3: update
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+		Reply(http.StatusOK).
+		JSON(api.PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           1000,
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
 		JSON(api.PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",

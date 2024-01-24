@@ -15,5 +15,10 @@ resource "supabase_settings" "production" {
   #   file_size_limit = "50MB"
   # })
 
-  # Webhooks, pooler, etc.
+  # pooler = jsonencode({
+  #   default_pool_size         = 15
+  #   ignore_startup_parameters = ""
+  #   max_client_conn           = 200
+  #   pool_mode                 = "transaction"
+  # })
 }
