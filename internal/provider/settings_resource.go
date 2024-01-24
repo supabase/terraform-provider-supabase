@@ -222,6 +222,7 @@ func readApiConfig(ctx context.Context, data *SettingsResourceModel, client *api
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
+	httpResp.JSON200.JwtSecret = nil
 	value, err := json.Marshal(*httpResp.JSON200)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read api settings, got error: %s", err)
