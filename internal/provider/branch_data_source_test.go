@@ -30,7 +30,7 @@ func TestAccBranchDataSource(t *testing.T) {
 			{
 				Config: examples.BranchDataSourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("data.supabase_branch.preview", "branches.#"),
+					resource.TestCheckResourceAttrSet("data.supabase_branch.all", "branches.#"),
 				),
 			},
 		},

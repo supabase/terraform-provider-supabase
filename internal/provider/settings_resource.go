@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -216,6 +217,10 @@ func readApiConfig(ctx context.Context, data *SettingsResourceModel, client *api
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read api settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Deleted project is an orphan resource, not returning error so it can be destroyed.
+	if httpResp.StatusCode() == http.StatusNotFound {
+		return nil
 	}
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read api settings, got error: %s", httpResp.Body)
