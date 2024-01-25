@@ -2,7 +2,7 @@
 
 _This template repository is built on the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework). The template repository built on the [Terraform Plugin SDK](https://github.com/hashicorp/terraform-plugin-sdk) can be found at [terraform-provider-scaffolding](https://github.com/hashicorp/terraform-provider-scaffolding). See [Which SDK Should I Use?](https://developer.hashicorp.com/terraform/plugin/framework-benefits) in the Terraform documentation for additional information._
 
-This repository is a *template* for a [Terraform](https://www.terraform.io) provider. It is intended as a starting point for creating Terraform providers, containing:
+This repository is a _template_ for a [Terraform](https://www.terraform.io) provider. It is intended as a starting point for creating Terraform providers, containing:
 
 - A resource and a data source (`internal/provider/`),
 - Examples (`examples/`) and generated documentation (`docs/`),
@@ -45,7 +45,56 @@ Then commit the changes to `go.mod` and `go.sum`.
 
 ## Using the provider
 
-Fill this in for each provider
+- main.tf
+
+```hcl
+terraform {
+  required_providers {
+    supabase = {
+      source  = "supabase/supabase"
+      version = "~> 1.0"
+    }
+  }
+}
+
+provider "supabase" {
+  access_token = file("${path.module}/access-token")
+}
+
+# Define a linked project variable as user input
+variable "linked_project" {
+  type    = string
+}
+
+# Configure api settings for the linked project
+resource "supabase_settings" "production" {
+  project_ref = var.linked_project
+
+  api = jsonencode({
+    db_schema            = "public,storage,graphql_public"
+    db_extra_search_path = "public,extensions"
+    max_rows             = 1000
+  })
+}
+
+# Fetch all branches of a linked project
+data "supabase_branch" "all" {
+  parent_project_ref = var.linked_project
+}
+
+# Override settings for each preview branch
+resource "supabase_settings" "branch" {
+  for_each = { for b in data.supabase_branch.all.branches : b.project_ref => b }
+
+  project_ref = each.key
+
+  api = jsonencode({
+    db_schema            = "public,storage,graphql_public"
+    db_extra_search_path = "public,extensions"
+    max_rows             = 100
+  })
+}
+```
 
 ## Developing the Provider
 
@@ -57,7 +106,7 @@ To generate or update documentation, run `go generate`.
 
 In order to run the full suite of Acceptance tests, run `make testacc`.
 
-*Note:* Acceptance tests create real resources, and often cost money to run.
+_Note:_ Acceptance tests create real resources, and often cost money to run.
 
 ```shell
 make testacc

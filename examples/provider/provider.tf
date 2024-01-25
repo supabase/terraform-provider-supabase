@@ -1,3 +1,3 @@
-provider "scaffolding" {
-  # example configuration here
+provider "supabase" {
+  access_token = ""
 }
