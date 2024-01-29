@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -118,7 +119,6 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-
 func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data ProjectResourceModel
 
@@ -129,13 +129,13 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read example, got error: %s", err))
-	//     return
-	// }
+	tflog.Trace(ctx, "read project")
+
+	resp.Diagnostics.Append(readProject(ctx, &data, r.client)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -173,13 +173,12 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 	tflog.Trace(ctx, "delete project")
 
 	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)	
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	resource.ImportStatePassthroughID(ctx, path.Root("project_ref"), req, resp)
 }
-
 
 func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	httpResp, err := client.CreateProjectWithResponse(ctx, api.CreateProjectJSONRequestBody{
@@ -195,7 +194,7 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	if httpResp.JSON200 == nil && httpResp.JSON201 == nil{
+	if httpResp.JSON200 == nil && httpResp.JSON201 == nil {
 		msg := fmt.Sprintf("Unable to update api settings, got error: %s", httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
@@ -207,6 +206,33 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 
 	data.ProjectRef = types.StringValue(respBody.Id)
 	return nil
+}
+
+func readProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.GetProjectsWithResponse(ctx)
+
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read project, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read project, got error: %s", httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+
+	for _, project := range *httpResp.JSON200 {
+		if project.Id == data.ProjectRef.ValueString() {
+			data.OrganizationId = types.StringValue(project.OrganizationId)
+			data.Name = types.StringValue(project.Name)
+			data.Region = types.StringValue(project.Region)
+			data.ProjectRef = types.StringValue(project.Id)
+			return nil
+		}
+	}
+
+	return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", "Project not found")}
 }
 
 func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {

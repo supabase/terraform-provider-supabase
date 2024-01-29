@@ -1,4 +1,4 @@
-resource "supabase_project" "new" {
+resource "supabase_project" "test" {
   organization_id = "continued-brown-smelt"
   name = "foo"
   database_password = "bar"
