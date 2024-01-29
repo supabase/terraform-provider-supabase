@@ -3,5 +3,4 @@ resource "supabase_project" "test" {
   name = "foo"
   database_password = "bar"
   region = "us-east-1"
-  plan = "free"
 }

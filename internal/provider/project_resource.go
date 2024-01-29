@@ -11,6 +11,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/supabase/cli/pkg/api"
@@ -35,8 +37,7 @@ type ProjectResourceModel struct {
 	Name             types.String `tfsdk:"name"`
 	DatabasePassword types.String `tfsdk:"database_password"`
 	Region           types.String `tfsdk:"region"`
-	Plan             types.String `tfsdk:"plan"`
-	ProjectRef       types.String `tfsdk:"project_ref"`
+	Id 			 types.String `tfsdk:"id"`
 }
 
 func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -48,10 +49,6 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 		MarkdownDescription: "Project resource",
 
 		Attributes: map[string]schema.Attribute{
-			"project_ref": schema.StringAttribute{
-				MarkdownDescription: "Project identifier",
-				Computed:            true,
-			},
 			"organization_id": schema.StringAttribute{
 				MarkdownDescription: "Reference to the organization",
 				Required:            true,
@@ -69,9 +66,12 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "Region where the project is located",
 				Required:            true,
 			},
-			"plan": schema.StringAttribute{
-				MarkdownDescription: "Plan for the project",
-				Required:            true,
+			"id": schema.StringAttribute{
+				MarkdownDescription: "Project identifier",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -177,7 +177,7 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 }
 
 func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("project_ref"), req, resp)
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
@@ -186,7 +186,6 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		Name:           data.Name.ValueString(),
 		DbPass:         data.DatabasePassword.ValueString(),
 		Region:         api.CreateProjectBodyRegion(data.Region.ValueString()),
-		Plan:           api.CreateProjectBodyPlan(data.Plan.ValueString()),
 	})
 
 	if err != nil {
@@ -204,7 +203,7 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		respBody = httpResp.JSON201
 	}
 
-	data.ProjectRef = types.StringValue(respBody.Id)
+	data.Id = types.StringValue(respBody.Id)
 	return nil
 }
 
@@ -221,13 +220,11 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-
 	for _, project := range *httpResp.JSON200 {
-		if project.Id == data.ProjectRef.ValueString() {
+		if project.Id == data.Id.ValueString() {
 			data.OrganizationId = types.StringValue(project.OrganizationId)
 			data.Name = types.StringValue(project.Name)
 			data.Region = types.StringValue(project.Region)
-			data.ProjectRef = types.StringValue(project.Id)
 			return nil
 		}
 	}
@@ -236,7 +233,7 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 }
 
 func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.DeleteProjectWithResponse(ctx, data.ProjectRef.ValueString())
+	httpResp, err := client.DeleteProjectWithResponse(ctx, data.Id.ValueString())
 
 	if err != nil {
 		msg := fmt.Sprintf("Unable to delete project, got error: %s", err)

@@ -21,7 +21,7 @@ func TestAccProjectResource(t *testing.T) {
 		Post("/v1/projects").
 		Reply(http.StatusCreated).
 		JSON(api.ProjectResponse{
-			Id: "mayuaycdtijbctgqbycg",
+			Id:   "mayuaycdtijbctgqbycg",
 			Name: "foo",
 		})
 	gock.New("https://api.supabase.com").
@@ -30,24 +30,24 @@ func TestAccProjectResource(t *testing.T) {
 		JSON(
 			[]api.ProjectResponse{
 				{
-					Id: "mayuaycdtijbctgqbycg",
-					Name: "foo",
+					Id:             "mayuaycdtijbctgqbycg",
+					Name:           "foo",
 					OrganizationId: "continued-brown-smelt",
-					Region: "us-east-1",
+					Region:         "us-east-1",
 				},
 			},
 		)
-		// Step 2: read
-		gock.New("https://api.supabase.com").
+	// Step 2: read
+	gock.New("https://api.supabase.com").
 		Get("/v1/projects").
 		Reply(http.StatusOK).
 		JSON(
 			[]api.ProjectResponse{
 				{
-					Id: "mayuaycdtijbctgqbycg",
-					Name: "foo",
+					Id:             "mayuaycdtijbctgqbycg",
+					Name:           "foo",
 					OrganizationId: "continued-brown-smelt",
-					Region: "us-east-1",
+					Region:         "us-east-1",
 				},
 			},
 		)
@@ -69,15 +69,15 @@ func TestAccProjectResource(t *testing.T) {
 			{
 				Config: examples.ProjectResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_project.test", "project_ref", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
 				),
 			},
 			// ImportState testing
 			{
-				ResourceName:      "supabase_project.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{"database_password", "plan"},
+				ResourceName:            "supabase_project.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"database_password"},
 			},
 			// Delete testing automatically occurs in TestCase
 		},
