@@ -51,7 +51,7 @@ func TestAccProjectResource(t *testing.T) {
 				},
 			},
 		)
-		// Step 3: delete
+	// Step 3: delete
 	gock.New("https://api.supabase.com").
 		Delete("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
