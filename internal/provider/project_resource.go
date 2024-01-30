@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -37,7 +38,7 @@ type ProjectResourceModel struct {
 	Name             types.String `tfsdk:"name"`
 	DatabasePassword types.String `tfsdk:"database_password"`
 	Region           types.String `tfsdk:"region"`
-	Id 			 types.String `tfsdk:"id"`
+	Id               types.String `tfsdk:"id"`
 }
 
 func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -151,7 +152,8 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	resp.Diagnostics.Append(diag.NewErrorDiagnostic("Client Error", "Update is not supported for this resource"))
+	msg := fmt.Sprintf("Update is not supported for project resource: %s", data.Id.ValueString())
+	resp.Diagnostics.Append(diag.NewErrorDiagnostic("Client Error", msg))
 }
 
 func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -186,6 +188,8 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		Name:           data.Name.ValueString(),
 		DbPass:         data.DatabasePassword.ValueString(),
 		Region:         api.CreateProjectBodyRegion(data.Region.ValueString()),
+		// TODO: the plan field is deprecated, remove after API fix is deployed
+		Plan: api.CreateProjectBodyPlanFree,
 	})
 
 	if err != nil {
@@ -193,17 +197,12 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	if httpResp.JSON200 == nil && httpResp.JSON201 == nil {
-		msg := fmt.Sprintf("Unable to update api settings, got error: %s", httpResp.Body)
+	if httpResp.JSON201 == nil {
+		msg := fmt.Sprintf("Unable to create project, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	respBody := httpResp.JSON200
-	if respBody == nil {
-		respBody = httpResp.JSON201
-	}
-
-	data.Id = types.StringValue(respBody.Id)
+	data.Id = types.StringValue(httpResp.JSON201.Id)
 	return nil
 }
 
@@ -216,7 +215,7 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 	}
 
 	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to read project, got error: %s", httpResp.Body)
+		msg := fmt.Sprintf("Unable to read project, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
@@ -229,7 +228,9 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 		}
 	}
 
-	return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", "Project not found")}
+	// Not finding a project means our local state is stale. Return no error to allow TF to refresh its state.
+	tflog.Trace(ctx, fmt.Sprintf("project not found: %s", data.Id.ValueString()))
+	return nil
 }
 
 func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
@@ -240,8 +241,13 @@ func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
+	if httpResp.StatusCode() == http.StatusNotFound {
+		tflog.Trace(ctx, fmt.Sprintf("project not found: %s", data.Id.ValueString()))
+		return nil
+	}
+
 	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to delete project, got error: %s", httpResp.Body)
+		msg := fmt.Sprintf("Unable to delete project, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
