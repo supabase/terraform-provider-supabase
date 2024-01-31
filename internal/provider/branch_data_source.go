@@ -106,11 +106,13 @@ func (d *BranchDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	// provider client data and make a call using it.
 	httpResp, err := d.client.GetBranchesWithResponse(ctx, projectRef.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read branch, got error: %s", err))
+		msg := fmt.Sprintf("Unable to read branch, got error: %s", err)
+		resp.Diagnostics.AddError("Client Error", msg)
 		return
 	}
 	if httpResp.JSON200 == nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read branch, got error: %s", httpResp.Body))
+		msg := fmt.Sprintf("Unable to read branch, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		resp.Diagnostics.AddError("Client Error", msg)
 		return
 	}
 

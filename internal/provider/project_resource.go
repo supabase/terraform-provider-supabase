@@ -152,6 +152,7 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	// TODO: allow api to update project resource
 	msg := fmt.Sprintf("Update is not supported for project resource: %s", data.Id.ValueString())
 	resp.Diagnostics.Append(diag.NewErrorDiagnostic("Client Error", msg))
 }
