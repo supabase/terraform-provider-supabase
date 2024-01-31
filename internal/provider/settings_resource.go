@@ -219,18 +219,21 @@ func readApiConfig(ctx context.Context, data *SettingsResourceModel, client *api
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	// Deleted project is an orphan resource, not returning error so it can be destroyed.
-	if httpResp.StatusCode() == http.StatusNotFound {
+	switch httpResp.StatusCode() {
+	case http.StatusNotFound, http.StatusNotAcceptable:
 		return nil
+	default:
+		break
 	}
 	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to read api settings, got error: %s", httpResp.Body)
+		msg := fmt.Sprintf("Unable to read api settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	httpResp.JSON200.JwtSecret = nil
 	value, err := json.Marshal(*httpResp.JSON200)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to read api settings, got error: %s", err)
+		msg := fmt.Sprintf("Unable to read api settings, got marshal error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
@@ -250,13 +253,13 @@ func updateApiConfig(ctx context.Context, data *SettingsResourceModel, client *a
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to update api settings, got error: %s", httpResp.Body)
+		msg := fmt.Sprintf("Unable to update api settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	value, err := json.Marshal(*httpResp.JSON200)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to update api settings, got error: %s", err)
+		msg := fmt.Sprintf("Unable to update api settings, got marshal error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
