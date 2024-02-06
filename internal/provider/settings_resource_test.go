@@ -13,6 +13,10 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
+func Ptr[T any](v T) *T {
+	return &v
+}
+
 func TestAccSettingsResource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
@@ -33,6 +37,18 @@ func TestAccSettingsResource(t *testing.T) {
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl: Ptr("http://localhost:3000"),
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl: Ptr("http://localhost:3000"),
+		})
 	// Step 2: read
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
@@ -41,6 +57,26 @@ func TestAccSettingsResource(t *testing.T) {
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+		Reply(http.StatusOK).
+		JSON(api.PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           1000,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl: Ptr("http://localhost:3000"),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl: Ptr("http://localhost:3000"),
 		})
 	// Step 3: update
 	gock.New("https://api.supabase.com").
@@ -66,6 +102,27 @@ func TestAccSettingsResource(t *testing.T) {
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           100,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl: Ptr("http://localhost:3000"),
+			JwtExp:  Ptr(float32(3600)),
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl: Ptr("http://localhost:3000"),
+			JwtExp:  Ptr(float32(1800)),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl: Ptr("http://localhost:3000"),
+			JwtExp:  Ptr(float32(1800)),
 		})
 	// Run test
 	resource.Test(t, resource.TestCase{
@@ -107,9 +164,10 @@ resource "supabase_settings" "production" {
 	max_rows             = 100
   })
 
-  # auth = jsonencode({
-  #   site_url = "http://localhost:3000"
-  # })
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+    jwt_exp  = 1800
+  })
 
   # storage = jsonencode({
   #   file_size_limit = "50MB"

@@ -8,10 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -124,6 +125,9 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
 	}
+	if !data.Auth.IsNull() {
+		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
+	}
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -153,7 +157,12 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	// If applicable, this is a great opportunity to initialize any necessary
 	// provider client data and make a call using it.
-	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
+	if !data.Api.IsNull() {
+		resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
+	}
+	if !data.Auth.IsNull() {
+		resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
+	}
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -179,6 +188,9 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	// provider client data and make a call using it.
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
+	}
+	if !data.Auth.IsNull() {
+		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
 	}
 
 	if resp.Diagnostics.HasError() {
@@ -209,11 +221,16 @@ func (r *SettingsResource) Delete(ctx context.Context, req resource.DeleteReques
 }
 
 func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	data := SettingsResourceModel{Id: types.StringValue(req.ID)}
+
+	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func readApiConfig(ctx context.Context, data *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.GetPostgRESTConfigWithResponse(ctx, data.Id.ValueString())
+func readApiConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.GetPostgRESTConfigWithResponse(ctx, state.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read api settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -230,24 +247,30 @@ func readApiConfig(ctx context.Context, data *SettingsResourceModel, client *api
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	httpResp.JSON200.JwtSecret = nil
-	value, err := json.Marshal(*httpResp.JSON200)
+	partial := make(map[string]interface{})
+	if diags := state.Api.Unmarshal(&partial); !diags.HasError() {
+		mergeConfig(*httpResp.JSON200, partial)
+	} else {
+		importConfig(*httpResp.JSON200, partial)
+	}
+
+	value, err := json.Marshal(partial)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read api settings, got marshal error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	data.Api = jsontypes.NewNormalizedValue(string(value))
+	state.Api = jsontypes.NewNormalizedValue(string(value))
 	return nil
 }
 
-func updateApiConfig(ctx context.Context, data *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+func updateApiConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	var body api.UpdatePostgrestConfigBody
-	if diags := data.Api.Unmarshal(&body); diags.HasError() {
+	if diags := plan.Api.Unmarshal(&body); diags.HasError() {
 		return diags
 	}
 
-	httpResp, err := client.UpdatePostgRESTConfigWithResponse(ctx, data.ProjectRef.ValueString(), body)
+	httpResp, err := client.UpdatePostgRESTConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update api settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -257,12 +280,110 @@ func updateApiConfig(ctx context.Context, data *SettingsResourceModel, client *a
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	value, err := json.Marshal(*httpResp.JSON200)
+	partial := make(map[string]interface{})
+	if diags := plan.Api.Unmarshal(&partial); diags.HasError() {
+		return diags
+	}
+	mergeConfig(*httpResp.JSON200, partial)
+
+	value, err := json.Marshal(partial)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update api settings, got marshal error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	data.Api = jsontypes.NewNormalizedValue(string(value))
+	plan.Api = jsontypes.NewNormalizedValue(string(value))
 	return nil
+}
+
+func readAuthConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.GetV1AuthConfigWithResponse(ctx, state.Id.ValueString())
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read auth settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Deleted project is an orphan resource, not returning error so it can be destroyed.
+	switch httpResp.StatusCode() {
+	case http.StatusNotFound, http.StatusNotAcceptable:
+		return nil
+	default:
+		break
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read auth settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	partial := make(map[string]interface{})
+	if diags := state.Auth.Unmarshal(&partial); !diags.HasError() {
+		mergeConfig(*httpResp.JSON200, partial)
+	} else {
+		importConfig(*httpResp.JSON200, partial)
+	}
+
+	value, err := json.Marshal(partial)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read api settings, got marshal error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	state.Auth = jsontypes.NewNormalizedValue(string(value))
+	return nil
+}
+
+func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	var body api.UpdateAuthConfigBody
+	if diags := plan.Auth.Unmarshal(&body); diags.HasError() {
+		return diags
+	}
+
+	httpResp, err := client.UpdateV1AuthConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update auth settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to update auth settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	partial := make(map[string]interface{})
+	if diags := plan.Auth.Unmarshal(&partial); diags.HasError() {
+		return diags
+	}
+	mergeConfig(*httpResp.JSON200, partial)
+
+	value, err := json.Marshal(partial)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update auth settings, got marshal error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	plan.Auth = jsontypes.NewNormalizedValue(string(value))
+	return nil
+}
+
+func mergeConfig(source any, target map[string]interface{}) {
+	v := reflect.ValueOf(source)
+	t := reflect.TypeOf(source)
+	for i := 0; i < v.NumField(); i++ {
+		tag := t.Field(i).Tag.Get("json")
+		k := strings.Split(tag, ",")[0]
+		if _, ok := target[k]; ok {
+			target[k] = v.Field(i).Interface()
+		}
+	}
+}
+
+func importConfig(source any, target map[string]interface{}) {
+	v := reflect.ValueOf(source)
+	t := reflect.TypeOf(source)
+	for i := 0; i < v.NumField(); i++ {
+		f := v.Field(i)
+		if f.Kind() != reflect.Ptr || !f.IsNil() {
+			tag := t.Field(i).Tag.Get("json")
+			k := strings.Split(tag, ",")[0]
+			target[k] = f.Interface()
+		}
+	}
 }
