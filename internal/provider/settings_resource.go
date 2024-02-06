@@ -97,7 +97,6 @@ func (r *SettingsResource) Configure(ctx context.Context, req resource.Configure
 	}
 
 	client, ok := req.ProviderData.(*api.ClientWithResponses)
-
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
@@ -115,26 +114,23 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
+	// Initial settings are always created together with the project resource.
+	// We can simply apply partial updates here based on the given TF plan.
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
 	}
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
 	}
-
+	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// For the purposes of this example code, hardcoding a response value to
-	// save into the Terraform state.
 	data.Id = data.ProjectRef
 
 	// Write logs using the tflog package
@@ -150,20 +146,19 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
+	// If an existing state has not been imported or created from a TF plan before,
+	// skip loading them because we are not interested in managing them through TF.
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	}
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
 	}
-
+	// TODO: read all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -179,20 +174,18 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
+	// Ignore any states not specified in the TF plan.
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
 	}
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
 	}
-
+	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -206,23 +199,18 @@ func (r *SettingsResource) Delete(ctx context.Context, req resource.DeleteReques
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete example, got error: %s", err))
-	//     return
-	// }
+	// Simply fallthrough since there is no API to delete / reset settings.
 }
 
 func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	data := SettingsResourceModel{Id: types.StringValue(req.ID)}
 
+	// Read all configs from API when importing so it's easier to pick
+	// individual fields to manage through TF.
 	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
 
@@ -247,11 +235,14 @@ func readApiConfig(ctx context.Context, state *SettingsResourceModel, client *ap
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
+	// TODO: API doesn't support updating jwt secret
+	httpResp.JSON200.JwtSecret = nil
 	partial := make(map[string]interface{})
 	if diags := state.Api.Unmarshal(&partial); !diags.HasError() {
-		mergeConfig(*httpResp.JSON200, partial)
+		pickConfig(*httpResp.JSON200, partial)
 	} else {
-		importConfig(*httpResp.JSON200, partial)
+		// Handle errors when state is null or unknown
+		copyConfig(*httpResp.JSON200, partial)
 	}
 
 	value, err := json.Marshal(partial)
@@ -282,9 +273,10 @@ func updateApiConfig(ctx context.Context, plan *SettingsResourceModel, client *a
 
 	partial := make(map[string]interface{})
 	if diags := plan.Api.Unmarshal(&partial); diags.HasError() {
+		// Unreachable because unmarshalling to request body returned no error
 		return diags
 	}
-	mergeConfig(*httpResp.JSON200, partial)
+	pickConfig(*httpResp.JSON200, partial)
 
 	value, err := json.Marshal(partial)
 	if err != nil {
@@ -316,9 +308,10 @@ func readAuthConfig(ctx context.Context, state *SettingsResourceModel, client *a
 
 	partial := make(map[string]interface{})
 	if diags := state.Auth.Unmarshal(&partial); !diags.HasError() {
-		mergeConfig(*httpResp.JSON200, partial)
+		pickConfig(*httpResp.JSON200, partial)
 	} else {
-		importConfig(*httpResp.JSON200, partial)
+		// Handle errors when state is null or unknown
+		copyConfig(*httpResp.JSON200, partial)
 	}
 
 	value, err := json.Marshal(partial)
@@ -349,9 +342,10 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 
 	partial := make(map[string]interface{})
 	if diags := plan.Auth.Unmarshal(&partial); diags.HasError() {
+		// Unreachable because unmarshalling to request body returned no error
 		return diags
 	}
-	mergeConfig(*httpResp.JSON200, partial)
+	pickConfig(*httpResp.JSON200, partial)
 
 	value, err := json.Marshal(partial)
 	if err != nil {
@@ -363,23 +357,25 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 	return nil
 }
 
-func mergeConfig(source any, target map[string]interface{}) {
+func pickConfig(source any, target map[string]interface{}) {
 	v := reflect.ValueOf(source)
 	t := reflect.TypeOf(source)
 	for i := 0; i < v.NumField(); i++ {
 		tag := t.Field(i).Tag.Get("json")
 		k := strings.Split(tag, ",")[0]
+		// Check that tag is picked by target
 		if _, ok := target[k]; ok {
 			target[k] = v.Field(i).Interface()
 		}
 	}
 }
 
-func importConfig(source any, target map[string]interface{}) {
+func copyConfig(source any, target map[string]interface{}) {
 	v := reflect.ValueOf(source)
 	t := reflect.TypeOf(source)
 	for i := 0; i < v.NumField(); i++ {
 		f := v.Field(i)
+		// Add omitempty tag by default
 		if f.Kind() != reflect.Ptr || !f.IsNil() {
 			tag := t.Field(i).Tag.Get("json")
 			k := strings.Split(tag, ",")[0]
