@@ -6,4 +6,8 @@ resource "supabase_settings" "production" {
     db_extra_search_path = "public,extensions"
     max_rows             = 1000
   })
+
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+  })
 }

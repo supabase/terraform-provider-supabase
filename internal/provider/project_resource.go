@@ -189,8 +189,6 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		Name:           data.Name.ValueString(),
 		DbPass:         data.DatabasePassword.ValueString(),
 		Region:         api.CreateProjectBodyRegion(data.Region.ValueString()),
-		// TODO: the plan field is deprecated, remove after API fix is deployed
-		Plan: api.CreateProjectBodyPlanFree,
 	})
 
 	if err != nil {

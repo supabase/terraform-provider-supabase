@@ -45,7 +45,7 @@ Then commit the changes to `go.mod` and `go.sum`.
 
 ## Using the provider
 
-- main.tf
+- Example `main.tf`
 
 ```hcl
 terraform {
@@ -64,6 +64,23 @@ provider "supabase" {
 # Define a linked project variable as user input
 variable "linked_project" {
   type    = string
+}
+
+# Import the linked project resource
+import {
+  to = supabase_project.production
+  id = var.linked_project
+}
+
+resource "supabase_project" "production" {
+  organization_id   = "nknnyrtlhxudbsbuazsu"
+  name              = "tf-project"
+  database_password = "tf-example"
+  region            = "ap-southeast-1"
+
+  lifecycle {
+    ignore_changes = [database_password]
+  }
 }
 
 # Configure api settings for the linked project
@@ -88,10 +105,10 @@ resource "supabase_settings" "branch" {
 
   project_ref = each.key
 
-  api = jsonencode({
-    db_schema            = "public,storage,graphql_public"
-    db_extra_search_path = "public,extensions"
-    max_rows             = 100
+  api = supabase_settings.production.api
+
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
   })
 }
 ```
