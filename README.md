@@ -113,6 +113,8 @@ resource "supabase_settings" "branch" {
 }
 ```
 
+Refer to [our tutorial](docs/tutorial.md) for a step-by-step guide.
+
 ## Developing the Provider
 
 If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (see [Requirements](#requirements) above).
