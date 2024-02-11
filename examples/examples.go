@@ -7,6 +7,8 @@ var (
 	SettingsResourceConfig string
 	//go:embed resources/supabase_project/resource.tf
 	ProjectResourceConfig string
+	//go:embed resources/supabase_branch/resource.tf
+	BranchResourceConfig string
 	//go:embed data-sources/supabase_branch/data-source.tf
 	BranchDataSourceConfig string
 )
