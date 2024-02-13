@@ -116,7 +116,7 @@ func (d *BranchDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	var branches []BranchDataSourceModel
+	branches := make([]BranchDataSourceModel, 0)
 	for _, branch := range *httpResp.JSON200 {
 		if branch.IsDefault {
 			continue
