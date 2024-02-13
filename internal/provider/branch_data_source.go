@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -109,6 +110,10 @@ func (d *BranchDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		msg := fmt.Sprintf("Unable to read branch, got error: %s", err)
 		resp.Diagnostics.AddError("Client Error", msg)
 		return
+	}
+	// Create an empty array if branching is disabled
+	if httpResp.StatusCode() == http.StatusUnprocessableEntity {
+		httpResp.JSON200 = &[]api.BranchResponse{}
 	}
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read branch, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
