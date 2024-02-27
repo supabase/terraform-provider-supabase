@@ -6,7 +6,7 @@ on:
     branches:
       - main
       # Testing only
-      - docs/json-schema
+      # - docs/json-schema
 
 # Needs write permissions to write the schema to the repo
 permissions:
@@ -26,7 +26,6 @@ jobs:
       - run: |
           git config --global user.name 'github-schema-bot'
           git config --global user.email 'github-schema-bot@supabase.com'
-          git add docs/schema.json
           if [[ `git status --porcelain` ]]; then
             echo "[bot] Schema changes detected, committing."
             git add docs/schema.json
