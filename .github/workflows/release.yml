@@ -12,6 +12,7 @@ on:
 # GitHub considers creating releases and uploading assets as writing contents.
 permissions:
   contents: write
+  deployments: write
 
 jobs:
   goreleaser:
