@@ -12,7 +12,6 @@ on:
 # GitHub considers creating releases and uploading assets as writing contents.
 permissions:
   contents: write
-  deployments: write
 
 jobs:
   goreleaser:
@@ -45,6 +44,7 @@ jobs:
     environment: production
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - run: gh release edit ${{ github.ref_name }} --draft=false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
