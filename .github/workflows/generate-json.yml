@@ -1,0 +1,34 @@
+# Regenerates JSON schema whenever a PR is merged to main 
+name: Generate JSON
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+
+# Needs write permissions to write the schema to the repo
+permissions:
+  contents: write
+
+jobs:
+  schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - run: go mod download
+      - run: make generate-json
+      - run: |
+          git config --global user.name 'github-schema-bot'
+          git config --global user.email 'github-schema-bot@supabase.com'
+          if [[ `git status --porcelain` ]]; then
+            echo "[bot] Schema changes detected, committing."
+            git add docs/schema.json
+            git commit -m "ci: regenerate json schema file"
+            git push
+          else
+            echo "[bot] No schema changes detected, nothing to commit."
+          fi
