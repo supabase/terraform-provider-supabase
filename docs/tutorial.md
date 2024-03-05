@@ -2,7 +2,7 @@
 
 ## Setting up a TF module
 
-1. Create a Personal Access Token from Supabase Dashboard.
+1. Create a Personal Access Token in the [Supabase Dashboard](https://supabase.com/dashboard/account/tokens) by going to `Account preferences` > `Access Tokens`.
 2. Save your access token locally to `access-token` file or a secure credentials store.
 3. Create `module/provider.tf` with the following contents:
 
@@ -21,7 +21,7 @@ provider "supabase" {
 }
 ```
 
-Run the command `terraform -chdir=module apply` which should succeed in finding the provider.
+Run the command `terraform -chdir=module apply` to confirm that Terraform can find the provider.
 
 ## Creating a project
 
@@ -43,13 +43,13 @@ resource "supabase_project" "production" {
 }
 ```
 
-Remember to substitue placeholder values with your own. For sensitive fields like password, you may consider retrieving it from a secure credentials store.
+Remember to substitute placeholder values with your own. For sensitive fields such as the password, consider storing and retrieving them from a secure credentials store.
 
-Next, run `terraform -chdir=module apply` and confirm creating the new project resource.
+Next, run `terraform -chdir=module apply` to create the new project resource.
 
 ### Importing a project
 
-If you have an existing project hosted on Supabase, you may import it into your local terraform state for tracking and management.
+If you have an existing project hosted on Supabase, you can import it into your local Terraform state for tracking and management.
 
 Edit `module/resource.tf` with the following changes.
 
@@ -77,13 +77,13 @@ resource "supabase_project" "production" {
 }
 ```
 
-Run `terraform -chdir=module apply` and you will be prompted to enter the reference ID of an existing Supabase project. If your local TF state is empty, your project will be imported from remote rather than recreated.
+Run `terraform -chdir=module apply`. Enter the ID of your Supabase project at the prompt. If your local TF state is empty, your project will be imported from remote rather than recreated.
 
 Alternatively, you may use the `terraform import ...` command without editing the resource file.
 
 ## Configuring a project
 
-Keeping your project settings in-sync is easy with the `supabase_settings` resource.
+Use the `supabase_settings` resource to manage your project settings.
 
 Create `module/settings.tf` with the following contents.
 
@@ -100,9 +100,9 @@ resource "supabase_settings" "production" {
 }
 ```
 
-Project settings don't exist on their own. They are created and destroyed together with their corresponding project resource referenced by the `project_ref` field. This means there is no difference between creating and updating `supabase_settings` resource while deletion is always a no-op.
+Project settings don't exist on their own. They are created and destroyed together with their corresponding project resource referenced by the `project_ref` field. This means there is no difference between creating and updating `supabase_settings` resource. Deletion is always a no-op.
 
-You may declare any subset of fields to be managed by your TF module. The Supabase provider always performs a partial update when you run `terraform -chdir=module apply`. The underlying API call is also idempotent so it's safe to apply again if the local state is lost.
+You can declare any subset of fields to be managed by your TF module. The Supabase provider always performs a partial update when you run `terraform -chdir=module apply`. The underlying API call is also idempotent, so it's safe to apply again if the local state is lost.
 
 To see the full list of settings available, try importing the `supabase_settings` resource instead.
 
@@ -138,8 +138,8 @@ In addition, the `auth.site_url` settings of your branches will be customised to
 
 ## Committing your changes
 
-Finally, you may commit the entire `module` directory to git for version control. This allows your CI runner to run `terraform apply` automatically on new config changes. Any command line variables can be passed to CI via `TF_VAR_*` environment variables instead.
+Finally, you can commit the entire `module` directory to Git for version control. This allows your CI runner to run `terraform apply` automatically on new config changes. Any command line variables can be passed to CI via `TF_VAR_*` environment variables.
 
 ## Resolving config drift
 
-Tracking your configs in TF module does not mean that you lose the ability to change configs through the dashboard. However, doing so could introduce config drift that you need to resolve manually by adding them to your `*.tf` files.
+You can still change your configuration through the dashboard. However, making changes through both the dashboard and Terraform can introduce config drift. Resolve the drift by manually editing your `*.tf` files.
