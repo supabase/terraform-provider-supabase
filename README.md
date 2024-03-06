@@ -1,16 +1,21 @@
 # Supabase Terraform Provider
 
-The [Supabase Provider](https://registry.terraform.io/providers/supabase/supabase/latest/docs) allows Terraform to manage resources hosted on [Supabase](https://supabase.com/) platform.
+The [Supabase Provider](https://registry.terraform.io/providers/supabase/supabase/latest/docs) allows Terraform to manage resources hosted on the [Supabase](https://supabase.com/) platform.
 
-You may use this provider to version control your project settings in git or setup CI/CD pipelines for automatically provisioning projects and branches.
+You can use this provider to:
+
+- Version control your project settings in Git
+- Set up CI/CD pipelines for automatically provisioning projects and branches
+
+## Resources and examples
 
 - [Step-by-step tutorial](docs/tutorial.md)
 - [CI/CD example](https://github.com/supabase/supabase-action-example/tree/main/supabase/remotes)
 - [Contributing guide](CONTRIBUTING.md)
 
-## Using the provider
+## Quickstart
 
-This simple example imports an existing Supabase project and synchronises its API settings.
+This example imports an existing Supabase project and synchronises its API settings.
 
 ```hcl
 terraform {
