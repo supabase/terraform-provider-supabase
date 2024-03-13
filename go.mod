@@ -1,9 +1,6 @@
 module github.com/supabase/terraform-provider-supabase
 
-go 1.20
-
-// Ref: https://github.com/darccio/mergo?tab=readme-ov-file#100
-replace github.com/imdario/mergo => github.com/imdario/mergo v0.3.16
+go 1.22.0
 
 require (
 	github.com/hashicorp/terraform-plugin-docs v0.18.0
@@ -86,6 +83,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240123012728-ef4313101c80 // indirect
 	google.golang.org/grpc v1.62.1 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
