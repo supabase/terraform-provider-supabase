@@ -19,16 +19,18 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-      - run: go mod download
       - run: make generate-json
       - run: |
-          git config --global user.name 'github-schema-bot'
-          git config --global user.email 'github-schema-bot@supabase.com'
           if [[ `git status --porcelain` ]]; then
             echo "[bot] Schema changes detected, committing."
-            git add docs/schema.json
-            git commit -m "ci: regenerate json schema file"
-            git push
+            # git sha != sha1: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
+            sha=$(gh api -X GET repos/{owner}/{repo}/contents/$SCHEMA_FILE -F ref='${{ github.head_ref }}' --jq '.sha')
+            b64=$(cat $SCHEMA_FILE | base64)
+            gh api -X PUT repos/{owner}/{repo}/contents/$SCHEMA_FILE -F branch='${{ github.head_ref }}' \
+            -F content="$b64" -F sha="$sha" -F message='docs: update json schema file'
           else
             echo "[bot] No schema changes detected, nothing to commit."
           fi
+        env:
+          SCHEMA_FILE: docs/schema.json
+          GH_TOKEN: ${{ github.token }}
