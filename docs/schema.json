@@ -173,11 +173,23 @@
                 "description_kind": "markdown",
                 "optional": true
               },
+              "database": {
+                "type": "string",
+                "description": "Database settings as serialised JSON",
+                "description_kind": "markdown",
+                "optional": true
+              },
               "id": {
                 "type": "string",
                 "description": "Project identifier",
                 "description_kind": "markdown",
                 "computed": true
+              },
+              "network": {
+                "type": "string",
+                "description": "Network settings as serialised JSON",
+                "description_kind": "markdown",
+                "optional": true
               },
               "pooler": {
                 "type": "string",
@@ -244,6 +256,30 @@
               }
             },
             "description": "Branch data source",
+            "description_kind": "markdown"
+          }
+        },
+        "supabase_pooler": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "project_ref": {
+                "type": "string",
+                "description": "Project ref",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "url": {
+                "type": [
+                  "map",
+                  "string"
+                ],
+                "description": "Map of pooler mode to connection string",
+                "description_kind": "markdown",
+                "computed": true
+              }
+            },
+            "description": "Pooler data source",
             "description_kind": "markdown"
           }
         }
