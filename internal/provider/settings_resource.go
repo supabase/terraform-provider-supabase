@@ -38,7 +38,9 @@ type SettingsResource struct {
 // SettingsResourceModel describes the resource data model.
 type SettingsResourceModel struct {
 	ProjectRef types.String         `tfsdk:"project_ref"`
+	Database   jsontypes.Normalized `tfsdk:"database"`
 	Pooler     jsontypes.Normalized `tfsdk:"pooler"`
+	Network    jsontypes.Normalized `tfsdk:"network"`
 	Storage    jsontypes.Normalized `tfsdk:"storage"`
 	Auth       jsontypes.Normalized `tfsdk:"auth"`
 	Api        jsontypes.Normalized `tfsdk:"api"`
@@ -59,9 +61,19 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 				MarkdownDescription: "Project reference ID",
 				Required:            true,
 			},
+			"database": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
+				MarkdownDescription: "Database settings as serialised JSON",
+				Optional:            true,
+			},
 			"pooler": schema.StringAttribute{
 				CustomType:          jsontypes.NormalizedType{},
 				MarkdownDescription: "Pooler settings as serialised JSON",
+				Optional:            true,
+			},
+			"network": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
+				MarkdownDescription: "Network settings as serialised JSON",
 				Optional:            true,
 			},
 			"storage": schema.StringAttribute{
@@ -227,31 +239,17 @@ func readApiConfig(ctx context.Context, state *SettingsResourceModel, client *ap
 	switch httpResp.StatusCode() {
 	case http.StatusNotFound, http.StatusNotAcceptable:
 		return nil
-	default:
-		break
 	}
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read api settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-
 	// TODO: API doesn't support updating jwt secret
 	httpResp.JSON200.JwtSecret = nil
-	partial := make(map[string]interface{})
-	if diags := state.Api.Unmarshal(&partial); !diags.HasError() {
-		pickConfig(*httpResp.JSON200, partial)
-	} else {
-		// Handle errors when state is null or unknown
-		copyConfig(*httpResp.JSON200, partial)
-	}
-
-	value, err := json.Marshal(partial)
-	if err != nil {
-		msg := fmt.Sprintf("Unable to read api settings, got marshal error: %s", err)
+	if state.Api, err = parseConfig(state.Api, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to read api settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-
-	state.Api = jsontypes.NewNormalizedValue(string(value))
 	return nil
 }
 
@@ -298,29 +296,15 @@ func readAuthConfig(ctx context.Context, state *SettingsResourceModel, client *a
 	switch httpResp.StatusCode() {
 	case http.StatusNotFound, http.StatusNotAcceptable:
 		return nil
-	default:
-		break
 	}
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read auth settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-
-	partial := make(map[string]interface{})
-	if diags := state.Auth.Unmarshal(&partial); !diags.HasError() {
-		pickConfig(*httpResp.JSON200, partial)
-	} else {
-		// Handle errors when state is null or unknown
-		copyConfig(*httpResp.JSON200, partial)
-	}
-
-	value, err := json.Marshal(partial)
-	if err != nil {
-		msg := fmt.Sprintf("Unable to read api settings, got marshal error: %s", err)
+	if state.Auth, err = parseConfig(state.Auth, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to read auth settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-
-	state.Auth = jsontypes.NewNormalizedValue(string(value))
 	return nil
 }
 
@@ -355,6 +339,21 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 
 	plan.Auth = jsontypes.NewNormalizedValue(string(value))
 	return nil
+}
+
+func parseConfig(field jsontypes.Normalized, config any) (jsontypes.Normalized, error) {
+	partial := make(map[string]interface{})
+	if diags := field.Unmarshal(&partial); !diags.HasError() {
+		pickConfig(config, partial)
+	} else {
+		// Handle errors when state is null or unknown
+		copyConfig(config, partial)
+	}
+	value, err := json.Marshal(partial)
+	if err != nil {
+		return field, fmt.Errorf("failed to parse config: %w", err)
+	}
+	return jsontypes.NewNormalizedValue(string(value)), nil
 }
 
 func pickConfig(source any, target map[string]interface{}) {

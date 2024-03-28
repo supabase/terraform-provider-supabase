@@ -39,6 +39,8 @@ resource "supabase_settings" "production" {
 
 - `api` (String) API settings as [serialised JSON](https://api.supabase.com/api/v1#/services/updatePostgRESTConfig)
 - `auth` (String) Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig)
+- `database` (String) Database settings as serialised JSON
+- `network` (String) Network settings as serialised JSON
 - `pooler` (String) Pooler settings as serialised JSON
 - `storage` (String) Storage settings as serialised JSON
 
