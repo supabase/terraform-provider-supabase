@@ -63,7 +63,7 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 			},
 			"database": schema.StringAttribute{
 				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Database settings as serialised JSON",
+				MarkdownDescription: "Database settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateConfig)",
 				Optional:            true,
 			},
 			"pooler": schema.StringAttribute{
@@ -132,6 +132,9 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 
 	// Initial settings are always created together with the project resource.
 	// We can simply apply partial updates here based on the given TF plan.
+	if !data.Database.IsNull() {
+		resp.Diagnostics.Append(updateDatabaseConfig(ctx, &data, r.client)...)
+	}
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
 	}
@@ -164,6 +167,9 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	// If an existing state has not been imported or created from a TF plan before,
 	// skip loading them because we are not interested in managing them through TF.
+	if !data.Database.IsNull() {
+		resp.Diagnostics.Append(readDatabaseConfig(ctx, &data, r.client)...)
+	}
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	}
@@ -191,6 +197,9 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	// Ignore any states not specified in the TF plan.
+	if !data.Database.IsNull() {
+		resp.Diagnostics.Append(updateDatabaseConfig(ctx, &data, r.client)...)
+	}
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
 	}
@@ -223,6 +232,7 @@ func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportS
 
 	// Read all configs from API when importing so it's easier to pick
 	// individual fields to manage through TF.
+	resp.Diagnostics.Append(readDatabaseConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
 
@@ -338,6 +348,51 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 	}
 
 	plan.Auth = jsontypes.NewNormalizedValue(string(value))
+	return nil
+}
+
+func readDatabaseConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.GetConfigWithResponse(ctx, state.Id.ValueString())
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read database settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Deleted project is an orphan resource, not returning error so it can be destroyed.
+	switch httpResp.StatusCode() {
+	case http.StatusNotFound, http.StatusNotAcceptable:
+		return nil
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read database settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if state.Database, err = parseConfig(state.Database, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to read database settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return nil
+}
+
+func updateDatabaseConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	var body api.UpdatePostgresConfigBody
+	if diags := plan.Database.Unmarshal(&body); diags.HasError() {
+		return diags
+	}
+
+	httpResp, err := client.UpdateConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update database settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to update database settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	if plan.Database, err = parseConfig(plan.Database, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to update database settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
 	return nil
 }
 

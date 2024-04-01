@@ -16,6 +16,10 @@ Settings resource
 resource "supabase_settings" "production" {
   project_ref = "mayuaycdtijbctgqbycg"
 
+  database = jsonencode({
+    statement_timeout = "10s"
+  })
+
   api = jsonencode({
     db_schema            = "public,storage,graphql_public"
     db_extra_search_path = "public,extensions"
@@ -39,7 +43,7 @@ resource "supabase_settings" "production" {
 
 - `api` (String) API settings as [serialised JSON](https://api.supabase.com/api/v1#/services/updatePostgRESTConfig)
 - `auth` (String) Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig)
-- `database` (String) Database settings as serialised JSON
+- `database` (String) Database settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateConfig)
 - `network` (String) Network settings as serialised JSON
 - `pooler` (String) Pooler settings as serialised JSON
 - `storage` (String) Storage settings as serialised JSON

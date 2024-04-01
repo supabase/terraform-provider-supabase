@@ -22,6 +22,18 @@ func TestAccSettingsResource(t *testing.T) {
 	defer gock.OffAll()
 	// Step 1: create
 	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("10s"),
+		})
+	gock.New("https://api.supabase.com").
+		Put("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("10s"),
+		})
+	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
 		JSON(api.PostgrestConfigResponse{
@@ -51,6 +63,18 @@ func TestAccSettingsResource(t *testing.T) {
 		})
 	// Step 2: read
 	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("10s"),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("10s"),
+		})
+	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
 		JSON(api.PostgrestConfigResponse{
@@ -79,6 +103,24 @@ func TestAccSettingsResource(t *testing.T) {
 			SiteUrl: Ptr("http://localhost:3000"),
 		})
 	// Step 3: update
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("10s"),
+		})
+	gock.New("https://api.supabase.com").
+		Put("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("20s"),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("20s"),
+		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
@@ -157,6 +199,10 @@ func TestAccSettingsResource(t *testing.T) {
 const testAccSettingsResourceConfig = `
 resource "supabase_settings" "production" {
   project_ref = "mayuaycdtijbctgqbycg"
+
+  database = jsonencode({
+    statement_timeout = "20s"
+  })
 
   api = jsonencode({
 	db_schema            = "public,storage,graphql_public"
