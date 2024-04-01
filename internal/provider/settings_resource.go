@@ -279,20 +279,10 @@ func updateApiConfig(ctx context.Context, plan *SettingsResourceModel, client *a
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	partial := make(map[string]interface{})
-	if diags := plan.Api.Unmarshal(&partial); diags.HasError() {
-		// Unreachable because unmarshalling to request body returned no error
-		return diags
-	}
-	pickConfig(*httpResp.JSON200, partial)
-
-	value, err := json.Marshal(partial)
-	if err != nil {
-		msg := fmt.Sprintf("Unable to update api settings, got marshal error: %s", err)
+	if plan.Api, err = parseConfig(plan.Api, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to update api settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-
-	plan.Api = jsontypes.NewNormalizedValue(string(value))
 	return nil
 }
 
@@ -334,20 +324,10 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	partial := make(map[string]interface{})
-	if diags := plan.Auth.Unmarshal(&partial); diags.HasError() {
-		// Unreachable because unmarshalling to request body returned no error
-		return diags
-	}
-	pickConfig(*httpResp.JSON200, partial)
-
-	value, err := json.Marshal(partial)
-	if err != nil {
-		msg := fmt.Sprintf("Unable to update auth settings, got marshal error: %s", err)
+	if plan.Auth, err = parseConfig(plan.Auth, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to update auth settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-
-	plan.Auth = jsontypes.NewNormalizedValue(string(value))
 	return nil
 }
 
