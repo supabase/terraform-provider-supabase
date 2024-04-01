@@ -175,7 +175,7 @@
               },
               "database": {
                 "type": "string",
-                "description": "Database settings as serialised JSON",
+                "description": "Database settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateConfig)",
                 "description_kind": "markdown",
                 "optional": true
               },
