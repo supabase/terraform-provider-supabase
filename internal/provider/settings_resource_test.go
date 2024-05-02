@@ -13,10 +13,6 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-func Ptr[T any](v T) *T {
-	return &v
-}
-
 func TestAccSettingsResource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
