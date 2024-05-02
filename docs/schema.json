@@ -134,6 +134,12 @@
                 "description_kind": "markdown",
                 "computed": true
               },
+              "instance_size": {
+                "type": "string",
+                "description": "Desired instance size of the project",
+                "description_kind": "markdown",
+                "optional": true
+              },
               "name": {
                 "type": "string",
                 "description": "Name of the project",
