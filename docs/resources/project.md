@@ -18,6 +18,14 @@ resource "supabase_project" "test" {
   name              = "foo"
   database_password = "bar"
   region            = "us-east-1"
+  instance_size     = "micro"
+
+  lifecycle {
+    ignore_changes = [
+      database_password,
+      instance_size,
+    ]
+  }
 }
 ```
 
@@ -30,6 +38,10 @@ resource "supabase_project" "test" {
 - `name` (String) Name of the project
 - `organization_id` (String) Reference to the organization
 - `region` (String) Region where the project is located
+
+### Optional
+
+- `instance_size` (String) Desired instance size of the project
 
 ### Read-Only
 

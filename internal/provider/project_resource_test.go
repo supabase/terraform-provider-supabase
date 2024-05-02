@@ -27,30 +27,22 @@ func TestAccProjectResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects").
 		Reply(http.StatusOK).
-		JSON(
-			[]api.V1ProjectResponse{
-				{
-					Id:             "mayuaycdtijbctgqbycg",
-					Name:           "foo",
-					OrganizationId: "continued-brown-smelt",
-					Region:         "us-east-1",
-				},
-			},
-		)
+		JSON([]api.V1ProjectResponse{{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "foo",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+		}})
 	// Step 2: read
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects").
 		Reply(http.StatusOK).
-		JSON(
-			[]api.V1ProjectResponse{
-				{
-					Id:             "mayuaycdtijbctgqbycg",
-					Name:           "foo",
-					OrganizationId: "continued-brown-smelt",
-					Region:         "us-east-1",
-				},
-			},
-		)
+		JSON([]api.V1ProjectResponse{{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "foo",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+		}})
 	// Step 3: delete
 	gock.New("https://api.supabase.com").
 		Delete("/v1/projects/mayuaycdtijbctgqbycg").
@@ -77,7 +69,7 @@ func TestAccProjectResource(t *testing.T) {
 				ResourceName:            "supabase_project.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"database_password"},
+				ImportStateVerifyIgnore: []string{"database_password", "instance_size"},
 			},
 			// Delete testing automatically occurs in TestCase
 		},

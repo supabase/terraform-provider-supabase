@@ -38,6 +38,7 @@ type ProjectResourceModel struct {
 	Name             types.String `tfsdk:"name"`
 	DatabasePassword types.String `tfsdk:"database_password"`
 	Region           types.String `tfsdk:"region"`
+	InstanceSize     types.String `tfsdk:"instance_size"`
 	Id               types.String `tfsdk:"id"`
 }
 
@@ -67,6 +68,10 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "Region where the project is located",
 				Required:            true,
 			},
+			"instance_size": schema.StringAttribute{
+				MarkdownDescription: "Desired instance size of the project",
+				Optional:            true,
+			},
 			"id": schema.StringAttribute{
 				MarkdownDescription: "Project identifier",
 				Computed:            true,
@@ -85,13 +90,11 @@ func (r *ProjectResource) Configure(ctx context.Context, req resource.ConfigureR
 	}
 
 	client, ok := req.ProviderData.(*api.ClientWithResponses)
-
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
 			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
-
 		return
 	}
 
@@ -103,13 +106,11 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(createProject(ctx, &data, r.client)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -125,7 +126,6 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -133,7 +133,6 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 	tflog.Trace(ctx, "read project")
 
 	resp.Diagnostics.Append(readProject(ctx, &data, r.client)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -147,7 +146,6 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -162,13 +160,11 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	resp.Diagnostics.Append(deleteProject(ctx, &data, r.client)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -184,13 +180,17 @@ func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportSt
 }
 
 func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.CreateProjectWithResponse(ctx, api.CreateProjectJSONRequestBody{
+	body := api.CreateProjectJSONRequestBody{
 		OrganizationId: data.OrganizationId.ValueString(),
 		Name:           data.Name.ValueString(),
 		DbPass:         data.DatabasePassword.ValueString(),
 		Region:         api.V1CreateProjectBodyRegion(data.Region.ValueString()),
-	})
+	}
+	if !data.InstanceSize.IsNull() {
+		body.DesiredInstanceSize = Ptr(api.DesiredInstanceSize(data.InstanceSize.ValueString()))
+	}
 
+	httpResp, err := client.CreateProjectWithResponse(ctx, body)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to create project, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -207,7 +207,6 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 
 func readProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	httpResp, err := client.GetProjectsWithResponse(ctx)
-
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read project, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -234,7 +233,6 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 
 func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	httpResp, err := client.DeleteProjectWithResponse(ctx, data.Id.ValueString())
-
 	if err != nil {
 		msg := fmt.Sprintf("Unable to delete project, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
