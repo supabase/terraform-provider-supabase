@@ -188,7 +188,7 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		OrganizationId: data.OrganizationId.ValueString(),
 		Name:           data.Name.ValueString(),
 		DbPass:         data.DatabasePassword.ValueString(),
-		Region:         api.CreateProjectBodyRegion(data.Region.ValueString()),
+		Region:         api.V1CreateProjectBodyRegion(data.Region.ValueString()),
 	})
 
 	if err != nil {

@@ -36,7 +36,7 @@ func TestAccSettingsResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
-		JSON(api.PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
@@ -44,7 +44,7 @@ func TestAccSettingsResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
-		JSON(api.PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
@@ -77,7 +77,7 @@ func TestAccSettingsResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
-		JSON(api.PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
@@ -85,7 +85,7 @@ func TestAccSettingsResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
-		JSON(api.PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
@@ -124,7 +124,7 @@ func TestAccSettingsResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
-		JSON(api.PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
@@ -132,7 +132,7 @@ func TestAccSettingsResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
-		JSON(api.PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           100,
@@ -140,7 +140,7 @@ func TestAccSettingsResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
-		JSON(api.PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           100,

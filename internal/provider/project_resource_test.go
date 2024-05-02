@@ -20,7 +20,7 @@ func TestAccProjectResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Post("/v1/projects").
 		Reply(http.StatusCreated).
-		JSON(api.ProjectResponse{
+		JSON(api.V1ProjectResponse{
 			Id:   "mayuaycdtijbctgqbycg",
 			Name: "foo",
 		})
@@ -28,7 +28,7 @@ func TestAccProjectResource(t *testing.T) {
 		Get("/v1/projects").
 		Reply(http.StatusOK).
 		JSON(
-			[]api.ProjectResponse{
+			[]api.V1ProjectResponse{
 				{
 					Id:             "mayuaycdtijbctgqbycg",
 					Name:           "foo",
@@ -42,7 +42,7 @@ func TestAccProjectResource(t *testing.T) {
 		Get("/v1/projects").
 		Reply(http.StatusOK).
 		JSON(
-			[]api.ProjectResponse{
+			[]api.V1ProjectResponse{
 				{
 					Id:             "mayuaycdtijbctgqbycg",
 					Name:           "foo",
@@ -55,7 +55,7 @@ func TestAccProjectResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Delete("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
-		JSON(api.PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
