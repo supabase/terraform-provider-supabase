@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"reflect"
 	"strings"
@@ -135,6 +136,9 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 	if !data.Database.IsNull() {
 		resp.Diagnostics.Append(updateDatabaseConfig(ctx, &data, r.client)...)
 	}
+	if !data.Network.IsNull() {
+		resp.Diagnostics.Append(updateNetworkConfig(ctx, &data, r.client)...)
+	}
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
 	}
@@ -170,6 +174,9 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if !data.Database.IsNull() {
 		resp.Diagnostics.Append(readDatabaseConfig(ctx, &data, r.client)...)
 	}
+	if !data.Network.IsNull() {
+		resp.Diagnostics.Append(readNetworkConfig(ctx, &data, r.client)...)
+	}
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	}
@@ -199,6 +206,9 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	// Ignore any states not specified in the TF plan.
 	if !data.Database.IsNull() {
 		resp.Diagnostics.Append(updateDatabaseConfig(ctx, &data, r.client)...)
+	}
+	if !data.Network.IsNull() {
+		resp.Diagnostics.Append(updateNetworkConfig(ctx, &data, r.client)...)
 	}
 	if !data.Api.IsNull() {
 		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
@@ -233,6 +243,7 @@ func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportS
 	// Read all configs from API when importing so it's easier to pick
 	// individual fields to manage through TF.
 	resp.Diagnostics.Append(readDatabaseConfig(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(readNetworkConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
 
@@ -416,4 +427,83 @@ func copyConfig(source any, target map[string]interface{}) {
 			target[k] = f.Interface()
 		}
 	}
+}
+
+type NetworkConfig struct {
+	Restrictions []string `json:"restrictions,omitempty"`
+}
+
+func readNetworkConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.GetNetworkRestrictionsWithResponse(ctx, state.Id.ValueString())
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read network settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Deleted project is an orphan resource, not returning error so it can be destroyed.
+	switch httpResp.StatusCode() {
+	case http.StatusNotFound, http.StatusNotAcceptable:
+		return nil
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read network settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	var network NetworkConfig
+	if v4 := httpResp.JSON200.Config.DbAllowedCidrs; v4 != nil {
+		network.Restrictions = append(network.Restrictions, *v4...)
+	}
+	if v6 := httpResp.JSON200.Config.DbAllowedCidrsV6; v6 != nil {
+		network.Restrictions = append(network.Restrictions, *v6...)
+	}
+
+	if state.Network, err = parseConfig(state.Network, network); err != nil {
+		msg := fmt.Sprintf("Unable to read network settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return nil
+}
+
+func updateNetworkConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	var network NetworkConfig
+	if diags := plan.Network.Unmarshal(&network); diags.HasError() {
+		return diags
+	}
+
+	body := api.ApplyNetworkRestrictionsJSONRequestBody{
+		DbAllowedCidrs:   &[]string{},
+		DbAllowedCidrsV6: &[]string{},
+	}
+	for _, cidr := range network.Restrictions {
+		ip, _, err := net.ParseCIDR(cidr)
+		if err != nil {
+			msg := fmt.Sprintf("Invalid CIDR provided for network restrictions: %s", err)
+			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		}
+		if ip.IsPrivate() {
+			msg := fmt.Sprintf("Private IP provided for network restrictions: %s", cidr)
+			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		}
+		if ip.To4() != nil {
+			*body.DbAllowedCidrs = append(*body.DbAllowedCidrs, cidr)
+		} else {
+			*body.DbAllowedCidrsV6 = append(*body.DbAllowedCidrsV6, cidr)
+		}
+	}
+
+	httpResp, err := client.ApplyNetworkRestrictionsWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update network settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON201 == nil {
+		msg := fmt.Sprintf("Unable to update network settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	if plan.Network, err = parseConfig(plan.Network, network); err != nil {
+		msg := fmt.Sprintf("Unable to update network settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return nil
 }

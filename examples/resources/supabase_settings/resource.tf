@@ -5,6 +5,13 @@ resource "supabase_settings" "production" {
     statement_timeout = "10s"
   })
 
+  network = jsonencode({
+    restrictions = [
+      "0.0.0.0/0",
+      "::/0"
+    ]
+  })
+
   api = jsonencode({
     db_schema            = "public,storage,graphql_public"
     db_extra_search_path = "public,extensions"

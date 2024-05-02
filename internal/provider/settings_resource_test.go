@@ -30,6 +30,24 @@ func TestAccSettingsResource(t *testing.T) {
 			StatementTimeout: Ptr("10s"),
 		})
 	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
+				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Post("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusCreated).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
+				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
@@ -69,6 +87,24 @@ func TestAccSettingsResource(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{
 			StatementTimeout: Ptr("10s"),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
+				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
+				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
+			},
 		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
@@ -116,6 +152,31 @@ func TestAccSettingsResource(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{
 			StatementTimeout: Ptr("20s"),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
+				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Post("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusCreated).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
+			},
 		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
@@ -198,6 +259,10 @@ resource "supabase_settings" "production" {
 
   database = jsonencode({
     statement_timeout = "20s"
+  })
+
+  network = jsonencode({
+	restrictions = ["0.0.0.0/0"]
   })
 
   api = jsonencode({
