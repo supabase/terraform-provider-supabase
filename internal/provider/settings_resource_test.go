@@ -75,6 +75,26 @@ func TestAccSettingsResource(t *testing.T) {
 		JSON(api.AuthConfigResponse{
 			SiteUrl: Ptr("http://localhost:3000"),
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/pgbouncer").
+		Reply(http.StatusOK).
+		JSON(api.V1PgbouncerConfigResponse{
+			ConnectionString:        Ptr("postgresql://user:pass@pooler.supabase.com:6543/postgres"),
+			DefaultPoolSize:         Ptr(float32(15)),
+			IgnoreStartupParameters: Ptr(""),
+			MaxClientConn:           Ptr(float32(200)),
+			PoolMode:                Ptr(api.Transaction),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/pgbouncer").
+		Reply(http.StatusOK).
+		JSON(api.V1PgbouncerConfigResponse{
+			ConnectionString:        Ptr("postgresql://user:pass@pooler.supabase.com:6543/postgres"),
+			DefaultPoolSize:         Ptr(float32(15)),
+			IgnoreStartupParameters: Ptr(""),
+			MaxClientConn:           Ptr(float32(200)),
+			PoolMode:                Ptr(api.Transaction),
+		})
 	// Step 2: read
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
@@ -133,6 +153,26 @@ func TestAccSettingsResource(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl: Ptr("http://localhost:3000"),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/pgbouncer").
+		Reply(http.StatusOK).
+		JSON(api.V1PgbouncerConfigResponse{
+			ConnectionString:        Ptr("postgresql://user:pass@pooler.supabase.com:6543/postgres"),
+			DefaultPoolSize:         Ptr(float32(15)),
+			IgnoreStartupParameters: Ptr(""),
+			MaxClientConn:           Ptr(float32(200)),
+			PoolMode:                Ptr(api.Transaction),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/pgbouncer").
+		Reply(http.StatusOK).
+		JSON(api.V1PgbouncerConfigResponse{
+			ConnectionString:        Ptr("postgresql://user:pass@pooler.supabase.com:6543/postgres"),
+			DefaultPoolSize:         Ptr(float32(15)),
+			IgnoreStartupParameters: Ptr(""),
+			MaxClientConn:           Ptr(float32(200)),
+			PoolMode:                Ptr(api.Transaction),
 		})
 	// Step 3: update
 	gock.New("https://api.supabase.com").
@@ -222,6 +262,26 @@ func TestAccSettingsResource(t *testing.T) {
 		JSON(api.AuthConfigResponse{
 			SiteUrl: Ptr("http://localhost:3000"),
 			JwtExp:  Ptr(float32(1800)),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/pgbouncer").
+		Reply(http.StatusOK).
+		JSON(api.V1PgbouncerConfigResponse{
+			ConnectionString:        Ptr("postgresql://user:pass@pooler.supabase.com:6543/postgres"),
+			DefaultPoolSize:         Ptr(float32(15)),
+			IgnoreStartupParameters: Ptr(""),
+			MaxClientConn:           Ptr(float32(200)),
+			PoolMode:                Ptr(api.Transaction),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/pgbouncer").
+		Reply(http.StatusOK).
+		JSON(api.V1PgbouncerConfigResponse{
+			ConnectionString:        Ptr("postgresql://user:pass@pooler.supabase.com:6543/postgres"),
+			DefaultPoolSize:         Ptr(float32(15)),
+			IgnoreStartupParameters: Ptr(""),
+			MaxClientConn:           Ptr(float32(200)),
+			PoolMode:                Ptr(api.Transaction),
 		})
 	// Run test
 	resource.Test(t, resource.TestCase{

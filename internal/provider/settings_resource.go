@@ -69,7 +69,7 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 			},
 			"pooler": schema.StringAttribute{
 				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Pooler settings as serialised JSON",
+				MarkdownDescription: "Pooler settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/v1GetPgbouncerConfig)",
 				Optional:            true,
 			},
 			"network": schema.StringAttribute{
@@ -145,6 +145,9 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
 	}
+	if !data.Pooler.IsNull() {
+		resp.Diagnostics.Append(updatePoolerConfig(ctx, &data, r.client)...)
+	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
@@ -183,6 +186,9 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
 	}
+	if !data.Pooler.IsNull() {
+		resp.Diagnostics.Append(readPoolerConfig(ctx, &data, r.client)...)
+	}
 	// TODO: read all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
@@ -216,6 +222,9 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
 	}
+	if !data.Pooler.IsNull() {
+		resp.Diagnostics.Append(updatePoolerConfig(ctx, &data, r.client)...)
+	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
@@ -246,6 +255,7 @@ func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(readNetworkConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(readPoolerConfig(ctx, &data, r.client)...)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -382,6 +392,56 @@ func updateDatabaseConfig(ctx context.Context, plan *SettingsResourceModel, clie
 
 	if plan.Database, err = parseConfig(plan.Database, *httpResp.JSON200); err != nil {
 		msg := fmt.Sprintf("Unable to update database settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return nil
+}
+
+func readPoolerConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.V1GetPgbouncerConfigWithResponse(ctx, state.Id.ValueString())
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read pooler settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Deleted project is an orphan resource, not returning error so it can be destroyed.
+	switch httpResp.StatusCode() {
+	case http.StatusNotFound, http.StatusNotAcceptable:
+		return nil
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read pooler settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	httpResp.JSON200.ConnectionString = nil
+	httpResp.JSON200.PoolMode = nil
+	if state.Pooler, err = parseConfig(state.Pooler, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to read pooler settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return nil
+}
+
+func updatePoolerConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.V1GetPgbouncerConfigWithResponse(ctx, plan.Id.ValueString())
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update pooler settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Deleted project is an orphan resource, not returning error so it can be destroyed.
+	switch httpResp.StatusCode() {
+	case http.StatusNotFound, http.StatusNotAcceptable:
+		return nil
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to update pooler settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Zero out unsupported configs
+	httpResp.JSON200.IgnoreStartupParameters = nil
+	httpResp.JSON200.ConnectionString = nil
+	httpResp.JSON200.PoolMode = nil
+	if plan.Pooler, err = parseConfig(plan.Pooler, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to update pooler settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	return nil

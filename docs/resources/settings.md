@@ -20,6 +20,11 @@ resource "supabase_settings" "production" {
     statement_timeout = "10s"
   })
 
+  pooler = jsonencode({
+    default_pool_size = 15
+    max_client_conn   = 200
+  })
+
   network = jsonencode({
     restrictions = [
       "0.0.0.0/0",
@@ -52,7 +57,7 @@ resource "supabase_settings" "production" {
 - `auth` (String) Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig)
 - `database` (String) Database settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateConfig)
 - `network` (String) Network settings as serialised JSON
-- `pooler` (String) Pooler settings as serialised JSON
+- `pooler` (String) Pooler settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/v1GetPgbouncerConfig)
 - `storage` (String) Storage settings as serialised JSON
 
 ### Read-Only

@@ -5,6 +5,11 @@ resource "supabase_settings" "production" {
     statement_timeout = "10s"
   })
 
+  pooler = jsonencode({
+    default_pool_size = 15
+    max_client_conn   = 200
+  })
+
   network = jsonencode({
     restrictions = [
       "0.0.0.0/0",
