@@ -9,7 +9,7 @@ require (
 	github.com/hashicorp/terraform-plugin-go v0.23.0
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-testing v1.7.0
-	github.com/supabase/cli v1.167.3
+	github.com/supabase/cli v1.167.4
 	gopkg.in/h2non/gock.v1 v1.1.2
 )
 
