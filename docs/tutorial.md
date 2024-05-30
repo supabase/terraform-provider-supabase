@@ -79,7 +79,7 @@ resource "supabase_project" "production" {
 
 Run `terraform -chdir=module apply`. Enter the ID of your Supabase project at the prompt. If your local TF state is empty, your project will be imported from remote rather than recreated.
 
-Alternatively, you may use the `terraform import ...` command without editing the resource file.
+Alternatively, you may use the `terraform import ...` command without editing the resource file. For example, `terraform -chdir=module import supabase_project.production abcdefghijklmnopqrst` will let Terraform import your existing project with reference ID `abcdefghijklmnopqrst`. After import, you can run `terraform -chdir=module plan` to verify that your infrastructure matches the configuration.
 
 ## Configuring a project
 
