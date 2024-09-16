@@ -251,7 +251,7 @@ func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportS
 }
 
 func readApiConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.GetPostgRESTConfigWithResponse(ctx, state.Id.ValueString())
+	httpResp, err := client.V1GetPostgrestServiceConfigWithResponse(ctx, state.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read api settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -280,7 +280,7 @@ func updateApiConfig(ctx context.Context, plan *SettingsResourceModel, client *a
 		return diags
 	}
 
-	httpResp, err := client.UpdatePostgRESTConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	httpResp, err := client.V1UpdatePostgrestServiceConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update api settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -298,7 +298,7 @@ func updateApiConfig(ctx context.Context, plan *SettingsResourceModel, client *a
 }
 
 func readAuthConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.GetV1AuthConfigWithResponse(ctx, state.Id.ValueString())
+	httpResp, err := client.V1GetAuthServiceConfigWithResponse(ctx, state.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read auth settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -325,7 +325,7 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 		return diags
 	}
 
-	httpResp, err := client.UpdateV1AuthConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	httpResp, err := client.V1UpdateAuthServiceConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update auth settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -343,7 +343,7 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 }
 
 func readDatabaseConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.GetConfigWithResponse(ctx, state.Id.ValueString())
+	httpResp, err := client.V1GetPostgresConfigWithResponse(ctx, state.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read database settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -370,7 +370,7 @@ func updateDatabaseConfig(ctx context.Context, plan *SettingsResourceModel, clie
 		return diags
 	}
 
-	httpResp, err := client.UpdateConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	httpResp, err := client.V1UpdatePostgresConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update database settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -434,7 +434,7 @@ type NetworkConfig struct {
 }
 
 func readNetworkConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.GetNetworkRestrictionsWithResponse(ctx, state.Id.ValueString())
+	httpResp, err := client.V1GetNetworkRestrictionsWithResponse(ctx, state.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read network settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -470,7 +470,7 @@ func updateNetworkConfig(ctx context.Context, plan *SettingsResourceModel, clien
 		return diags
 	}
 
-	body := api.ApplyNetworkRestrictionsJSONRequestBody{
+	body := api.NetworkRestrictionsRequest{
 		DbAllowedCidrs:   &[]string{},
 		DbAllowedCidrsV6: &[]string{},
 	}
@@ -491,7 +491,7 @@ func updateNetworkConfig(ctx context.Context, plan *SettingsResourceModel, clien
 		}
 	}
 
-	httpResp, err := client.ApplyNetworkRestrictionsWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	httpResp, err := client.V1UpdateNetworkRestrictionsWithResponse(ctx, plan.ProjectRef.ValueString(), body)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update network settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}

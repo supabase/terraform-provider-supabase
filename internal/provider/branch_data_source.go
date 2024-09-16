@@ -105,7 +105,7 @@ func (d *BranchDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 
 	// If applicable, this is a great opportunity to initialize any necessary
 	// provider client data and make a call using it.
-	httpResp, err := d.client.GetBranchesWithResponse(ctx, projectRef.ValueString())
+	httpResp, err := d.client.V1ListAllBranchesWithResponse(ctx, projectRef.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read branch, got error: %s", err)
 		resp.Diagnostics.AddError("Client Error", msg)
