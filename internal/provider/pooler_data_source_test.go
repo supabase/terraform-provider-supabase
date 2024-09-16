@@ -18,16 +18,16 @@ func TestAccPoolerDataSource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
 	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/pgbouncer").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/pooler").
 		Times(3).
 		Reply(http.StatusOK).
-		JSON(api.V1PgbouncerConfigResponse{
-			ConnectionString:        &poolerUrl,
-			DefaultPoolSize:         Ptr(float32(15)),
-			IgnoreStartupParameters: Ptr(""),
-			MaxClientConn:           Ptr(float32(200)),
-			PoolMode:                Ptr(api.Transaction),
-		})
+		JSON([]api.SupavisorConfigResponse{{
+			DatabaseType:     api.PRIMARY,
+			ConnectionString: poolerUrl,
+			DefaultPoolSize:  Ptr(float32(15)),
+			MaxClientConn:    Ptr(float32(200)),
+			PoolMode:         api.SupavisorConfigResponsePoolModeTransaction,
+		}})
 	// Run test
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
