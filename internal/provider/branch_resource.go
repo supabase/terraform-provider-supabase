@@ -240,7 +240,7 @@ func (r *BranchResource) ImportState(ctx context.Context, req resource.ImportSta
 }
 
 func updateBranch(ctx context.Context, plan *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.UpdateBranchWithResponse(ctx, plan.Id.ValueString(), api.UpdateBranchBody{
+	httpResp, err := client.V1UpdateABranchConfigWithResponse(ctx, plan.Id.ValueString(), api.UpdateBranchBody{
 		BranchName: plan.GitBranch.ValueStringPointer(),
 		GitBranch:  plan.GitBranch.ValueStringPointer(),
 	})
@@ -268,7 +268,7 @@ func readBranch(ctx context.Context, state *BranchResourceModel, client *api.Cli
 }
 
 func readBranchDatabase(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.GetBranchDetailsWithResponse(ctx, state.Id.ValueString())
+	httpResp, err := client.V1GetABranchConfigWithResponse(ctx, state.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read branch database, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -294,14 +294,14 @@ func readBranchDatabase(ctx context.Context, state *BranchResourceModel, client 
 }
 
 func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	resp, err := client.GetBranches(ctx, plan.ParentProjectRef.ValueString())
+	resp, err := client.V1ListAllBranches(ctx, plan.ParentProjectRef.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to enable branching, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	// 1. Enable branching
 	if resp.StatusCode == http.StatusUnprocessableEntity {
-		httpResp, err := client.CreateBranchWithResponse(ctx, plan.ParentProjectRef.ValueString(), api.CreateBranchBody{
+		httpResp, err := client.V1CreateABranchWithResponse(ctx, plan.ParentProjectRef.ValueString(), api.CreateBranchBody{
 			BranchName: "Production",
 		})
 		if err != nil {
@@ -314,7 +314,7 @@ func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 		}
 	}
 	// 2. Create branch database
-	httpResp, err := client.CreateBranchWithResponse(ctx, plan.ParentProjectRef.ValueString(), api.CreateBranchBody{
+	httpResp, err := client.V1CreateABranchWithResponse(ctx, plan.ParentProjectRef.ValueString(), api.CreateBranchBody{
 		BranchName: plan.GitBranch.ValueString(),
 		GitBranch:  plan.GitBranch.ValueStringPointer(),
 		Region:     plan.Region.ValueStringPointer(),
@@ -338,7 +338,7 @@ func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 }
 
 func deleteBranch(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.DeleteBranchWithResponse(ctx, state.Id.ValueString())
+	httpResp, err := client.V1DeleteABranchWithResponse(ctx, state.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to delete branch, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}

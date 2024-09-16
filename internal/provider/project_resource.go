@@ -180,7 +180,7 @@ func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportSt
 }
 
 func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	body := api.CreateProjectJSONRequestBody{
+	body := api.V1CreateProjectBody{
 		OrganizationId: data.OrganizationId.ValueString(),
 		Name:           data.Name.ValueString(),
 		DbPass:         data.DatabasePassword.ValueString(),
@@ -190,7 +190,7 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		body.DesiredInstanceSize = Ptr(api.DesiredInstanceSize(data.InstanceSize.ValueString()))
 	}
 
-	httpResp, err := client.CreateProjectWithResponse(ctx, body)
+	httpResp, err := client.V1CreateAProjectWithResponse(ctx, body)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to create project, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -206,7 +206,7 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 }
 
 func readProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.GetProjectsWithResponse(ctx)
+	httpResp, err := client.V1ListAllProjectsWithResponse(ctx)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read project, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -232,7 +232,7 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 }
 
 func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.DeleteProjectWithResponse(ctx, data.Id.ValueString())
+	httpResp, err := client.V1DeleteAProjectWithResponse(ctx, data.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to delete project, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}

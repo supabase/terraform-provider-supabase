@@ -87,7 +87,7 @@ func (d *PoolerDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 
 	// If applicable, this is a great opportunity to initialize any necessary
 	// provider client data and make a call using it.
-	httpResp, err := d.client.V1GetPgbouncerConfigWithResponse(ctx, projectRef.ValueString())
+	httpResp, err := d.client.V1GetSupavisorConfigWithResponse(ctx, projectRef.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read pooler, got error: %s", err)
 		resp.Diagnostics.AddError("Client Error", msg)
@@ -100,9 +100,10 @@ func (d *PoolerDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	}
 
 	url := map[string]string{}
-	if httpResp.JSON200.PoolMode != nil && httpResp.JSON200.ConnectionString != nil {
-		mode := string(*httpResp.JSON200.PoolMode)
-		url[mode] = *httpResp.JSON200.ConnectionString
+	for _, pooler := range *httpResp.JSON200 {
+		if pooler.DatabaseType == api.PRIMARY {
+			url[string(pooler.PoolMode)] = pooler.ConnectionString
+		}
 	}
 
 	// Write logs using the tflog package

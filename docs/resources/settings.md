@@ -34,7 +34,10 @@ resource "supabase_settings" "production" {
   })
 
   auth = jsonencode({
-    site_url = "http://localhost:3000"
+    site_url             = "http://localhost:3000"
+    mailer_otp_exp       = 3600
+    mfa_phone_otp_length = 6
+    sms_otp_length       = 6
   })
 }
 ```
