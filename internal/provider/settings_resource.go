@@ -312,6 +312,14 @@ func readAuthConfig(ctx context.Context, state *SettingsResourceModel, client *a
 		msg := fmt.Sprintf("Unable to read auth settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
+	// API treats sensitive fields as write-only
+	var body api.AuthConfigResponse
+	if !state.Auth.IsNull() {
+		if diags := state.Auth.Unmarshal(&body); diags.HasError() {
+			return diags
+		}
+	}
+	httpResp.JSON200.SmtpPass = body.SmtpPass
 	if state.Auth, err = parseConfig(state.Auth, *httpResp.JSON200); err != nil {
 		msg := fmt.Sprintf("Unable to read auth settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -334,6 +342,8 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 		msg := fmt.Sprintf("Unable to update auth settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
+	// Copy over sensitive fields from TF plan
+	httpResp.JSON200.SmtpPass = body.SmtpPass
 
 	if plan.Auth, err = parseConfig(plan.Auth, *httpResp.JSON200); err != nil {
 		msg := fmt.Sprintf("Unable to update auth settings, got error: %s", err)
