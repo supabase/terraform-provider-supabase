@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/terraform-plugin-go v0.24.0
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-testing v1.10.0
-	github.com/supabase/cli v1.205.0
+	github.com/supabase/cli v1.206.1
 	gopkg.in/h2non/gock.v1 v1.1.2
 )
 
