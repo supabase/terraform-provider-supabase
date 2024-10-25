@@ -207,8 +207,8 @@ github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5
 github.com/stretchr/testify v1.7.2/go.mod h1:R6va5+xMeoiuVRoj+gSkQ7d3FALtqAAGI1FQKckRals=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
-github.com/supabase/cli v1.208.0 h1:g07cf9mv3TODioo0sWnKDmUIDVY7/7q8O617O8d/vdk=
-github.com/supabase/cli v1.208.0/go.mod h1:N/naizpax4V8/vUXlOyAn30jJ+WQf2nvOwbky07EFgA=
+github.com/supabase/cli v1.210.0 h1:v9XyO8wc53wKGkr6AurFTs92NHXh3ZdHCJZuqhc79o0=
+github.com/supabase/cli v1.210.0/go.mod h1:Aer34ieVYkMTrbRaTKhn7n/NYU9DKFsLJ+gmjSuZZXY=
 github.com/vmihailenco/msgpack v3.3.3+incompatible/go.mod h1:fy3FlTQTDXWkZ7Bh6AcGMlsjHatGryHQYUTf1ShIgkk=
 github.com/vmihailenco/msgpack v4.0.4+incompatible h1:dSLoQfGFAo3F6OoNhwUmLwVgaUXK79GlxNBwueZn0xI=
 github.com/vmihailenco/msgpack v4.0.4+incompatible/go.mod h1:fy3FlTQTDXWkZ7Bh6AcGMlsjHatGryHQYUTf1ShIgkk=
