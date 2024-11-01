@@ -313,13 +313,13 @@ func readAuthConfig(ctx context.Context, state *SettingsResourceModel, client *a
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	// API treats sensitive fields as write-only
-	var body api.AuthConfigResponse
+	var body LocalAuthConfig
 	if !state.Auth.IsNull() {
 		if diags := state.Auth.Unmarshal(&body); diags.HasError() {
 			return diags
 		}
 	}
-	httpResp.JSON200.SmtpPass = body.SmtpPass
+	body.overrideSensitiveFields(httpResp.JSON200)
 	if state.Auth, err = parseConfig(state.Auth, *httpResp.JSON200); err != nil {
 		msg := fmt.Sprintf("Unable to read auth settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -343,7 +343,8 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	// Copy over sensitive fields from TF plan
-	httpResp.JSON200.SmtpPass = body.SmtpPass
+	local := LocalAuthConfig{UpdateAuthConfigBody: body}
+	local.overrideSensitiveFields(httpResp.JSON200)
 
 	if plan.Auth, err = parseConfig(plan.Auth, *httpResp.JSON200); err != nil {
 		msg := fmt.Sprintf("Unable to update auth settings, got error: %s", err)
@@ -437,6 +438,50 @@ func copyConfig(source any, target map[string]interface{}) {
 			target[k] = f.Interface()
 		}
 	}
+}
+
+type LocalAuthConfig struct {
+	api.UpdateAuthConfigBody
+}
+
+func (c LocalAuthConfig) overrideSensitiveFields(resp *api.AuthConfigResponse) {
+	// Email provider secrets
+	resp.SmtpPass = c.SmtpPass
+	// SMS provider secrets
+	resp.SmsTwilioAuthToken = c.SmsTwilioAuthToken
+	resp.SmsTwilioVerifyAuthToken = c.SmsTwilioVerifyAuthToken
+	resp.SmsMessagebirdAccessKey = c.SmsMessagebirdAccessKey
+	resp.SmsTextlocalApiKey = c.SmsTextlocalApiKey
+	resp.SmsVonageApiSecret = c.SmsVonageApiSecret
+	// Captcha provider secrets
+	resp.SecurityCaptchaSecret = c.SecurityCaptchaSecret
+	// External provider secrets
+	resp.ExternalAppleSecret = c.ExternalAppleSecret
+	resp.ExternalAzureSecret = c.ExternalAzureSecret
+	resp.ExternalBitbucketSecret = c.ExternalBitbucketSecret
+	resp.ExternalDiscordSecret = c.ExternalDiscordSecret
+	resp.ExternalFacebookSecret = c.ExternalFacebookSecret
+	resp.ExternalFigmaSecret = c.ExternalFigmaSecret
+	resp.ExternalGithubSecret = c.ExternalGithubSecret
+	resp.ExternalGitlabSecret = c.ExternalGitlabSecret
+	resp.ExternalGoogleSecret = c.ExternalGoogleSecret
+	resp.ExternalKakaoSecret = c.ExternalKakaoSecret
+	resp.ExternalKeycloakSecret = c.ExternalKeycloakSecret
+	resp.ExternalLinkedinOidcSecret = c.ExternalLinkedinOidcSecret
+	resp.ExternalNotionSecret = c.ExternalNotionSecret
+	resp.ExternalSlackOidcSecret = c.ExternalSlackOidcSecret
+	resp.ExternalSlackSecret = c.ExternalSlackSecret
+	resp.ExternalSpotifySecret = c.ExternalSpotifySecret
+	resp.ExternalTwitchSecret = c.ExternalTwitchSecret
+	resp.ExternalTwitterSecret = c.ExternalTwitterSecret
+	resp.ExternalWorkosSecret = c.ExternalWorkosSecret
+	resp.ExternalZoomSecret = c.ExternalZoomSecret
+	// Hook provider secrets
+	resp.HookCustomAccessTokenSecrets = c.HookCustomAccessTokenSecrets
+	resp.HookMfaVerificationAttemptSecrets = c.HookMfaVerificationAttemptSecrets
+	resp.HookPasswordVerificationAttemptSecrets = c.HookPasswordVerificationAttemptSecrets
+	resp.HookSendEmailSecrets = c.HookSendEmailSecrets
+	resp.HookSendSmsSecrets = c.HookSendSmsSecrets
 }
 
 type NetworkConfig struct {
