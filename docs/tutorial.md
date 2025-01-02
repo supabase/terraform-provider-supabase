@@ -41,11 +41,27 @@ resource "supabase_project" "production" {
     ignore_changes = [database_password]
   }
 }
+
+# Retrieve project API keys
+data "supabase_project_apikeys" "production" {
+  project_id = supabase_project.production.id
+}
+
+# Output the API keys (careful with sensitive data!)
+output "anon_key" {
+  value     = data.supabase_project_apikeys.production.anon_key
+  sensitive = true
+}
+
+output "service_role_key" {
+  value     = data.supabase_project_apikeys.production.service_role_key
+  sensitive = true
+}
 ```
 
-Remember to substitute placeholder values with your own. For sensitive fields such as the password, consider storing and retrieving them from a secure credentials store.
+Remember to substitute placeholder values with your own. For sensitive fields such as the password, consider storing and retrieving them from a secure credentials store. The API keys are marked as sensitive and will be hidden in logs, but make sure to handle them securely in your workflow.
 
-Next, run `terraform -chdir=module apply` to create the new project resource.
+Next, run `terraform -chdir=module apply` to create the new project resource and retrieve its API keys.
 
 ### Importing a project
 
@@ -74,6 +90,11 @@ resource "supabase_project" "production" {
   lifecycle {
     ignore_changes = [database_password]
   }
+}
+
+# Retrieve project API keys
+data "supabase_project_apikeys" "production" {
+  project_id = supabase_project.production.id
 }
 ```
 
