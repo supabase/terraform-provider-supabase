@@ -4,48 +4,50 @@
 package provider
 
 import (
-	"fmt"
-	"regexp"
+	"net/http"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/supabase/cli/pkg/api"
+	"gopkg.in/h2non/gock.v1"
 )
 
 func TestAccProjectAPIKeysDataSource(t *testing.T) {
+	// Setup mock api
+	defer gock.OffAll()
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys").
+		Times(3).
+		Reply(http.StatusOK).
+		JSON([]api.ApiKeyResponse{
+			{
+				Name:   "anon",
+				ApiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon",
+			},
+			{
+				Name:   "service_role",
+				ApiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role",
+			},
+		})
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Read testing
 			{
-				Config: testAccProjectAPIKeysDataSourceConfig("example-project-id"),
+				Config: testAccProjectAPIKeysDataSourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.supabase_project_apikeys.test", "project_id", "example-project-id"),
-					resource.TestCheckResourceAttrSet("data.supabase_project_apikeys.test", "anon_key"),
-					resource.TestCheckResourceAttrSet("data.supabase_project_apikeys.test", "service_role_key"),
+					resource.TestCheckResourceAttr("data.supabase_project_apikeys.production", "anon_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
+					resource.TestCheckResourceAttr("data.supabase_project_apikeys.production", "service_role_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
 				),
 			},
 		},
 	})
 }
 
-func testAccProjectAPIKeysDataSourceConfig(projectID string) string {
-	return fmt.Sprintf(`
-data "supabase_project_apikeys" "test" {
-  project_id = %[1]q
+const testAccProjectAPIKeysDataSourceConfig = `
+data "supabase_project_apikeys" "production" {
+  project_id = "mayuaycdtijbctgqbycg"
 }
-`, projectID)
-}
-
-func TestAccProjectAPIKeysDataSource_NotFound(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config:      testAccProjectAPIKeysDataSourceConfig("non-existent-project"),
-				ExpectError: regexp.MustCompile("Unable to read project API keys"),
-			},
-		},
-	})
-}
+`

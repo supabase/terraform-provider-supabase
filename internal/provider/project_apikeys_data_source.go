@@ -87,7 +87,7 @@ func (d *ProjectAPIKeysDataSource) Read(ctx context.Context, req datasource.Read
 		return
 	}
 
-	httpResp, err := d.client.V1GetProjectApiKeysWithResponse(ctx, data.ProjectId.ValueString())
+	httpResp, err := d.client.V1GetProjectApiKeysWithResponse(ctx, data.ProjectId.ValueString(), &api.V1GetProjectApiKeysParams{})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read project API keys, got error: %s", err))
 		return
