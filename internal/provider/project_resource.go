@@ -180,14 +180,14 @@ func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportSt
 }
 
 func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	body := api.V1CreateProjectBody{
+	body := api.V1CreateProjectBodyDto{
 		OrganizationId: data.OrganizationId.ValueString(),
 		Name:           data.Name.ValueString(),
 		DbPass:         data.DatabasePassword.ValueString(),
-		Region:         api.V1CreateProjectBodyRegion(data.Region.ValueString()),
+		Region:         api.V1CreateProjectBodyDtoRegion(data.Region.ValueString()),
 	}
 	if !data.InstanceSize.IsNull() {
-		body.DesiredInstanceSize = Ptr(api.DesiredInstanceSize(data.InstanceSize.ValueString()))
+		body.DesiredInstanceSize = Ptr(api.V1CreateProjectBodyDtoDesiredInstanceSize(data.InstanceSize.ValueString()))
 	}
 
 	httpResp, err := client.V1CreateAProjectWithResponse(ctx, body)

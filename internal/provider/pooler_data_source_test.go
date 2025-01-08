@@ -24,8 +24,8 @@ func TestAccPoolerDataSource(t *testing.T) {
 		JSON([]api.SupavisorConfigResponse{{
 			DatabaseType:     api.PRIMARY,
 			ConnectionString: poolerUrl,
-			DefaultPoolSize:  Ptr(float32(15)),
-			MaxClientConn:    Ptr(float32(200)),
+			DefaultPoolSize:  Ptr(int(15)),
+			MaxClientConn:    Ptr(int(200)),
 			PoolMode:         api.SupavisorConfigResponsePoolModeTransaction,
 		}})
 	// Run test
