@@ -14,7 +14,7 @@ import (
 	"github.com/supabase/cli/pkg/api"
 )
 
-// Ensure provider defined types fully satisfy framework interfaces
+// Ensure provider defined types fully satisfy framework interfaces.
 var _ datasource.DataSource = &ProjectAPIKeysDataSource{}
 
 func NewProjectAPIKeysDataSource() datasource.DataSource {
