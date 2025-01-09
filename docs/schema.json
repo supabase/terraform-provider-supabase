@@ -300,9 +300,9 @@
                 "computed": true,
                 "sensitive": true
               },
-              "project_id": {
+              "project_ref": {
                 "type": "string",
-                "description": "Project identifier",
+                "description": "Project reference ID",
                 "description_kind": "markdown",
                 "required": true
               },
