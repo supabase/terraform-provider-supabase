@@ -289,7 +289,7 @@
             "description_kind": "markdown"
           }
         },
-        "supabase_project_apikeys": {
+        "supabase_apikeys": {
           "version": 0,
           "block": {
             "attributes": {

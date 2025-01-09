@@ -15,31 +15,31 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ datasource.DataSource = &ProjectAPIKeysDataSource{}
+var _ datasource.DataSource = &APIKeysDataSource{}
 
-func NewProjectAPIKeysDataSource() datasource.DataSource {
-	return &ProjectAPIKeysDataSource{}
+func NewAPIKeysDataSource() datasource.DataSource {
+	return &APIKeysDataSource{}
 }
 
-// ProjectAPIKeysDataSource defines the data source implementation.
-type ProjectAPIKeysDataSource struct {
+// APIKeysDataSource defines the data source implementation.
+type APIKeysDataSource struct {
 	client *api.ClientWithResponses
 }
 
-// ProjectAPIKeysDataSourceModel describes the data source data model.
-type ProjectAPIKeysDataSourceModel struct {
+// APIKeysDataSourceModel describes the data source data model.
+type APIKeysDataSourceModel struct {
 	ProjectRef     types.String `tfsdk:"project_ref"`
 	AnonKey        types.String `tfsdk:"anon_key"`
 	ServiceRoleKey types.String `tfsdk:"service_role_key"`
 }
 
-func (d *ProjectAPIKeysDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_project_apikeys"
+func (d *APIKeysDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_apikeys"
 }
 
-func (d *ProjectAPIKeysDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *APIKeysDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Project API Keys data source",
+		MarkdownDescription: "API Keys data source",
 
 		Attributes: map[string]schema.Attribute{
 			"project_ref": schema.StringAttribute{
@@ -60,7 +60,7 @@ func (d *ProjectAPIKeysDataSource) Schema(ctx context.Context, req datasource.Sc
 	}
 }
 
-func (d *ProjectAPIKeysDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *APIKeysDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -78,8 +78,8 @@ func (d *ProjectAPIKeysDataSource) Configure(ctx context.Context, req datasource
 	d.client = client
 }
 
-func (d *ProjectAPIKeysDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var data ProjectAPIKeysDataSourceModel
+func (d *APIKeysDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data APIKeysDataSourceModel
 
 	// Read Terraform configuration data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
@@ -89,12 +89,12 @@ func (d *ProjectAPIKeysDataSource) Read(ctx context.Context, req datasource.Read
 
 	httpResp, err := d.client.V1GetProjectApiKeysWithResponse(ctx, data.ProjectRef.ValueString(), &api.V1GetProjectApiKeysParams{})
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read project API keys, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read API keys, got error: %s", err))
 		return
 	}
 
 	if httpResp.JSON200 == nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read project API keys, got status %d: %s", httpResp.StatusCode(), httpResp.Body))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read API keys, got status %d: %s", httpResp.StatusCode(), httpResp.Body))
 		return
 	}
 
@@ -107,7 +107,7 @@ func (d *ProjectAPIKeysDataSource) Read(ctx context.Context, req datasource.Read
 		}
 	}
 
-	tflog.Trace(ctx, "read project API keys")
+	tflog.Trace(ctx, "read API keys")
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

@@ -96,7 +96,7 @@ func (p *SupabaseProvider) DataSources(ctx context.Context) []func() datasource.
 	return []func() datasource.DataSource{
 		NewBranchDataSource,
 		NewPoolerDataSource,
-		NewProjectAPIKeysDataSource,
+		NewAPIKeysDataSource,
 	}
 }
 
