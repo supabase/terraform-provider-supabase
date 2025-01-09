@@ -222,6 +222,35 @@
         }
       },
       "data_source_schemas": {
+        "supabase_apikeys": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "anon_key": {
+                "type": "string",
+                "description": "Anonymous API key for the project",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "service_role_key": {
+                "type": "string",
+                "description": "Service role API key for the project",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              }
+            },
+            "description": "API Keys data source",
+            "description_kind": "markdown"
+          }
+        },
         "supabase_branch": {
           "version": 0,
           "block": {
@@ -286,35 +315,6 @@
               }
             },
             "description": "Pooler data source",
-            "description_kind": "markdown"
-          }
-        },
-        "supabase_project_apikeys": {
-          "version": 0,
-          "block": {
-            "attributes": {
-              "anon_key": {
-                "type": "string",
-                "description": "Anonymous API key for the project",
-                "description_kind": "markdown",
-                "computed": true,
-                "sensitive": true
-              },
-              "project_id": {
-                "type": "string",
-                "description": "Project identifier",
-                "description_kind": "markdown",
-                "required": true
-              },
-              "service_role_key": {
-                "type": "string",
-                "description": "Service role API key for the project",
-                "description_kind": "markdown",
-                "computed": true,
-                "sensitive": true
-              }
-            },
-            "description": "Project API Keys data source",
             "description_kind": "markdown"
           }
         }

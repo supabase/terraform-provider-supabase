@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/examples"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -36,18 +37,12 @@ func TestAccProjectAPIKeysDataSource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Read testing
 			{
-				Config: testAccProjectAPIKeysDataSourceConfig,
+				Config: examples.APIKeysDataSourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.supabase_project_apikeys.production", "anon_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
-					resource.TestCheckResourceAttr("data.supabase_project_apikeys.production", "service_role_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
+					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "anon_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
+					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "service_role_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
 				),
 			},
 		},
 	})
 }
-
-const testAccProjectAPIKeysDataSourceConfig = `
-data "supabase_project_apikeys" "production" {
-  project_id = "mayuaycdtijbctgqbycg"
-}
-`

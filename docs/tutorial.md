@@ -42,19 +42,18 @@ resource "supabase_project" "production" {
   }
 }
 
-# Retrieve project API keys
-data "supabase_project_apikeys" "production" {
-  project_id = supabase_project.production.id
+# Retrieve project API keys (careful with sensitive data!)
+data "supabase_apikeys" "production" {
+  project_ref = supabase_project.production.id
 }
 
-# Output the API keys (careful with sensitive data!)
 output "anon_key" {
-  value     = data.supabase_project_apikeys.production.anon_key
+  value     = data.supabase_apikeys.production.anon_key
   sensitive = true
 }
 
 output "service_role_key" {
-  value     = data.supabase_project_apikeys.production.service_role_key
+  value     = data.supabase_apikeys.production.service_role_key
   sensitive = true
 }
 ```
@@ -80,7 +79,7 @@ import {
   id = var.linked_project
 }
 
-# Create a project resource
+# Import a project resource
 resource "supabase_project" "production" {
   organization_id   = "<your-org-id>"
   name              = "tf-example"
@@ -90,11 +89,6 @@ resource "supabase_project" "production" {
   lifecycle {
     ignore_changes = [database_password]
   }
-}
-
-# Retrieve project API keys
-data "supabase_project_apikeys" "production" {
-  project_id = supabase_project.production.id
 }
 ```
 
