@@ -28,7 +28,7 @@ type ProjectAPIKeysDataSource struct {
 
 // ProjectAPIKeysDataSourceModel describes the data source data model.
 type ProjectAPIKeysDataSourceModel struct {
-	ProjectId      types.String `tfsdk:"project_id"`
+	ProjectRef     types.String `tfsdk:"project_ref"`
 	AnonKey        types.String `tfsdk:"anon_key"`
 	ServiceRoleKey types.String `tfsdk:"service_role_key"`
 }
@@ -42,8 +42,8 @@ func (d *ProjectAPIKeysDataSource) Schema(ctx context.Context, req datasource.Sc
 		MarkdownDescription: "Project API Keys data source",
 
 		Attributes: map[string]schema.Attribute{
-			"project_id": schema.StringAttribute{
-				MarkdownDescription: "Project identifier",
+			"project_ref": schema.StringAttribute{
+				MarkdownDescription: "Project reference ID",
 				Required:            true,
 			},
 			"anon_key": schema.StringAttribute{
@@ -87,7 +87,7 @@ func (d *ProjectAPIKeysDataSource) Read(ctx context.Context, req datasource.Read
 		return
 	}
 
-	httpResp, err := d.client.V1GetProjectApiKeysWithResponse(ctx, data.ProjectId.ValueString(), &api.V1GetProjectApiKeysParams{})
+	httpResp, err := d.client.V1GetProjectApiKeysWithResponse(ctx, data.ProjectRef.ValueString(), &api.V1GetProjectApiKeysParams{})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read project API keys, got error: %s", err))
 		return

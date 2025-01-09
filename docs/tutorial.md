@@ -44,7 +44,7 @@ resource "supabase_project" "production" {
 
 # Retrieve project API keys
 data "supabase_project_apikeys" "production" {
-  project_id = supabase_project.production.id
+  project_ref = supabase_project.production.id
 }
 
 # Output the API keys (careful with sensitive data!)
@@ -94,7 +94,7 @@ resource "supabase_project" "production" {
 
 # Retrieve project API keys
 data "supabase_project_apikeys" "production" {
-  project_id = supabase_project.production.id
+  project_ref = supabase_project.production.id
 }
 ```
 

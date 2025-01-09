@@ -13,4 +13,6 @@ var (
 	BranchDataSourceConfig string
 	//go:embed data-sources/supabase_pooler/data-source.tf
 	PoolerDataSourceConfig string
+	//go:embed data-sources/supabase_project_apikeys/data-source.tf
+	ProjectAPIKeysDataSourceConfig string
 )
