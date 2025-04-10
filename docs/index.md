@@ -25,3 +25,16 @@ provider "supabase" {
 
 - `access_token` (String, Sensitive) Supabase access token
 - `endpoint` (String) Supabase API endpoint
+
+## Authentication
+
+Credentials can be provided using the `SUPABASE_ACCESS_TOKEN` environment variable.
+
+For example:
+```tf
+provider "aws" {}
+```
+```shell
+% export SUPABASE_ACCESS_TOKEN="anaccesstoken"
+% terraform plan
+```
