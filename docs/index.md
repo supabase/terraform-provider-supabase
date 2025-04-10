@@ -32,7 +32,7 @@ Credentials can be provided using the `SUPABASE_ACCESS_TOKEN` environment variab
 
 For example:
 ```tf
-provider "aws" {}
+provider "supabase" {}
 ```
 ```shell
 % export SUPABASE_ACCESS_TOKEN="anaccesstoken"
