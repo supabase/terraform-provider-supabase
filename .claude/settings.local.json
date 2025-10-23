@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/m/go/pkg/mod/github.com/supabase/**)",
+      "Bash(go doc:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(TF_ACC=1 go test:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
