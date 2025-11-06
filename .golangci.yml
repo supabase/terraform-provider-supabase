@@ -1,19 +1,15 @@
-# Visit https://golangci-lint.run/ for usage documentation
-# and information on other useful linters
-issues:
-  max-per-linter: 0
-  max-same-issues: 0
-
+version: "2"
 linters:
-  disable-all: true
   enable:
+    - dupl
+    - gosec
+    - nakedret
+    - whitespace
     - durationcheck
     - errcheck
     - copyloopvar
     - forcetypeassert
     - godot
-    - gofmt
-    - gosimple
     - ineffassign
     - makezero
     - misspell
@@ -25,3 +21,31 @@ linters:
     - unparam
     - unused
     - govet
+  settings:
+    dupl:
+      threshold: 250
+  exclusions:
+    generated: lax
+    rules:
+      - text: 'ST1003:'
+        linters:
+          - staticcheck
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
