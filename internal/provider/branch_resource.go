@@ -328,7 +328,7 @@ func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	// Update computed fields
-	plan.Id = types.StringValue(httpResp.JSON201.Id)
+	plan.Id = types.StringValue(httpResp.JSON201.Id.String())
 	if diag := readBranchDatabase(ctx, plan, client); diag.HasError() {
 		for _, err := range diag.Errors() {
 			tflog.Warn(ctx, fmt.Sprintf("%s: %s", err.Summary(), err.Detail()))

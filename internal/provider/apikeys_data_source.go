@@ -101,9 +101,9 @@ func (d *APIKeysDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	for _, key := range *httpResp.JSON200 {
 		switch key.Name {
 		case "anon":
-			data.AnonKey = types.StringValue(key.ApiKey)
+			data.AnonKey = NullableToString(key.ApiKey)
 		case "service_role":
-			data.ServiceRoleKey = types.StringValue(key.ApiKey)
+			data.ServiceRoleKey = NullableToString(key.ApiKey)
 		}
 	}
 

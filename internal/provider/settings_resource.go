@@ -275,7 +275,7 @@ func readApiConfig(ctx context.Context, state *SettingsResourceModel, client *ap
 }
 
 func updateApiConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	var body api.UpdatePostgrestConfigBody
+	var body api.V1UpdatePostgrestConfigBody
 	if diags := plan.Api.Unmarshal(&body); diags.HasError() {
 		return diags
 	}
@@ -399,7 +399,7 @@ func updateDatabaseConfig(ctx context.Context, plan *SettingsResourceModel, clie
 }
 
 func parseConfig(field jsontypes.Normalized, config any) (jsontypes.Normalized, error) {
-	partial := make(map[string]interface{})
+	partial := make(map[string]any)
 	if diags := field.Unmarshal(&partial); !diags.HasError() {
 		pickConfig(config, partial)
 	} else {
@@ -413,7 +413,7 @@ func parseConfig(field jsontypes.Normalized, config any) (jsontypes.Normalized, 
 	return jsontypes.NewNormalizedValue(string(value)), nil
 }
 
-func pickConfig(source any, target map[string]interface{}) {
+func pickConfig(source any, target map[string]any) {
 	v := reflect.ValueOf(source)
 	t := reflect.TypeOf(source)
 	for i := 0; i < v.NumField(); i++ {
@@ -426,17 +426,35 @@ func pickConfig(source any, target map[string]interface{}) {
 	}
 }
 
-func copyConfig(source any, target map[string]interface{}) {
+func copyConfig(source any, target map[string]any) {
 	v := reflect.ValueOf(source)
 	t := reflect.TypeOf(source)
 	for i := 0; i < v.NumField(); i++ {
 		f := v.Field(i)
-		// Add omitempty tag by default
-		if f.Kind() != reflect.Ptr || !f.IsNil() {
-			tag := t.Field(i).Tag.Get("json")
-			k := strings.Split(tag, ",")[0]
-			target[k] = f.Interface()
+
+		if f.Kind() == reflect.Pointer && f.IsNil() {
+			continue
 		}
+
+		if f.CanInterface() {
+			if v, ok := f.Interface().(interface {
+				IsNull() bool
+				IsSpecified() bool
+			}); ok {
+				if !v.IsSpecified() {
+					continue
+				}
+
+				if v.IsNull() {
+					continue
+				}
+			}
+		}
+
+		// Add omitempty tag by default
+		tag := t.Field(i).Tag.Get("json")
+		k := strings.Split(tag, ",")[0]
+		target[k] = f.Interface()
 	}
 }
 
