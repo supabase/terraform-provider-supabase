@@ -17,3 +17,7 @@ updates:
       interval: "daily"
     groups:
       action-major:
+        update-types:
+          - minor
+          - patch
+          - major
