@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
@@ -39,7 +39,7 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
@@ -64,7 +64,7 @@ jobs:
         terraform:
           - '1.7.*'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
