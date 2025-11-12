@@ -436,18 +436,16 @@ func copyConfig(source any, target map[string]any) {
 			continue
 		}
 
-		if f.CanInterface() {
-			if v, ok := f.Interface().(interface {
-				IsNull() bool
-				IsSpecified() bool
-			}); ok {
-				if !v.IsSpecified() {
-					continue
-				}
+		if v, ok := f.Interface().(interface {
+			IsNull() bool
+			IsSpecified() bool
+		}); ok {
+			if !v.IsSpecified() {
+				continue
+			}
 
-				if v.IsNull() {
-					continue
-				}
+			if v.IsNull() {
+				continue
 			}
 		}
 
