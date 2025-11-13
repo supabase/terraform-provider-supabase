@@ -180,14 +180,26 @@ func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportSt
 }
 
 func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	body := api.V1CreateProjectBodyDto{
-		OrganizationId: data.OrganizationId.ValueString(),
-		Name:           data.Name.ValueString(),
-		DbPass:         data.DatabasePassword.ValueString(),
-		Region:         api.V1CreateProjectBodyDtoRegion(data.Region.ValueString()),
+	regionSelection := api.V1CreateProjectBodyRegionSelection0{
+		Type: api.Specific,
+		Code: api.V1CreateProjectBodyRegionSelection0Code(data.Region.ValueString()),
+	}
+
+	region := api.V1CreateProjectBody_RegionSelection{}
+	if err := region.FromV1CreateProjectBodyRegionSelection0(regionSelection); err != nil {
+		return diag.Diagnostics{diag.NewErrorDiagnostic(
+			"Internal Error",
+			fmt.Sprintf("Failed to configure region selection: %s", err),
+		)}
+	}
+	body := api.V1CreateAProjectJSONRequestBody{
+		OrganizationId:  data.OrganizationId.ValueString(),
+		Name:            data.Name.ValueString(),
+		DbPass:          data.DatabasePassword.ValueString(),
+		RegionSelection: &region,
 	}
 	if !data.InstanceSize.IsNull() {
-		body.DesiredInstanceSize = Ptr(api.V1CreateProjectBodyDtoDesiredInstanceSize(data.InstanceSize.ValueString()))
+		body.DesiredInstanceSize = Ptr(api.V1CreateProjectBodyDesiredInstanceSize(data.InstanceSize.ValueString()))
 	}
 
 	httpResp, err := client.V1CreateAProjectWithResponse(ctx, body)
