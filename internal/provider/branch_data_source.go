@@ -127,7 +127,7 @@ func (d *BranchDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 			continue
 		}
 		branches = append(branches, BranchDataSourceModel{
-			Id:         types.StringValue(branch.Id),
+			Id:         types.StringValue(branch.Id.String()),
 			GitBranch:  types.StringPointerValue(branch.GitBranch),
 			ProjectRef: types.StringValue(branch.ProjectRef),
 		})

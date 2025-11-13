@@ -4,10 +4,16 @@
 package provider
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/oapi-codegen/nullable"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
 	"gopkg.in/h2non/gock.v1"
@@ -67,19 +73,21 @@ func TestAccSettingsResource(t *testing.T) {
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
-			SiteUrl:           Ptr("http://localhost:3000"),
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
 			MailerOtpExp:      3600,
 			MfaPhoneOtpLength: 6,
 			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
-			SiteUrl:           Ptr("http://localhost:3000"),
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
 			MailerOtpExp:      3600,
 			MfaPhoneOtpLength: 6,
 			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
 	// Step 2: read
 	gock.New("https://api.supabase.com").
@@ -132,19 +140,21 @@ func TestAccSettingsResource(t *testing.T) {
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
-			SiteUrl:           Ptr("http://localhost:3000"),
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
 			MailerOtpExp:      3600,
 			MfaPhoneOtpLength: 6,
 			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
-			SiteUrl:           Ptr("http://localhost:3000"),
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
 			MailerOtpExp:      3600,
 			MfaPhoneOtpLength: 6,
 			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
 	// Step 3: update
 	gock.New("https://api.supabase.com").
@@ -218,22 +228,25 @@ func TestAccSettingsResource(t *testing.T) {
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
-			SiteUrl: Ptr("http://localhost:3000"),
-			JwtExp:  Ptr(int(3600)),
+			SiteUrl:        nullable.NewNullableWithValue("http://localhost:3000"),
+			JwtExp:         nullable.NewNullableWithValue(3600),
+			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
 		})
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
-			SiteUrl: Ptr("http://localhost:3000"),
-			JwtExp:  Ptr(int(1800)),
+			SiteUrl:        nullable.NewNullableWithValue("http://localhost:3000"),
+			JwtExp:         nullable.NewNullableWithValue(1800),
+			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
 		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
-			SiteUrl: Ptr("http://localhost:3000"),
-			JwtExp:  Ptr(int(1800)),
+			SiteUrl:        nullable.NewNullableWithValue("http://localhost:3000"),
+			JwtExp:         nullable.NewNullableWithValue(1800),
+			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
 		})
 	// Run test
 	resource.Test(t, resource.TestCase{
@@ -249,9 +262,55 @@ func TestAccSettingsResource(t *testing.T) {
 			},
 			// ImportState testing
 			{
-				ResourceName:      "supabase_settings.production",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName: "supabase_settings.production",
+				ImportState:  true,
+				ImportStateCheck: func(is []*terraform.InstanceState) error {
+					if len(is) != 1 {
+						return errors.New("expected a single resource in the state")
+					}
+
+					state := is[0]
+
+					api, err := unmarshalStateAttr(state, "api")
+					if err != nil {
+						return err
+					}
+					if api["db_extra_search_path"] != "public,extensions" {
+						return fmt.Errorf("expected api.db_extra_search_path to be public,extensions, got %v", api["db_extra_search_path"])
+					}
+					if api["db_schema"] != "public,storage,graphql_public" {
+						return fmt.Errorf("expected api.db_schema to be public,storage,graphql_public, got %v", api["db_schema"])
+					}
+					if api["max_rows"] != float64(1000) {
+						return fmt.Errorf("expected api.max_rows to be 1000, got %v", api["max_rows"])
+					}
+
+					auth, err := unmarshalStateAttr(state, "auth")
+					if err != nil {
+						return err
+					}
+					if auth["site_url"] != "http://localhost:3000" {
+						return fmt.Errorf("expected auth.site_url to be http://localhost:3000, got %v", auth["site_url"])
+					}
+					if auth["mailer_otp_exp"] != float64(3600) {
+						return fmt.Errorf("expected auth.mailer_otp_exp to be 3600, got %v", auth["mailer_otp_exp"])
+					}
+					if auth["mfa_phone_otp_length"] != float64(6) {
+						return fmt.Errorf("expected auth.mfa_phone_otp_length to be 6, got %v", auth["mfa_phone_otp_length"])
+					}
+					if auth["sms_otp_length"] != float64(6) {
+						return fmt.Errorf("expected auth.sms_otp_length to be 6, got %v", auth["sms_otp_length"])
+					}
+					if _, found := auth["smtp_admin_email"]; found {
+						return fmt.Errorf("expected auth.smtp_admin_email to be filtered out, got %v", auth["smtp_admin_email"])
+					}
+
+					if projectRef, ok := state.Attributes["project_ref"]; !ok || projectRef != "mayuaycdtijbctgqbycg" {
+						return fmt.Errorf("expected project_ref to be mayuaycdtijbctgqbycg, got %v", projectRef)
+					}
+
+					return nil
+				},
 			},
 			// Update and Read testing
 			{
@@ -263,6 +322,20 @@ func TestAccSettingsResource(t *testing.T) {
 			// Delete testing automatically occurs in TestCase
 		},
 	})
+}
+
+func unmarshalStateAttr(state *terraform.InstanceState, attr string) (map[string]any, error) {
+	raw, ok := state.Attributes[attr]
+	if !ok {
+		return nil, fmt.Errorf("attribute %s not found in state with ID %s", attr, state.ID)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, err
+	}
+
+	return out, nil
 }
 
 const testAccSettingsResourceConfig = `

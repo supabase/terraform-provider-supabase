@@ -6,7 +6,18 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      go-minor:
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      action-major:
+        update-types:
+          - minor
+          - patch
+          - major

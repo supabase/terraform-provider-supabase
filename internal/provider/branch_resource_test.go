@@ -4,9 +4,11 @@
 package provider
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
@@ -17,6 +19,7 @@ func TestAccBranchResource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
 	// Step 1: create
+	testBranchUUID := uuid.New()
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/branches").
 		Reply(http.StatusUnprocessableEntity)
@@ -24,7 +27,7 @@ func TestAccBranchResource(t *testing.T) {
 		Post("/v1/projects/mayuaycdtijbctgqbycg/branches").
 		Reply(http.StatusCreated).
 		JSON(api.BranchResponse{
-			Id:               "prod-branch",
+			Id:               uuid.New(),
 			ParentProjectRef: "mayuaycdtijbctgqbycg",
 			IsDefault:        true,
 		})
@@ -32,47 +35,49 @@ func TestAccBranchResource(t *testing.T) {
 		Post("/v1/projects/mayuaycdtijbctgqbycg/branches").
 		Reply(http.StatusCreated).
 		JSON(api.BranchResponse{
-			Id:               "test-branch",
+			Id:               testBranchUUID,
 			ParentProjectRef: "mayuaycdtijbctgqbycg",
 			GitBranch:        Ptr("main"),
 		})
+
+	testBranchIDEndpoint := fmt.Sprintf("/v1/branches/%s", testBranchUUID.String())
 	gock.New("https://api.supabase.com").
-		Get("/v1/branches/test-branch").
+		Get(testBranchIDEndpoint).
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	gock.New("https://api.supabase.com").
-		Get("/v1/branches/test-branch").
+		Get(testBranchIDEndpoint).
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	// Step 2: read
 	gock.New("https://api.supabase.com").
-		Get("/v1/branches/test-branch").
+		Get(testBranchIDEndpoint).
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	gock.New("https://api.supabase.com").
-		Get("/v1/branches/test-branch").
+		Get(testBranchIDEndpoint).
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	// Step 3: update and read
 	gock.New("https://api.supabase.com").
-		Get("/v1/branches/test-branch").
+		Get(testBranchIDEndpoint).
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	gock.New("https://api.supabase.com").
-		Patch("/v1/branches/test-branch").
+		Patch(testBranchIDEndpoint).
 		Reply(http.StatusOK).
 		JSON(api.BranchResponse{
-			Id:               "test-branch",
+			Id:               testBranchUUID,
 			ParentProjectRef: "mayuaycdtijbctgqbycg",
 			GitBranch:        Ptr("develop"),
 		})
 	gock.New("https://api.supabase.com").
-		Get("/v1/branches/test-branch").
+		Get(testBranchIDEndpoint).
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	// Step 4: delete
 	gock.New("https://api.supabase.com").
-		Delete("/v1/branches/test-branch").
+		Delete(testBranchIDEndpoint).
 		Reply(http.StatusOK)
 	// Run test
 	resource.Test(t, resource.TestCase{
@@ -83,7 +88,7 @@ func TestAccBranchResource(t *testing.T) {
 			{
 				Config: examples.BranchResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_branch.new", "id", "test-branch"),
+					resource.TestCheckResourceAttr("supabase_branch.new", "id", testBranchUUID.String()),
 				),
 			},
 			// ImportState testing
