@@ -45,6 +45,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: gh release edit ${{ github.ref_name }} --draft=false
+      - run: gh release edit "${{ github.ref_name }}" --draft=false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
