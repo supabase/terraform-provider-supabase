@@ -1,10 +1,7 @@
 # Regenerates JSON schema whenever a PR is merged to main 
 name: Generate JSON
 
-on:
-  pull_request:
-    paths-ignore:
-      - 'README.md'
+on: pull_request
 
 # Needs write permissions to write the schema to the repo
 permissions:

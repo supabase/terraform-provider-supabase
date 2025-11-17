@@ -5,13 +5,9 @@ name: Tests
 # Optionally, you can turn it on using a schedule for regular testing.
 on:
   pull_request:
-    paths-ignore:
-      - 'README.md'
   push:
     branches:
       - main
-    paths-ignore:
-      - 'README.md'
 
 # Testing only needs permissions to read the repository contents.
 permissions:
