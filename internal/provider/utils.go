@@ -19,3 +19,13 @@ func NullableToString(n nullable.Nullable[string]) tftypes.String {
 
 	return tftypes.StringNull()
 }
+
+// NullableEnumToString converts an oapi-codegen nullable enum (or any string-like
+// type) into a terraform string type.
+func NullableEnumToString[T ~string](n nullable.Nullable[T]) tftypes.String {
+	if n.IsSpecified() && !n.IsNull() {
+		return tftypes.StringValue(string(n.MustGet()))
+	}
+
+	return tftypes.StringNull()
+}
