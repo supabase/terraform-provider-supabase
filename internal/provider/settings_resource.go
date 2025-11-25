@@ -195,26 +195,33 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 }
 
 func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data SettingsResourceModel
+	var planData, stateData SettingsResourceModel
 
 	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Ignore any states not specified in the TF plan.
-	if !data.Database.IsNull() {
-		resp.Diagnostics.Append(updateDatabaseConfig(ctx, &data, r.client)...)
+	// Read Terraform state data into the model
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
-	if !data.Network.IsNull() {
-		resp.Diagnostics.Append(updateNetworkConfig(ctx, &data, r.client)...)
+
+	// Only update settings that are present in the plan and have actually changed.
+	// This respects lifecycle.ignore_changes and avoids no-op API calls.
+	if !planData.Database.IsNull() && !planData.Database.Equal(stateData.Database) {
+		resp.Diagnostics.Append(updateDatabaseConfig(ctx, &planData, r.client)...)
 	}
-	if !data.Api.IsNull() {
-		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
+	if !planData.Network.IsNull() && !planData.Network.Equal(stateData.Network) {
+		resp.Diagnostics.Append(updateNetworkConfig(ctx, &planData, r.client)...)
 	}
-	if !data.Auth.IsNull() {
-		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
+	if !planData.Api.IsNull() && !planData.Api.Equal(stateData.Api) {
+		resp.Diagnostics.Append(updateApiConfig(ctx, &planData, r.client)...)
+	}
+	if !planData.Auth.IsNull() && !planData.Auth.Equal(stateData.Auth) {
+		resp.Diagnostics.Append(updateAuthConfig(ctx, &planData, r.client)...)
 	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
@@ -222,7 +229,7 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 }
 
 func (r *SettingsResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
