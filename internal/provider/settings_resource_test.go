@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/oapi-codegen/nullable"
@@ -92,6 +93,43 @@ func TestAccSettingsResource(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
 	// Step 2: read
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
@@ -158,6 +196,40 @@ func TestAccSettingsResource(t *testing.T) {
 			MfaPhoneOtpLength: 6,
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
 		})
 	// Step 3: update
 	gock.New("https://api.supabase.com").
@@ -251,6 +323,60 @@ func TestAccSettingsResource(t *testing.T) {
 			JwtExp:         nullable.NewNullableWithValue(1800),
 			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
 	// Run test
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -306,6 +432,21 @@ func TestAccSettingsResource(t *testing.T) {
 					}
 					if _, found := auth["smtp_admin_email"]; found {
 						return fmt.Errorf("expected auth.smtp_admin_email to be filtered out, got %v", auth["smtp_admin_email"])
+					}
+
+					storage, err := unmarshalStateAttr(state, "storage")
+					if err != nil {
+						return err
+					}
+					if storage["fileSizeLimit"] != float64(52428800) {
+						return fmt.Errorf("expected storage.fileSizeLimit to be 52428800, got %v", storage["fileSizeLimit"])
+					}
+					if features, ok := storage["features"].(map[string]any); ok {
+						if imgTransform, ok := features["imageTransformation"].(map[string]any); ok {
+							if imgTransform["enabled"] != true {
+								return fmt.Errorf("expected storage.features.imageTransformation.enabled to be true, got %v", imgTransform["enabled"])
+							}
+						}
 					}
 
 					if projectRef, ok := state.Attributes["project_ref"]; !ok || projectRef != "mayuaycdtijbctgqbycg" {
@@ -592,6 +733,67 @@ resource "supabase_settings" "test" {
 	})
 }
 
+func TestParseConfigNestedOmitempty(t *testing.T) {
+	userConfig := `{
+		"fileSizeLimit": 52428800,
+		"features": {
+			"icebergCatalog": {"enabled": true},
+			"imageTransformation": {"enabled": true},
+			"s3Protocol": {"enabled": false}
+		}
+	}`
+	apiResponse := api.StorageConfigResponse{
+		FileSizeLimit: 52428800,
+		Features: struct {
+			IcebergCatalog *struct {
+				Enabled bool `json:"enabled"`
+			} `json:"icebergCatalog,omitempty"`
+			ImageTransformation struct {
+				Enabled bool `json:"enabled"`
+			} `json:"imageTransformation"`
+			S3Protocol struct {
+				Enabled bool `json:"enabled"`
+			} `json:"s3Protocol"`
+		}{
+			IcebergCatalog: nil,
+			ImageTransformation: struct {
+				Enabled bool `json:"enabled"`
+			}{Enabled: true},
+			S3Protocol: struct {
+				Enabled bool `json:"enabled"`
+			}{Enabled: false},
+		},
+	}
+
+	field := jsontypes.NewNormalizedValue(userConfig)
+	result, err := parseConfig(field, apiResponse)
+	if err != nil {
+		t.Fatalf("parseConfig failed: %v", err)
+	}
+
+	var resultMap map[string]any
+	if err := json.Unmarshal([]byte(result.ValueString()), &resultMap); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
+
+	features, ok := resultMap["features"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected features in result, got %v", resultMap)
+	}
+
+	iceberg, exists := features["icebergCatalog"]
+	if !exists {
+		t.Fatalf("expected icebergCatalog to be preserved, got %v", features)
+	}
+	icebergMap, ok := iceberg.(map[string]any)
+	if !ok {
+		t.Fatalf("expected icebergCatalog to be a map, got %T", iceberg)
+	}
+	if icebergMap["enabled"] != true {
+		t.Errorf("expected icebergCatalog.enabled to be true, got %v", icebergMap["enabled"])
+	}
+}
+
 const testAccSettingsResourceConfig = `
 resource "supabase_settings" "production" {
   project_ref = "mayuaycdtijbctgqbycg"
@@ -615,9 +817,17 @@ resource "supabase_settings" "production" {
     jwt_exp  = 1800
   })
 
-  # storage = jsonencode({
-  #   file_size_limit = "50MB"
-  # })
+  storage = jsonencode({
+    fileSizeLimit = 52428800
+    features = {
+      imageTransformation = {
+        enabled = true
+      }
+      s3Protocol = {
+        enabled = false
+      }
+    }
+  })
 
   # pooler = jsonencode({
   #   default_pool_size         = 15

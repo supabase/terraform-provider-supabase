@@ -145,6 +145,9 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
 	}
+	if !data.Storage.IsNull() {
+		resp.Diagnostics.Append(updateStorageConfig(ctx, &data, r.client)...)
+	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
@@ -182,6 +185,9 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
+	}
+	if !data.Storage.IsNull() {
+		resp.Diagnostics.Append(readStorageConfig(ctx, &data, r.client)...)
 	}
 	// TODO: read all settings above concurrently
 	if resp.Diagnostics.HasError() {
@@ -223,6 +229,9 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	if !planData.Auth.IsNull() && !planData.Auth.Equal(stateData.Auth) {
 		resp.Diagnostics.Append(updateAuthConfig(ctx, &planData, r.client)...)
 	}
+	if !planData.Storage.IsNull() && !planData.Storage.Equal(stateData.Storage) {
+		resp.Diagnostics.Append(updateStorageConfig(ctx, &planData, r.client)...)
+	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
@@ -253,6 +262,7 @@ func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(readNetworkConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(readStorageConfig(ctx, &data, r.client)...)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -432,9 +442,25 @@ func pickConfig(source any, target map[string]any) {
 		tag := t.Field(i).Tag.Get("json")
 		k := strings.Split(tag, ",")[0]
 		// Check that tag is picked by target
-		if _, ok := target[k]; ok {
-			target[k] = v.Field(i).Interface()
+		targetVal, ok := target[k]
+		if !ok {
+			continue
 		}
+		sourceField := v.Field(i)
+		// Recursively merge nested structs so user values survive when API omits fields.
+		if targetMap, isMap := targetVal.(map[string]any); isMap {
+			if sourceField.Kind() == reflect.Pointer {
+				if sourceField.IsNil() {
+					continue
+				}
+				sourceField = sourceField.Elem()
+			}
+			if sourceField.Kind() == reflect.Struct {
+				pickConfig(sourceField.Interface(), targetMap)
+				continue
+			}
+		}
+		target[k] = sourceField.Interface()
 	}
 }
 
@@ -614,4 +640,53 @@ func updateNetworkConfig(ctx context.Context, plan *SettingsResourceModel, clien
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	return nil
+}
+
+func readStorageConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	// Use ProjectRef if Id is not set (during Create), otherwise use Id (during Read/Import)
+	projectRef := state.Id.ValueString()
+	if projectRef == "" {
+		projectRef = state.ProjectRef.ValueString()
+	}
+
+	httpResp, err := client.V1GetStorageConfigWithResponse(ctx, projectRef)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read storage settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Deleted project is an orphan resource, not returning error so it can be destroyed.
+	switch httpResp.StatusCode() {
+	case http.StatusNotFound, http.StatusNotAcceptable:
+		return nil
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read storage settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	if state.Storage, err = parseConfig(state.Storage, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to read storage settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return nil
+}
+
+func updateStorageConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	var body api.UpdateStorageConfigBody
+	if diags := plan.Storage.Unmarshal(&body); diags.HasError() {
+		return diags
+	}
+
+	httpResp, err := client.V1UpdateStorageConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update storage settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.StatusCode() != http.StatusOK {
+		msg := fmt.Sprintf("Unable to update storage settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	// Read back the updated config to get the actual state with correct field names
+	return readStorageConfig(ctx, plan, client)
 }
