@@ -52,7 +52,7 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 
 		Attributes: map[string]schema.Attribute{
 			"organization_id": schema.StringAttribute{
-				MarkdownDescription: "Reference to the organization",
+				MarkdownDescription: "Organization slug (found in the Supabase dashboard URL or organization settings)",
 				Required:            true,
 			},
 			"name": schema.StringAttribute{

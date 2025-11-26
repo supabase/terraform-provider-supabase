@@ -36,7 +36,7 @@ resource "supabase_project" "test" {
 
 - `database_password` (String, Sensitive) Password for the project database
 - `name` (String) Name of the project
-- `organization_id` (String) Reference to the organization
+- `organization_id` (String) Organization slug (found in the Supabase dashboard URL or organization settings)
 - `region` (String) Region where the project is located
 
 ### Optional
@@ -46,3 +46,14 @@ resource "supabase_project" "test" {
 ### Read-Only
 
 - `id` (String) Project identifier
+
+## Import
+
+Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# The ID is the project reference.
+terraform import supabase_project.production <project_ref>
+```
