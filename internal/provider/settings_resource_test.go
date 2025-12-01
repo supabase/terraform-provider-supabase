@@ -4,10 +4,13 @@
 package provider
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -336,6 +339,257 @@ func unmarshalStateAttr(state *terraform.InstanceState, attr string) (map[string
 	}
 
 	return out, nil
+}
+
+func TestAccSettingsResource_SmtpPass(t *testing.T) {
+	// Setup mock api
+	defer gock.OffAll()
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				return false, err
+			}
+			req.Body = io.NopCloser(bytes.NewBuffer(body))
+			bodyStr := string(body)
+			return strings.Contains(bodyStr, `"smtp_pass"`) &&
+				strings.Contains(bodyStr, `"secret_password_123"`), nil
+		}).
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "supabase_settings" "test" {
+  project_ref = "mayuaycdtijbctgqbycg"
+
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+    smtp_pass = "secret_password_123"
+  })
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", "mayuaycdtijbctgqbycg"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
+	defer gock.OffAll()
+
+	projectRef := "mayuaycdtijbctgqbycg"
+
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Post("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusCreated).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/postgrest").
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/" + projectRef + "/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Post("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusCreated).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32", "198.51.100.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32", "198.51.100.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	for range 5 {
+		gock.New("https://api.supabase.com").
+			Get("/v1/projects/" + projectRef + "/network-restrictions").
+			Reply(http.StatusOK).
+			JSON(api.NetworkRestrictionsResponse{
+				Config: api.NetworkRestrictionsRequest{
+					DbAllowedCidrs: Ptr([]string{"203.0.113.1/32", "198.51.100.1/32"}),
+				},
+			})
+		gock.New("https://api.supabase.com").
+			Get("/v1/projects/" + projectRef + "/config/auth").
+			Reply(http.StatusOK).
+			JSON(api.AuthConfigResponse{
+				SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+				MailerOtpExp:      3600,
+				MfaPhoneOtpLength: 6,
+				SmsOtpLength:      6,
+				SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+			})
+	}
+
+	authPatchCalled := false
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/" + projectRef + "/config/auth").
+		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+			authPatchCalled = true
+			return true, nil
+		}).
+		Reply(http.StatusBadRequest).
+		JSON(map[string]any{
+			"message": "Should not be called",
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "supabase_settings" "test" {
+  project_ref = "mayuaycdtijbctgqbycg"
+
+  network = jsonencode({
+    restrictions = ["203.0.113.1/32"]
+  })
+
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+  })
+
+  lifecycle {
+    ignore_changes = [auth]
+  }
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", projectRef),
+				),
+			},
+			{
+				Config: `
+resource "supabase_settings" "test" {
+  project_ref = "mayuaycdtijbctgqbycg"
+
+  network = jsonencode({
+    restrictions = ["203.0.113.1/32", "198.51.100.1/32"]
+  })
+
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+  })
+
+  lifecycle {
+    ignore_changes = [auth]
+  }
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", projectRef),
+					func(s *terraform.State) error {
+						if authPatchCalled {
+							return fmt.Errorf("auth PATCH was called despite lifecycle.ignore_changes")
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
 }
 
 const testAccSettingsResourceConfig = `
