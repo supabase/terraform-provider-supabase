@@ -148,7 +148,7 @@
               },
               "organization_id": {
                 "type": "string",
-                "description": "Reference to the organization",
+                "description": "Organization slug (found in the Supabase dashboard URL or organization settings)",
                 "description_kind": "markdown",
                 "required": true
               },

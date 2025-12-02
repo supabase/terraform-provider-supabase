@@ -61,3 +61,14 @@ resource "supabase_settings" "production" {
 ### Read-Only
 
 - `id` (String) Project identifier
+
+## Import
+
+Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# The ID is the project reference.
+terraform import supabase_settings.production <project_ref>
+```
