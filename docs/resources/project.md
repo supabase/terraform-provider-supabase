@@ -21,10 +21,7 @@ resource "supabase_project" "test" {
   instance_size     = "micro"
 
   lifecycle {
-    ignore_changes = [
-      database_password,
-      instance_size,
-    ]
+    ignore_changes = [database_password]
   }
 }
 ```

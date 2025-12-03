@@ -7,13 +7,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/supabase/cli/pkg/api"
@@ -71,6 +74,34 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"instance_size": schema.StringAttribute{
 				MarkdownDescription: "Desired instance size of the project",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.OneOf(
+						string(api.V1CreateProjectBodyDesiredInstanceSizeLarge),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeMedium),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeMicro),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN12xlarge),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN16xlarge),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN24xlarge),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN24xlargeHighMemory),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN24xlargeOptimizedCpu),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN24xlargeOptimizedMemory),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN2xlarge),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN48xlarge),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN48xlargeHighMemory),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN48xlargeOptimizedCpu),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN48xlargeOptimizedMemory),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN4xlarge),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeN8xlarge),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeNano),
+						string(api.V1CreateProjectBodyDesiredInstanceSizePico),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeSmall),
+						string(api.V1CreateProjectBodyDesiredInstanceSizeXlarge),
+					),
+				},
 			},
 			"id": schema.StringAttribute{
 				MarkdownDescription: "Project identifier",
@@ -110,12 +141,17 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	tflog.Trace(ctx, "create project")
 	resp.Diagnostics.Append(createProject(ctx, &data, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	tflog.Trace(ctx, "create project")
+	tflog.Trace(ctx, "read up to date project")
+	resp.Diagnostics.Append(readProject(ctx, &data, r.client)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -142,17 +178,41 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 }
 
 func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data ProjectResourceModel
+	var plan, state ProjectResourceModel
 
-	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// TODO: allow api to update project resource
-	msg := fmt.Sprintf("Update is not supported for project resource: %s", data.Id.ValueString())
-	resp.Diagnostics.Append(diag.NewErrorDiagnostic("Client Error", msg))
+	// required attributes
+	if !plan.Name.Equal(state.Name) {
+		resp.Diagnostics.AddAttributeError(path.Root("name"), "Client Error", "Update is not supported for this attribute")
+		return
+	}
+	if !plan.DatabasePassword.Equal(state.DatabasePassword) {
+		resp.Diagnostics.AddAttributeError(path.Root("database_password"), "Client Error", "Update is not supported for this attribute")
+		return
+	}
+	if !plan.Region.Equal(state.Region) {
+		resp.Diagnostics.AddAttributeError(path.Root("region"), "Client Error", "Update is not supported for this attribute")
+		return
+	}
+	if !plan.OrganizationId.Equal(state.OrganizationId) {
+		resp.Diagnostics.AddAttributeError(path.Root("organization_id"), "Client Error", "Update is not supported for this attribute")
+		return
+	}
+
+	// optional attributes
+	if !plan.InstanceSize.IsNull() && !plan.InstanceSize.Equal(state.InstanceSize) {
+		resp.Diagnostics.Append(updateInstanceSize(ctx, &plan, r.client)...)
+	}
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -198,7 +258,7 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		DbPass:          data.DatabasePassword.ValueString(),
 		RegionSelection: &region,
 	}
-	if !data.InstanceSize.IsNull() {
+	if !data.InstanceSize.IsUnknown() && !data.InstanceSize.IsNull() {
 		body.DesiredInstanceSize = Ptr(api.V1CreateProjectBodyDesiredInstanceSize(data.InstanceSize.ValueString()))
 	}
 
@@ -218,28 +278,53 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 }
 
 func readProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.V1ListAllProjectsWithResponse(ctx)
+	projectResp, err := client.V1GetProjectWithResponse(ctx, data.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read project, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to read project, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+	if projectResp.StatusCode() == http.StatusNotFound {
+		return nil
+	}
+
+	if projectResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read project, got status %d: %s", projectResp.StatusCode(), projectResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	for _, project := range *httpResp.JSON200 {
-		if project.Id == data.Id.ValueString() {
-			data.OrganizationId = types.StringValue(project.OrganizationId)
-			data.Name = types.StringValue(project.Name)
-			data.Region = types.StringValue(project.Region)
-			return nil
-		}
+	project := projectResp.JSON200
+	data.OrganizationId = types.StringValue(project.OrganizationId)
+	data.Name = types.StringValue(project.Name)
+	data.Region = types.StringValue(project.Region)
+	data.InstanceSize = types.StringNull()
+
+	addonsResp, err := client.V1ListProjectAddonsWithResponse(ctx, project.Id)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read project addons, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	// Not finding a project means our local state is stale. Return no error to allow TF to refresh its state.
-	tflog.Trace(ctx, fmt.Sprintf("project not found: %s", data.Id.ValueString()))
+	if addonsResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read project addons, got error: %s", string(addonsResp.Body))
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	for _, addon := range addonsResp.JSON200.SelectedAddons {
+		if addon.Type != api.ComputeInstance {
+			continue
+		}
+
+		val, err := addon.Variant.Id.AsListProjectAddonsResponseSelectedAddonsVariantId0()
+		if err != nil {
+			msg := fmt.Sprintf("Unable to read compute instance addon, got error: %s", err)
+			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		}
+
+		data.InstanceSize = types.StringValue(strings.TrimPrefix(string(val), "ci_"))
+		break
+	}
+
 	return nil
 }
 
@@ -257,6 +342,34 @@ func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.
 
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to delete project, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	return nil
+}
+
+func updateInstanceSize(ctx context.Context, plan *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	addon := api.ApplyProjectAddonBody_AddonVariant{}
+	variant := api.ApplyProjectAddonBodyAddonVariant0("ci_" + plan.InstanceSize.ValueString())
+	if err := addon.FromApplyProjectAddonBodyAddonVariant0(variant); err != nil {
+		return diag.Diagnostics{diag.NewErrorDiagnostic(
+			"Internal Error",
+			fmt.Sprintf("Failed to configure instance size: %s", err),
+		)}
+	}
+	body := api.V1ApplyProjectAddonJSONRequestBody{
+		AddonType:    api.ApplyProjectAddonBodyAddonTypeComputeInstance,
+		AddonVariant: addon,
+	}
+
+	httpResp, err := client.V1ApplyProjectAddonWithResponse(ctx, plan.Id.ValueString(), body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update project, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	if httpResp.StatusCode() != http.StatusOK {
+		msg := fmt.Sprintf("Unable to update project, got error: %s", string(httpResp.Body))
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
