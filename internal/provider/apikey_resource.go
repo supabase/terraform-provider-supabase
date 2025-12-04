@@ -254,7 +254,7 @@ func readApiKeyDatabase(ctx context.Context, state *ApiKeyResourceModel, client 
 
 	idValue := NullableToString(httpResp.JSON200.Id)
 	apiKeyValue := NullableToString(httpResp.JSON200.ApiKey)
-	typeValue := NullableEnumToString(httpResp.JSON200.Type)
+	typeValue := NullableToString(httpResp.JSON200.Type)
 	descriptionValue := NullableToString(httpResp.JSON200.Description)
 
 	database := ApiKeyDatabaseModel{
@@ -360,7 +360,7 @@ func createApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 	// Update computed fields from creation response
 	plan.Id = NullableToString(httpResp.JSON201.Id)
 	plan.ApiKey = NullableToString(httpResp.JSON201.ApiKey)
-	plan.Type = NullableEnumToString(httpResp.JSON201.Type)
+	plan.Type = NullableToString(httpResp.JSON201.Type)
 
 	obj, diags := types.ObjectValue(secretJwtTemplateAttrTypes, map[string]attr.Value{
 		"role": types.StringValue("service_role"),
