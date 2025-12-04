@@ -23,7 +23,7 @@ func TestAccPoolerDataSource(t *testing.T) {
 		Times(3).
 		Reply(http.StatusOK).
 		JSON([]api.SupavisorConfigResponse{{
-			DatabaseType:     api.PRIMARY,
+			DatabaseType:     api.SupavisorConfigResponseDatabaseTypePRIMARY,
 			ConnectionString: poolerUrl,
 			DefaultPoolSize:  nullable.NewNullableWithValue(15),
 			MaxClientConn:    nullable.NewNullableWithValue(200),

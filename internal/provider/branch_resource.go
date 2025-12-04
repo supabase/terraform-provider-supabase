@@ -338,7 +338,7 @@ func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 }
 
 func deleteBranch(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	httpResp, err := client.V1DeleteABranchWithResponse(ctx, state.Id.ValueString())
+	httpResp, err := client.V1DeleteABranchWithResponse(ctx, state.Id.ValueString(), &api.V1DeleteABranchParams{})
 	if err != nil {
 		msg := fmt.Sprintf("Unable to delete branch, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
