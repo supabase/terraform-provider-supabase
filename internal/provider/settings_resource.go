@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -20,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/supabase/cli/pkg/api"
 )
 
@@ -625,13 +627,32 @@ func updateNetworkConfig(ctx context.Context, plan *SettingsResourceModel, clien
 		}
 	}
 
-	httpResp, err := client.V1UpdateNetworkRestrictionsWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	// Retry on transient 500 errors while pooler tenant is provisioning.
+	const networkUpdateTimeout = 5 * time.Minute
+	projectRef := plan.ProjectRef.ValueString()
+
+	err := retry.RetryContext(ctx, networkUpdateTimeout, func() *retry.RetryError {
+		httpResp, err := client.V1UpdateNetworkRestrictionsWithResponse(ctx, projectRef, body)
+		if err != nil {
+			return retry.NonRetryableError(fmt.Errorf("unable to update network settings: %w", err))
+		}
+
+		if httpResp.StatusCode() == http.StatusInternalServerError {
+			tflog.Debug(ctx, "Network update returned 500, retrying...", map[string]interface{}{
+				"project_ref": projectRef,
+				"response":    string(httpResp.Body),
+			})
+			return retry.RetryableError(fmt.Errorf("pooler not ready: %s", httpResp.Body))
+		}
+
+		if httpResp.JSON201 != nil {
+			return nil
+		}
+		return retry.NonRetryableError(fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode(), httpResp.Body))
+	})
+
 	if err != nil {
-		msg := fmt.Sprintf("Unable to update network settings, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
-	}
-	if httpResp.JSON201 == nil {
-		msg := fmt.Sprintf("Unable to update network settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		msg := fmt.Sprintf("Unable to update network settings after retries: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
