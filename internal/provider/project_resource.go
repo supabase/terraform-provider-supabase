@@ -253,7 +253,7 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		)}
 	}
 	body := api.V1CreateAProjectJSONRequestBody{
-		OrganizationId:  data.OrganizationId.ValueString(),
+		OrganizationId:  data.OrganizationId.ValueStringPointer(),
 		Name:            data.Name.ValueString(),
 		DbPass:          data.DatabasePassword.ValueString(),
 		RegionSelection: &region,

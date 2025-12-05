@@ -101,7 +101,7 @@ func (d *PoolerDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 
 	url := map[string]string{}
 	for _, pooler := range *httpResp.JSON200 {
-		if pooler.DatabaseType == api.PRIMARY {
+		if pooler.DatabaseType == api.SupavisorConfigResponseDatabaseTypePRIMARY {
 			url[string(pooler.PoolMode)] = pooler.ConnectionString
 		}
 	}
