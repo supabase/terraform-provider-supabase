@@ -745,23 +745,41 @@ func TestParseConfigNestedOmitempty(t *testing.T) {
 	apiResponse := api.StorageConfigResponse{
 		FileSizeLimit: 52428800,
 		Features: struct {
-			IcebergCatalog *struct {
-				Enabled bool `json:"enabled"`
-			} `json:"icebergCatalog,omitempty"`
+			IcebergCatalog struct {
+				Enabled       bool `json:"enabled"`
+				MaxCatalogs   int  `json:"maxCatalogs"`
+				MaxNamespaces int  `json:"maxNamespaces"`
+				MaxTables     int  `json:"maxTables"`
+			} `json:"icebergCatalog"`
 			ImageTransformation struct {
 				Enabled bool `json:"enabled"`
 			} `json:"imageTransformation"`
 			S3Protocol struct {
 				Enabled bool `json:"enabled"`
 			} `json:"s3Protocol"`
+			VectorBuckets struct {
+				Enabled    bool `json:"enabled"`
+				MaxBuckets int  `json:"maxBuckets"`
+				MaxIndexes int  `json:"maxIndexes"`
+			} `json:"vectorBuckets"`
 		}{
-			IcebergCatalog: nil,
+			IcebergCatalog: struct {
+				Enabled       bool `json:"enabled"`
+				MaxCatalogs   int  `json:"maxCatalogs"`
+				MaxNamespaces int  `json:"maxNamespaces"`
+				MaxTables     int  `json:"maxTables"`
+			}{Enabled: true, MaxCatalogs: 0, MaxNamespaces: 0, MaxTables: 0},
 			ImageTransformation: struct {
 				Enabled bool `json:"enabled"`
 			}{Enabled: true},
 			S3Protocol: struct {
 				Enabled bool `json:"enabled"`
 			}{Enabled: false},
+			VectorBuckets: struct {
+				Enabled    bool `json:"enabled"`
+				MaxBuckets int  `json:"maxBuckets"`
+				MaxIndexes int  `json:"maxIndexes"`
+			}{Enabled: false, MaxBuckets: 0, MaxIndexes: 0},
 		},
 	}
 
