@@ -44,6 +44,7 @@ import {
 }
 
 resource "supabase_project" "production" {
+  # organization_id is your organization's slug (it can be found in the Supabase Dashboard under Organization Settings > Organization Details > Organization slug)
   organization_id   = "nknnyrtlhxudbsbuazsu"
   name              = "tf-project"
   database_password = "tf-example"

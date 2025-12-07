@@ -24,6 +24,68 @@
         }
       },
       "resource_schemas": {
+        "supabase_apikey": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "api_key": {
+                "type": "string",
+                "description": "API key",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of the API key",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "id": {
+                "type": "string",
+                "description": "API key identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the API key",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "secret_jwt_template": {
+                "nested_type": {
+                  "attributes": {
+                    "role": {
+                      "type": "string",
+                      "description": "Role of the secret JWT template",
+                      "description_kind": "markdown",
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Secret JWT template",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "type": {
+                "type": "string",
+                "description": "Type of the API key",
+                "description_kind": "markdown",
+                "computed": true
+              }
+            },
+            "description": "API Key resource",
+            "description_kind": "markdown"
+          }
+        },
         "supabase_branch": {
           "version": 0,
           "block": {
@@ -138,7 +200,8 @@
                 "type": "string",
                 "description": "Desired instance size of the project",
                 "description_kind": "markdown",
-                "optional": true
+                "optional": true,
+                "computed": true
               },
               "name": {
                 "type": "string",
@@ -148,7 +211,7 @@
               },
               "organization_id": {
                 "type": "string",
-                "description": "Reference to the organization",
+                "description": "Organization slug (found in the Supabase dashboard URL or organization settings)",
                 "description_kind": "markdown",
                 "required": true
               },
@@ -238,6 +301,37 @@
                 "description": "Project reference ID",
                 "description_kind": "markdown",
                 "required": true
+              },
+              "publishable_key": {
+                "type": "string",
+                "description": "Publishable API key for the project",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              },
+              "secret_keys": {
+                "nested_type": {
+                  "attributes": {
+                    "api_key": {
+                      "type": "string",
+                      "description": "The secret API key value",
+                      "description_kind": "markdown",
+                      "computed": true,
+                      "sensitive": true
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Name of the secret key",
+                      "description_kind": "markdown",
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "list"
+                },
+                "description": "List of secret API keys for the project",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
               },
               "service_role_key": {
                 "type": "string",
