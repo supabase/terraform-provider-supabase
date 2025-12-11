@@ -253,10 +253,10 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 		)}
 	}
 	body := api.V1CreateAProjectJSONRequestBody{
-		OrganizationId:  data.OrganizationId.ValueStringPointer(),
-		Name:            data.Name.ValueString(),
-		DbPass:          data.DatabasePassword.ValueString(),
-		RegionSelection: &region,
+		OrganizationSlug: data.OrganizationId.ValueString(),
+		Name:             data.Name.ValueString(),
+		DbPass:           data.DatabasePassword.ValueString(),
+		RegionSelection:  &region,
 	}
 	if !data.InstanceSize.IsUnknown() && !data.InstanceSize.IsNull() {
 		body.DesiredInstanceSize = Ptr(api.V1CreateProjectBodyDesiredInstanceSize(data.InstanceSize.ValueString()))
