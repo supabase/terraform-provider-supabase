@@ -627,7 +627,7 @@ func updateNetworkConfig(ctx context.Context, plan *SettingsResourceModel, clien
 
 	httpResp, err := client.V1UpdateNetworkRestrictionsWithResponse(ctx, plan.ProjectRef.ValueString(), body)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to update network settings, got error: %s", err)
+		msg := fmt.Sprintf("Unable to update network settings: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	if httpResp.JSON201 == nil {
