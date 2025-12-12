@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/supabase/cli/pkg/api"
 )
 
@@ -273,6 +275,12 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 	}
 
 	data.Id = types.StringValue(httpResp.JSON201.Id)
+
+	// Wait for project to be fully provisioned
+	if diags := waitForProjectActive(ctx, data.Id.ValueString(), client); diags.HasError() {
+		return diags
+	}
+
 	return nil
 }
 
@@ -372,6 +380,48 @@ func updateInstanceSize(ctx context.Context, plan *ProjectResourceModel, client 
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
+	// Wait for project to be active after resize
+	if diags := waitForProjectActive(ctx, plan.Id.ValueString(), client); diags.HasError() {
+		return diags
+	}
+
+	return nil
+}
+
+const projectActiveTimeout = 5 * time.Minute
+
+func waitForProjectActive(ctx context.Context, projectRef string, client *api.ClientWithResponses) diag.Diagnostics {
+	err := retry.RetryContext(ctx, projectActiveTimeout, func() *retry.RetryError {
+		httpResp, err := client.V1GetProjectWithResponse(ctx, projectRef)
+		if err != nil {
+			return retry.NonRetryableError(fmt.Errorf("failed to get project status: %w", err))
+		}
+		if httpResp.JSON200 == nil {
+			return retry.NonRetryableError(fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode(), httpResp.Body))
+		}
+
+		status := httpResp.JSON200.Status
+		tflog.Debug(ctx, "Waiting for project to become active", map[string]interface{}{
+			"project_ref": projectRef,
+			"status":      status,
+		})
+
+		switch status {
+		case api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY, api.V1ProjectWithDatabaseResponseStatusACTIVEUNHEALTHY:
+			return nil
+		case api.V1ProjectWithDatabaseResponseStatusINITFAILED, api.V1ProjectWithDatabaseResponseStatusREMOVED:
+			return retry.NonRetryableError(fmt.Errorf("project provisioning failed with status: %s", status))
+		default:
+			return retry.RetryableError(fmt.Errorf("project status is %s, waiting for ACTIVE", status))
+		}
+	})
+
+	if err != nil {
+		return diag.Diagnostics{diag.NewErrorDiagnostic(
+			"Project Not Ready",
+			fmt.Sprintf("Project did not become active within timeout: %s", err),
+		)}
+	}
 	return nil
 }
 
