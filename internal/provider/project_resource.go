@@ -66,6 +66,7 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "Password for the project database",
 				Required:            true,
 				Sensitive:           true,
+				Validators:          []validator.String{stringvalidator.LengthAtLeast(4)},
 			},
 			"region": schema.StringAttribute{
 				MarkdownDescription: "Region where the project is located",
@@ -192,8 +193,7 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 	if !plan.DatabasePassword.Equal(state.DatabasePassword) {
-		resp.Diagnostics.AddAttributeError(path.Root("database_password"), "Client Error", "Update is not supported for this attribute")
-		return
+		resp.Diagnostics.Append(updateDatabasePassword(ctx, &plan, r.client)...)
 	}
 	if !plan.Region.Equal(state.Region) {
 		resp.Diagnostics.AddAttributeError(path.Root("region"), "Client Error", "Update is not supported for this attribute")
@@ -370,6 +370,23 @@ func updateInstanceSize(ctx context.Context, plan *ProjectResourceModel, client 
 
 	if httpResp.StatusCode() != http.StatusOK {
 		msg := fmt.Sprintf("Unable to update project, got error: %s", string(httpResp.Body))
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	return nil
+}
+
+func updateDatabasePassword(ctx context.Context, plan *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.V1UpdateDatabasePasswordWithResponse(ctx, plan.Id.ValueString(), api.V1UpdatePasswordBody{
+		Password: plan.DatabasePassword.ValueString(),
+	})
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update database password, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	if httpResp.StatusCode() != http.StatusOK {
+		msg := fmt.Sprintf("Unable to update database password, got error: %s", string(httpResp.Body))
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
