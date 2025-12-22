@@ -24,8 +24,28 @@ import (
 )
 
 func TestAccSettingsResource(t *testing.T) {
-	// Setup mock api
 	defer gock.OffAll()
+	projectStatusResponse := api.V1ProjectWithDatabaseResponse{
+		Id:             "mayuaycdtijbctgqbycg",
+		Name:           "test",
+		OrganizationId: "test-org",
+		Region:         "us-east-1",
+		Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+	}
+	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
+		return req.URL.Path == "/v1/projects/mayuaycdtijbctgqbycg", nil
+	}
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		AddMatcher(exactPathMatcher).
+		Reply(http.StatusOK).
+		JSON(projectStatusResponse)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		AddMatcher(exactPathMatcher).
+		Reply(http.StatusOK).
+		JSON(projectStatusResponse)
+
 	// Step 1: create
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
@@ -485,6 +505,14 @@ func unmarshalStateAttr(state *terraform.InstanceState, attr string) (map[string
 func TestAccSettingsResource_SmtpPass(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
+
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     "mayuaycdtijbctgqbycg",
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
 		Reply(http.StatusOK).
@@ -555,6 +583,13 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 	projectRef := "mayuaycdtijbctgqbycg"
 
 	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     projectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	gock.New("https://api.supabase.com").
 		Get("/v1/projects/" + projectRef + "/config/database/postgres").
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{})
@@ -615,6 +650,13 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 			MfaPhoneOtpLength: 6,
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     projectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
 		Post("/v1/projects/" + projectRef + "/network-restrictions").
@@ -810,6 +852,73 @@ func TestParseConfigNestedOmitempty(t *testing.T) {
 	if icebergMap["enabled"] != true {
 		t.Errorf("expected icebergCatalog.enabled to be true, got %v", icebergMap["enabled"])
 	}
+}
+
+func TestAccSettingsResource_WaitsForProjectActive(t *testing.T) {
+	defer gock.OffAll()
+	projectRef := "testproject123"
+
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     projectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusCOMINGUP,
+		})
+
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     projectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+
+	gock.New("https://api.supabase.com").
+		Post("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusCreated).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
+			},
+		})
+
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
+			},
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref = %q
+  network = jsonencode({
+    restrictions = ["0.0.0.0/0"]
+  })
+}
+`, projectRef),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", projectRef),
+				),
+			},
+		},
+	})
 }
 
 const testAccSettingsResourceConfig = `
