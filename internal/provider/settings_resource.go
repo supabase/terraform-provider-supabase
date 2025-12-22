@@ -24,8 +24,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &SettingsResource{}
-var _ resource.ResourceWithImportState = &SettingsResource{}
+var (
+	_ resource.Resource                = &SettingsResource{}
+	_ resource.ResourceWithImportState = &SettingsResource{}
+)
 
 func NewSettingsResource() resource.Resource {
 	return &SettingsResource{}
@@ -131,6 +133,11 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
+	resp.Diagnostics.Append(waitForProjectActive(ctx, data.ProjectRef.ValueString(), r.client)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Initial settings are always created together with the project resource.
 	// We can simply apply partial updates here based on the given TF plan.
 	if !data.Database.IsNull() {
@@ -211,6 +218,11 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 
 	// Read Terraform state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(waitForProjectActive(ctx, planData.ProjectRef.ValueString(), r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -627,7 +639,7 @@ func updateNetworkConfig(ctx context.Context, plan *SettingsResourceModel, clien
 
 	httpResp, err := client.V1UpdateNetworkRestrictionsWithResponse(ctx, plan.ProjectRef.ValueString(), body)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to update network settings, got error: %s", err)
+		msg := fmt.Sprintf("Unable to update network settings: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	if httpResp.JSON201 == nil {
