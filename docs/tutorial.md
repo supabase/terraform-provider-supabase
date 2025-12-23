@@ -36,10 +36,6 @@ resource "supabase_project" "production" {
   name              = "tf-example"
   database_password = "<your-password>"
   region            = "ap-southeast-1"
-
-  lifecycle {
-    ignore_changes = [database_password]
-  }
 }
 
 # Retrieve project API keys (careful with sensitive data!)
@@ -85,10 +81,6 @@ resource "supabase_project" "production" {
   name              = "tf-example"
   database_password = "<your-password>"
   region            = "ap-southeast-1"
-
-  lifecycle {
-    ignore_changes = [database_password]
-  }
 }
 ```
 

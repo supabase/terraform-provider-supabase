@@ -129,7 +129,7 @@ func TestAccProjectResource(t *testing.T) {
 			},
 			"available_addons": []map[string]any{},
 		})
-	// Step 3: update name
+	// Step 3: update name and database password
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
@@ -157,6 +157,9 @@ func TestAccProjectResource(t *testing.T) {
 		})
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg").
+    Reply(http.StatusOK)
+  gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/database/password").
 		Reply(http.StatusOK)
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
@@ -229,6 +232,8 @@ func TestAccProjectResource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
 					resource.TestCheckResourceAttr("supabase_project.test", "name", "foo"),
+					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "micro"),
+					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaz"),
 				),
 			},
 			// Update instance size testing
@@ -249,13 +254,25 @@ func TestAccProjectResource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
 					resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
+			// Update database password testing
+			{
+				Config: strings.ReplaceAll(
+					strings.ReplaceAll(examples.ProjectResourceConfig, `"barbaz"`, `"barbaznew"`),
+					`"micro"`,
+					`"16xlarge"`,
+				),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),
 				),
 			},
 			// ImportState testing
 			{
-				ResourceName:            "supabase_project.test",
-				ImportState:             true,
-				ImportStateVerify:       true,
+				ResourceName:      "supabase_project.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+
+				// database_password is not refreshed from the API
 				ImportStateVerifyIgnore: []string{"database_password"},
 			},
 			// Delete testing automatically occurs in TestCase

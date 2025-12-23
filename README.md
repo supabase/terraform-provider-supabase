@@ -49,10 +49,6 @@ resource "supabase_project" "production" {
   name              = "tf-project"
   database_password = "tf-example"
   region            = "ap-southeast-1"
-
-  lifecycle {
-    ignore_changes = [database_password]
-  }
 }
 
 # Configure api settings for the linked project
