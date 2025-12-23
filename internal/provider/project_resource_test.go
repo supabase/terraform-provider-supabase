@@ -157,7 +157,7 @@ func TestAccProjectResource(t *testing.T) {
 		})
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg").
-    Reply(http.StatusOK)
+		Reply(http.StatusOK)
   gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg/database/password").
 		Reply(http.StatusOK)
@@ -254,6 +254,8 @@ func TestAccProjectResource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
 					resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
+				),
+			},
 			// Update database password testing
 			{
 				Config: strings.ReplaceAll(
