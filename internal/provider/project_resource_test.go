@@ -75,7 +75,7 @@ func TestAccProjectResource(t *testing.T) {
 			},
 			"available_addons": []map[string]any{},
 		})
-	// Step 2: update
+	// Step 2: update instance size
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
@@ -129,7 +129,7 @@ func TestAccProjectResource(t *testing.T) {
 			},
 			"available_addons": []map[string]any{},
 		})
-	// Step 3: import state
+	// Step 3: update database password
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
@@ -155,7 +155,61 @@ func TestAccProjectResource(t *testing.T) {
 			},
 			"available_addons": []map[string]any{},
 		})
-	// Step 4: delete
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/database/password").
+		Reply(http.StatusOK)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectResponse{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "foo",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"selected_addons": []map[string]any{
+				{
+					"type": "compute_instance",
+					"variant": map[string]any{
+						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
+						"name":  "16XL",
+						"price": map[string]any{},
+					},
+				},
+			},
+			"available_addons": []map[string]any{},
+		})
+	// Step 4: import state
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectResponse{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "foo",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"selected_addons": []map[string]any{
+				{
+					"type": "compute_instance",
+					"variant": map[string]any{
+						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
+						"name":  "16XL",
+						"price": map[string]any{},
+					},
+				},
+			},
+			"available_addons": []map[string]any{},
+		})
+	// Step 5: delete
 	gock.New("https://api.supabase.com").
 		Delete("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
@@ -174,9 +228,11 @@ func TestAccProjectResource(t *testing.T) {
 				Config: examples.ProjectResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "micro"),
+					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaz"),
 				),
 			},
-			// Update testing
+			// Update instance size testing
 			{
 				Config: strings.ReplaceAll(examples.ProjectResourceConfig, `"micro"`, `"16xlarge"`),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -184,11 +240,25 @@ func TestAccProjectResource(t *testing.T) {
 					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
 				),
 			},
+			// Update database password testing
+			{
+				Config: strings.ReplaceAll(
+					strings.ReplaceAll(examples.ProjectResourceConfig, `"barbaz"`, `"barbaznew"`),
+					`"micro"`,
+					`"16xlarge"`,
+				),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),
+				),
+			},
 			// ImportState testing
 			{
-				ResourceName:            "supabase_project.test",
-				ImportState:             true,
-				ImportStateVerify:       true,
+				ResourceName:      "supabase_project.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+
+				// database_password is not refreshed from the API
 				ImportStateVerifyIgnore: []string{"database_password"},
 			},
 			// Delete testing automatically occurs in TestCase
