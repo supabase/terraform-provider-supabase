@@ -192,7 +192,7 @@ func TestAccProjectResource(t *testing.T) {
 						strings.ReplaceAll(
 							examples.ProjectResourceConfig,
 							`"micro"`,
-							`"16xlarge"`
+							`"16xlarge"`,
 						),
 						`"foo"`,
 						`"bar"`,
