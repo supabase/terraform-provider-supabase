@@ -102,64 +102,13 @@ func TestAccProjectResource(t *testing.T) {
 			"available_addons": []map[string]any{},
 		})
 	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
-		Reply(http.StatusOK)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectResponse{
-			Id:             "mayuaycdtijbctgqbycg",
-			Name:           "foo",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"selected_addons": []map[string]any{
-				{
-					"type": "compute_instance",
-					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
-						"name":  "16XL",
-						"price": map[string]any{},
-					},
-				},
-			},
-			"available_addons": []map[string]any{},
-		})
-	// Step 3: update name and database password
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectResponse{
-			Id:             "mayuaycdtijbctgqbycg",
-			Name:           "foo",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"selected_addons": []map[string]any{
-				{
-					"type": "compute_instance",
-					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
-						"name":  "16XL",
-						"price": map[string]any{},
-					},
-				},
-			},
-			"available_addons": []map[string]any{},
-		})
-	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK)
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg/database/password").
+		Reply(http.StatusOK)
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
 		Reply(http.StatusOK)
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
@@ -238,33 +187,16 @@ func TestAccProjectResource(t *testing.T) {
 			},
 			// Update instance size testing
 			{
-				Config: strings.ReplaceAll(examples.ProjectResourceConfig, `"micro"`, `"16xlarge"`),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
-					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
-				),
-			},
-			// Update name testing
-			{
-				Config: strings.ReplaceAll(
+				Config: Config: strings.ReplaceAll(
 					strings.ReplaceAll(examples.ProjectResourceConfig, `"micro"`, `"16xlarge"`),
-					`"foo"`,
-					`"bar"`,
+					strings.ReplaceAll(examples.ProjectResourceConfig, `"foo"`, `"bar"`),
+					`"barbaz"`,
+					`"barbaznew"`,
 				),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
 					resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
-				),
-			},
-			// Update database password testing
-			{
-				Config: strings.ReplaceAll(
-					strings.ReplaceAll(examples.ProjectResourceConfig, `"barbaz"`, `"barbaznew"`),
-					`"micro"`,
-					`"16xlarge"`,
-				),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),
 				),
 			},
