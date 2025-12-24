@@ -158,7 +158,7 @@ func TestAccProjectResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK)
-  gock.New("https://api.supabase.com").
+	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg/database/password").
 		Reply(http.StatusOK)
 	gock.New("https://api.supabase.com").
