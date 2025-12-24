@@ -187,9 +187,16 @@ func TestAccProjectResource(t *testing.T) {
 			},
 			// Update instance size testing
 			{
-				Config: Config: strings.ReplaceAll(
-					strings.ReplaceAll(examples.ProjectResourceConfig, `"micro"`, `"16xlarge"`),
-					strings.ReplaceAll(examples.ProjectResourceConfig, `"foo"`, `"bar"`),
+				Config: strings.ReplaceAll(
+					strings.ReplaceAll(
+						strings.ReplaceAll(
+							examples.ProjectResourceConfig,
+							`"micro"`,
+							`"16xlarge"`
+						),
+						`"foo"`,
+						`"bar"`,
+					),
 					`"barbaz"`,
 					`"barbaznew"`,
 				),
