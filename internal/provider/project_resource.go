@@ -189,8 +189,7 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	// required attributes
 	if !plan.Name.Equal(state.Name) {
-		resp.Diagnostics.AddAttributeError(path.Root("name"), "Client Error", "Update is not supported for this attribute")
-		return
+		resp.Diagnostics.Append(updateName(ctx, &plan, r.client)...)
 	}
 	if !plan.DatabasePassword.Equal(state.DatabasePassword) {
 		resp.Diagnostics.Append(updateDatabasePassword(ctx, &plan, r.client)...)
@@ -370,6 +369,23 @@ func updateInstanceSize(ctx context.Context, plan *ProjectResourceModel, client 
 
 	if httpResp.StatusCode() != http.StatusOK {
 		msg := fmt.Sprintf("Unable to update project, got error: %s", string(httpResp.Body))
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	return nil
+}
+
+func updateName(ctx context.Context, plan *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.V1UpdateAProjectWithResponse(ctx, plan.Id.ValueString(), api.V1UpdateProjectBody{
+		Name: plan.Name.ValueString(),
+	})
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update project name, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	if httpResp.StatusCode() != http.StatusOK {
+		msg := fmt.Sprintf("Unable to update project name, got error: %s", string(httpResp.Body))
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
