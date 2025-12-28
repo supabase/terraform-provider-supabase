@@ -143,7 +143,7 @@ func TestAccProjectResource(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
 			Id:             "mayuaycdtijbctgqbycg",
-			Name:           "foo",
+			Name:           "bar",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
