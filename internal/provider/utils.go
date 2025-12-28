@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -29,27 +30,13 @@ func NullableToString[T ~string](n nullable.Nullable[T]) tftypes.String {
 
 const projectActiveTimeout = 5 * time.Minute
 
-const statusUnknownTransient = "UNKNOWN_TRANSIENT"
-
-var knownProjectStatuses = map[api.V1ProjectWithDatabaseResponseStatus]bool{
-	// Target
-	api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY: true,
-	// Pending
-	api.V1ProjectWithDatabaseResponseStatusACTIVEUNHEALTHY: true,
-	api.V1ProjectWithDatabaseResponseStatusRESTORING:       true,
-	api.V1ProjectWithDatabaseResponseStatusCOMINGUP:        true,
-	api.V1ProjectWithDatabaseResponseStatusUPGRADING:       true,
-	api.V1ProjectWithDatabaseResponseStatusPAUSING:         true,
-	api.V1ProjectWithDatabaseResponseStatusRESIZING:        true,
-	api.V1ProjectWithDatabaseResponseStatusRESTARTING:      true,
-	api.V1ProjectWithDatabaseResponseStatusUNKNOWN:         true,
-	// Terminal (handled separately, but included for completeness)
-	api.V1ProjectWithDatabaseResponseStatusGOINGDOWN:     true,
-	api.V1ProjectWithDatabaseResponseStatusINITFAILED:    true,
-	api.V1ProjectWithDatabaseResponseStatusREMOVED:       true,
-	api.V1ProjectWithDatabaseResponseStatusINACTIVE:      true,
-	api.V1ProjectWithDatabaseResponseStatusPAUSEFAILED:   true,
-	api.V1ProjectWithDatabaseResponseStatusRESTOREFAILED: true,
+var terminalProjectStatuses = []api.V1ProjectWithDatabaseResponseStatus{
+	api.V1ProjectWithDatabaseResponseStatusGOINGDOWN,
+	api.V1ProjectWithDatabaseResponseStatusINITFAILED,
+	api.V1ProjectWithDatabaseResponseStatusREMOVED,
+	api.V1ProjectWithDatabaseResponseStatusINACTIVE,
+	api.V1ProjectWithDatabaseResponseStatusPAUSEFAILED,
+	api.V1ProjectWithDatabaseResponseStatusRESTOREFAILED,
 }
 
 // fails fast on terminal states (GOING_DOWN, INIT_FAILED, REMOVED, etc.) and
@@ -65,7 +52,6 @@ func waitForProjectActive(ctx context.Context, projectRef string, client *api.Cl
 			string(api.V1ProjectWithDatabaseResponseStatusRESIZING),
 			string(api.V1ProjectWithDatabaseResponseStatusRESTARTING),
 			string(api.V1ProjectWithDatabaseResponseStatusUNKNOWN),
-			statusUnknownTransient,
 		},
 		Target: []string{
 			string(api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY),
@@ -85,22 +71,8 @@ func waitForProjectActive(ctx context.Context, projectRef string, client *api.Cl
 				"status":      status,
 			})
 
-			switch httpResp.JSON200.Status {
-			case api.V1ProjectWithDatabaseResponseStatusGOINGDOWN,
-				api.V1ProjectWithDatabaseResponseStatusINITFAILED,
-				api.V1ProjectWithDatabaseResponseStatusREMOVED,
-				api.V1ProjectWithDatabaseResponseStatusINACTIVE,
-				api.V1ProjectWithDatabaseResponseStatusPAUSEFAILED,
-				api.V1ProjectWithDatabaseResponseStatusRESTOREFAILED:
+			if slices.Contains(terminalProjectStatuses, httpResp.JSON200.Status) {
 				return nil, "", fmt.Errorf("project %s in terminal state: %s", projectRef, status)
-			}
-
-			if !knownProjectStatuses[httpResp.JSON200.Status] {
-				tflog.Warn(ctx, "Unrecognized project status, treating as transient", map[string]interface{}{
-					"project_ref": projectRef,
-					"status":      status,
-				})
-				return httpResp.JSON200, statusUnknownTransient, nil
 			}
 
 			return httpResp.JSON200, status, nil
