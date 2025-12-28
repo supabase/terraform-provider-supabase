@@ -273,6 +273,12 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 	}
 
 	data.Id = types.StringValue(httpResp.JSON201.Id)
+
+	// Wait for project to be fully provisioned
+	if diags := waitForProjectActive(ctx, data.Id.ValueString(), client); diags.HasError() {
+		return diags
+	}
+
 	return nil
 }
 
@@ -370,6 +376,11 @@ func updateInstanceSize(ctx context.Context, plan *ProjectResourceModel, client 
 	if httpResp.StatusCode() != http.StatusOK {
 		msg := fmt.Sprintf("Unable to update project, got error: %s", string(httpResp.Body))
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	// Wait for project to be active after resize
+	if diags := waitForProjectActive(ctx, plan.Id.ValueString(), client); diags.HasError() {
+		return diags
 	}
 
 	return nil
