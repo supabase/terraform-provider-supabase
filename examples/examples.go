@@ -9,6 +9,8 @@ var (
 	ProjectResourceConfig string
 	//go:embed resources/supabase_branch/resource.tf
 	BranchResourceConfig string
+	//go:embed resources/supabase_edge_function/resource.tf
+	EdgeFunctionResourceConfig string
 	//go:embed data-sources/supabase_branch/data-source.tf
 	BranchDataSourceConfig string
 	//go:embed data-sources/supabase_pooler/data-source.tf
