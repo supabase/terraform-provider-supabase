@@ -145,6 +145,9 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
 	}
+	if !data.Storage.IsNull() {
+		resp.Diagnostics.Append(updateStorageConfig(ctx, &data, r.client)...)
+	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
@@ -183,6 +186,9 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if !data.Auth.IsNull() {
 		resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
 	}
+	if !data.Storage.IsNull() {
+		resp.Diagnostics.Append(readStorageConfig(ctx, &data, r.client)...)
+	}
 	// TODO: read all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
@@ -195,26 +201,36 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 }
 
 func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data SettingsResourceModel
+	var planData, stateData SettingsResourceModel
 
 	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Ignore any states not specified in the TF plan.
-	if !data.Database.IsNull() {
-		resp.Diagnostics.Append(updateDatabaseConfig(ctx, &data, r.client)...)
+	// Read Terraform state data into the model
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
-	if !data.Network.IsNull() {
-		resp.Diagnostics.Append(updateNetworkConfig(ctx, &data, r.client)...)
+
+	// Only update settings that are present in the plan and have actually changed.
+	// This respects lifecycle.ignore_changes and avoids no-op API calls.
+	if !planData.Database.IsNull() && !planData.Database.Equal(stateData.Database) {
+		resp.Diagnostics.Append(updateDatabaseConfig(ctx, &planData, r.client)...)
 	}
-	if !data.Api.IsNull() {
-		resp.Diagnostics.Append(updateApiConfig(ctx, &data, r.client)...)
+	if !planData.Network.IsNull() && !planData.Network.Equal(stateData.Network) {
+		resp.Diagnostics.Append(updateNetworkConfig(ctx, &planData, r.client)...)
 	}
-	if !data.Auth.IsNull() {
-		resp.Diagnostics.Append(updateAuthConfig(ctx, &data, r.client)...)
+	if !planData.Api.IsNull() && !planData.Api.Equal(stateData.Api) {
+		resp.Diagnostics.Append(updateApiConfig(ctx, &planData, r.client)...)
+	}
+	if !planData.Auth.IsNull() && !planData.Auth.Equal(stateData.Auth) {
+		resp.Diagnostics.Append(updateAuthConfig(ctx, &planData, r.client)...)
+	}
+	if !planData.Storage.IsNull() && !planData.Storage.Equal(stateData.Storage) {
+		resp.Diagnostics.Append(updateStorageConfig(ctx, &planData, r.client)...)
 	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
@@ -222,7 +238,7 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 }
 
 func (r *SettingsResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -246,6 +262,7 @@ func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(readNetworkConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(readStorageConfig(ctx, &data, r.client)...)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -312,15 +329,19 @@ func readAuthConfig(ctx context.Context, state *SettingsResourceModel, client *a
 		msg := fmt.Sprintf("Unable to read auth settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-	// API treats sensitive fields as write-only
-	var body LocalAuthConfig
+	// API treats sensitive fields as write-only, preserve them from state
+	var stateBody LocalAuthConfig
 	if !state.Auth.IsNull() {
-		if diags := state.Auth.Unmarshal(&body); diags.HasError() {
+		if diags := state.Auth.Unmarshal(&stateBody); diags.HasError() {
 			return diags
 		}
 	}
-	body.overrideSensitiveFields(httpResp.JSON200)
-	if state.Auth, err = parseConfig(state.Auth, *httpResp.JSON200); err != nil {
+	// Convert response to UpdateAuthConfigBody type for consistent marshaling
+	resultBody := convertAuthResponse(ctx, httpResp.JSON200)
+	// Override sensitive fields with values from state
+	copySensitiveFields(stateBody.UpdateAuthConfigBody, &resultBody)
+
+	if state.Auth, err = parseConfig(state.Auth, resultBody); err != nil {
 		msg := fmt.Sprintf("Unable to read auth settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
@@ -342,11 +363,12 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 		msg := fmt.Sprintf("Unable to update auth settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
+	// Convert response to UpdateAuthConfigBody type for consistent marshaling
+	resultBody := convertAuthResponse(ctx, httpResp.JSON200)
 	// Copy over sensitive fields from TF plan
-	local := LocalAuthConfig{UpdateAuthConfigBody: body}
-	local.overrideSensitiveFields(httpResp.JSON200)
+	copySensitiveFields(body, &resultBody)
 
-	if plan.Auth, err = parseConfig(plan.Auth, *httpResp.JSON200); err != nil {
+	if plan.Auth, err = parseConfig(plan.Auth, resultBody); err != nil {
 		msg := fmt.Sprintf("Unable to update auth settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
@@ -420,9 +442,25 @@ func pickConfig(source any, target map[string]any) {
 		tag := t.Field(i).Tag.Get("json")
 		k := strings.Split(tag, ",")[0]
 		// Check that tag is picked by target
-		if _, ok := target[k]; ok {
-			target[k] = v.Field(i).Interface()
+		targetVal, ok := target[k]
+		if !ok {
+			continue
 		}
+		sourceField := v.Field(i)
+		// Recursively merge nested structs so user values survive when API omits fields.
+		if targetMap, isMap := targetVal.(map[string]any); isMap {
+			if sourceField.Kind() == reflect.Pointer {
+				if sourceField.IsNil() {
+					continue
+				}
+				sourceField = sourceField.Elem()
+			}
+			if sourceField.Kind() == reflect.Struct {
+				pickConfig(sourceField.Interface(), targetMap)
+				continue
+			}
+		}
+		target[k] = sourceField.Interface()
 	}
 }
 
@@ -460,44 +498,69 @@ type LocalAuthConfig struct {
 	api.UpdateAuthConfigBody
 }
 
-func (c LocalAuthConfig) overrideSensitiveFields(resp *api.AuthConfigResponse) {
+// convertAuthResponse converts AuthConfigResponse to UpdateAuthConfigBody using JSON marshaling.
+// This ensures we use consistent JSON tags (with omitempty) for marshaling.
+func convertAuthResponse(ctx context.Context, resp *api.AuthConfigResponse) api.UpdateAuthConfigBody {
+	// Marshal the response to JSON and unmarshal into UpdateAuthConfigBody
+	// This handles field mapping and type conversions automatically
+	data, err := json.Marshal(resp)
+	if err != nil {
+		tflog.Error(ctx, "Failed to marshal auth config response", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return api.UpdateAuthConfigBody{}
+	}
+
+	var body api.UpdateAuthConfigBody
+	if err := json.Unmarshal(data, &body); err != nil {
+		tflog.Error(ctx, "Failed to unmarshal auth config to UpdateAuthConfigBody", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return api.UpdateAuthConfigBody{}
+	}
+
+	return body
+}
+
+// copySensitiveFields copies sensitive field values from source to target.
+func copySensitiveFields(source api.UpdateAuthConfigBody, target *api.UpdateAuthConfigBody) {
 	// Email provider secrets
-	resp.SmtpPass = c.SmtpPass
+	target.SmtpPass = source.SmtpPass
 	// SMS provider secrets
-	resp.SmsTwilioAuthToken = c.SmsTwilioAuthToken
-	resp.SmsTwilioVerifyAuthToken = c.SmsTwilioVerifyAuthToken
-	resp.SmsMessagebirdAccessKey = c.SmsMessagebirdAccessKey
-	resp.SmsTextlocalApiKey = c.SmsTextlocalApiKey
-	resp.SmsVonageApiSecret = c.SmsVonageApiSecret
+	target.SmsTwilioAuthToken = source.SmsTwilioAuthToken
+	target.SmsTwilioVerifyAuthToken = source.SmsTwilioVerifyAuthToken
+	target.SmsMessagebirdAccessKey = source.SmsMessagebirdAccessKey
+	target.SmsTextlocalApiKey = source.SmsTextlocalApiKey
+	target.SmsVonageApiSecret = source.SmsVonageApiSecret
 	// Captcha provider secrets
-	resp.SecurityCaptchaSecret = c.SecurityCaptchaSecret
+	target.SecurityCaptchaSecret = source.SecurityCaptchaSecret
 	// External provider secrets
-	resp.ExternalAppleSecret = c.ExternalAppleSecret
-	resp.ExternalAzureSecret = c.ExternalAzureSecret
-	resp.ExternalBitbucketSecret = c.ExternalBitbucketSecret
-	resp.ExternalDiscordSecret = c.ExternalDiscordSecret
-	resp.ExternalFacebookSecret = c.ExternalFacebookSecret
-	resp.ExternalFigmaSecret = c.ExternalFigmaSecret
-	resp.ExternalGithubSecret = c.ExternalGithubSecret
-	resp.ExternalGitlabSecret = c.ExternalGitlabSecret
-	resp.ExternalGoogleSecret = c.ExternalGoogleSecret
-	resp.ExternalKakaoSecret = c.ExternalKakaoSecret
-	resp.ExternalKeycloakSecret = c.ExternalKeycloakSecret
-	resp.ExternalLinkedinOidcSecret = c.ExternalLinkedinOidcSecret
-	resp.ExternalNotionSecret = c.ExternalNotionSecret
-	resp.ExternalSlackOidcSecret = c.ExternalSlackOidcSecret
-	resp.ExternalSlackSecret = c.ExternalSlackSecret
-	resp.ExternalSpotifySecret = c.ExternalSpotifySecret
-	resp.ExternalTwitchSecret = c.ExternalTwitchSecret
-	resp.ExternalTwitterSecret = c.ExternalTwitterSecret
-	resp.ExternalWorkosSecret = c.ExternalWorkosSecret
-	resp.ExternalZoomSecret = c.ExternalZoomSecret
+	target.ExternalAppleSecret = source.ExternalAppleSecret
+	target.ExternalAzureSecret = source.ExternalAzureSecret
+	target.ExternalBitbucketSecret = source.ExternalBitbucketSecret
+	target.ExternalDiscordSecret = source.ExternalDiscordSecret
+	target.ExternalFacebookSecret = source.ExternalFacebookSecret
+	target.ExternalFigmaSecret = source.ExternalFigmaSecret
+	target.ExternalGithubSecret = source.ExternalGithubSecret
+	target.ExternalGitlabSecret = source.ExternalGitlabSecret
+	target.ExternalGoogleSecret = source.ExternalGoogleSecret
+	target.ExternalKakaoSecret = source.ExternalKakaoSecret
+	target.ExternalKeycloakSecret = source.ExternalKeycloakSecret
+	target.ExternalLinkedinOidcSecret = source.ExternalLinkedinOidcSecret
+	target.ExternalNotionSecret = source.ExternalNotionSecret
+	target.ExternalSlackOidcSecret = source.ExternalSlackOidcSecret
+	target.ExternalSlackSecret = source.ExternalSlackSecret
+	target.ExternalSpotifySecret = source.ExternalSpotifySecret
+	target.ExternalTwitchSecret = source.ExternalTwitchSecret
+	target.ExternalTwitterSecret = source.ExternalTwitterSecret
+	target.ExternalWorkosSecret = source.ExternalWorkosSecret
+	target.ExternalZoomSecret = source.ExternalZoomSecret
 	// Hook provider secrets
-	resp.HookCustomAccessTokenSecrets = c.HookCustomAccessTokenSecrets
-	resp.HookMfaVerificationAttemptSecrets = c.HookMfaVerificationAttemptSecrets
-	resp.HookPasswordVerificationAttemptSecrets = c.HookPasswordVerificationAttemptSecrets
-	resp.HookSendEmailSecrets = c.HookSendEmailSecrets
-	resp.HookSendSmsSecrets = c.HookSendSmsSecrets
+	target.HookCustomAccessTokenSecrets = source.HookCustomAccessTokenSecrets
+	target.HookMfaVerificationAttemptSecrets = source.HookMfaVerificationAttemptSecrets
+	target.HookPasswordVerificationAttemptSecrets = source.HookPasswordVerificationAttemptSecrets
+	target.HookSendEmailSecrets = source.HookSendEmailSecrets
+	target.HookSendSmsSecrets = source.HookSendSmsSecrets
 }
 
 type NetworkConfig struct {
@@ -577,4 +640,53 @@ func updateNetworkConfig(ctx context.Context, plan *SettingsResourceModel, clien
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	return nil
+}
+
+func readStorageConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	// Use ProjectRef if Id is not set (during Create), otherwise use Id (during Read/Import)
+	projectRef := state.Id.ValueString()
+	if projectRef == "" {
+		projectRef = state.ProjectRef.ValueString()
+	}
+
+	httpResp, err := client.V1GetStorageConfigWithResponse(ctx, projectRef)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read storage settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Deleted project is an orphan resource, not returning error so it can be destroyed.
+	switch httpResp.StatusCode() {
+	case http.StatusNotFound, http.StatusNotAcceptable:
+		return nil
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read storage settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	if state.Storage, err = parseConfig(state.Storage, *httpResp.JSON200); err != nil {
+		msg := fmt.Sprintf("Unable to read storage settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return nil
+}
+
+func updateStorageConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	var body api.UpdateStorageConfigBody
+	if diags := plan.Storage.Unmarshal(&body); diags.HasError() {
+		return diags
+	}
+
+	httpResp, err := client.V1UpdateStorageConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update storage settings, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.StatusCode() != http.StatusOK {
+		msg := fmt.Sprintf("Unable to update storage settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	// Read back the updated config to get the actual state with correct field names
+	return readStorageConfig(ctx, plan, client)
 }

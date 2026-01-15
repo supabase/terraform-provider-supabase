@@ -90,6 +90,7 @@ func (p *SupabaseProvider) Resources(ctx context.Context) []func() resource.Reso
 		NewSettingsResource,
 		NewBranchResource,
 		NewEdgeFunctionResource,
+		NewApiKeyResource,
 	}
 }
 

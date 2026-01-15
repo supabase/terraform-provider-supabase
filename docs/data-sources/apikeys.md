@@ -28,4 +28,14 @@ data "supabase_apikeys" "production" {
 ### Read-Only
 
 - `anon_key` (String, Sensitive) Anonymous API key for the project
+- `publishable_key` (String, Sensitive) Publishable API key for the project
+- `secret_keys` (Attributes List, Sensitive) List of secret API keys for the project (see [below for nested schema](#nestedatt--secret_keys))
 - `service_role_key` (String, Sensitive) Service role API key for the project
+
+<a id="nestedatt--secret_keys"></a>
+### Nested Schema for `secret_keys`
+
+Read-Only:
+
+- `api_key` (String, Sensitive) The secret API key value
+- `name` (String) Name of the secret key

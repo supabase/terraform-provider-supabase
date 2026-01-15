@@ -44,14 +44,11 @@ import {
 }
 
 resource "supabase_project" "production" {
+  # organization_id is your organization's slug (it can be found in the Supabase Dashboard under Organization Settings > Organization Details > Organization slug)
   organization_id   = "nknnyrtlhxudbsbuazsu"
   name              = "tf-project"
   database_password = "tf-example"
   region            = "ap-southeast-1"
-
-  lifecycle {
-    ignore_changes = [database_password]
-  }
 }
 
 # Configure api settings for the linked project

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -31,6 +32,8 @@ type APIKeysDataSourceModel struct {
 	ProjectRef     types.String `tfsdk:"project_ref"`
 	AnonKey        types.String `tfsdk:"anon_key"`
 	ServiceRoleKey types.String `tfsdk:"service_role_key"`
+	PublishableKey types.String `tfsdk:"publishable_key"`
+	SecretKeys     types.List   `tfsdk:"secret_keys"`
 }
 
 func (d *APIKeysDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -55,6 +58,29 @@ func (d *APIKeysDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "Service role API key for the project",
 				Computed:            true,
 				Sensitive:           true,
+			},
+			"publishable_key": schema.StringAttribute{
+				MarkdownDescription: "Publishable API key for the project",
+				Computed:            true,
+				Sensitive:           true,
+			},
+			"secret_keys": schema.ListNestedAttribute{
+				MarkdownDescription: "List of secret API keys for the project",
+				Computed:            true,
+				Sensitive:           true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							MarkdownDescription: "Name of the secret key",
+							Computed:            true,
+						},
+						"api_key": schema.StringAttribute{
+							MarkdownDescription: "The secret API key value",
+							Computed:            true,
+							Sensitive:           true,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -87,7 +113,7 @@ func (d *APIKeysDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	httpResp, err := d.client.V1GetProjectApiKeysWithResponse(ctx, data.ProjectRef.ValueString(), &api.V1GetProjectApiKeysParams{})
+	httpResp, err := d.client.V1GetProjectApiKeysWithResponse(ctx, data.ProjectRef.ValueString(), &api.V1GetProjectApiKeysParams{Reveal: Ptr(true)})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read API keys, got error: %s", err))
 		return
@@ -98,14 +124,49 @@ func (d *APIKeysDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
+	objectType := types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"name":    types.StringType,
+			"api_key": types.StringType,
+		},
+	}
+	var secretKeyObjects []attr.Value
+
 	for _, key := range *httpResp.JSON200 {
-		switch key.Name {
-		case "anon":
-			data.AnonKey = NullableToString(key.ApiKey)
-		case "service_role":
-			data.ServiceRoleKey = NullableToString(key.ApiKey)
+		if key.Type.IsSpecified() && !key.Type.IsNull() {
+			keyType := key.Type.MustGet()
+
+			switch keyType {
+			case api.ApiKeyResponseTypeLegacy:
+				if key.Name == "anon" {
+					data.AnonKey = NullableToString(key.ApiKey)
+				}
+				if key.Name == "service_role" {
+					data.ServiceRoleKey = NullableToString(key.ApiKey)
+				}
+			case api.ApiKeyResponseTypePublishable:
+				data.PublishableKey = NullableToString(key.ApiKey)
+			case api.ApiKeyResponseTypeSecret:
+				obj, diags := types.ObjectValue(objectType.AttrTypes, map[string]attr.Value{
+					"name":    types.StringValue(key.Name),
+					"api_key": NullableToString(key.ApiKey),
+				})
+				if diags.HasError() {
+					resp.Diagnostics.Append(diags...)
+					return
+				}
+				secretKeyObjects = append(secretKeyObjects, obj)
+			}
 		}
 	}
+
+	// Build list directly from object values
+	secretKeysList, diags := types.ListValue(objectType, secretKeyObjects)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+	data.SecretKeys = secretKeysList
 
 	tflog.Trace(ctx, "read API keys")
 

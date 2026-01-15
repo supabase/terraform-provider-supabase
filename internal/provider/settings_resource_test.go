@@ -4,12 +4,16 @@
 package provider
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/oapi-codegen/nullable"
@@ -89,6 +93,43 @@ func TestAccSettingsResource(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
 	// Step 2: read
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
@@ -155,6 +196,40 @@ func TestAccSettingsResource(t *testing.T) {
 			MfaPhoneOtpLength: 6,
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
 		})
 	// Step 3: update
 	gock.New("https://api.supabase.com").
@@ -248,6 +323,60 @@ func TestAccSettingsResource(t *testing.T) {
 			JwtExp:         nullable.NewNullableWithValue(1800),
 			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+			"capabilities": map[string]any{
+				"iceberg_catalog": false,
+				"list_v2":         true,
+			},
+			"external": map[string]any{
+				"upstreamTarget": "main",
+			},
+		})
 	// Run test
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -305,6 +434,21 @@ func TestAccSettingsResource(t *testing.T) {
 						return fmt.Errorf("expected auth.smtp_admin_email to be filtered out, got %v", auth["smtp_admin_email"])
 					}
 
+					storage, err := unmarshalStateAttr(state, "storage")
+					if err != nil {
+						return err
+					}
+					if storage["fileSizeLimit"] != float64(52428800) {
+						return fmt.Errorf("expected storage.fileSizeLimit to be 52428800, got %v", storage["fileSizeLimit"])
+					}
+					if features, ok := storage["features"].(map[string]any); ok {
+						if imgTransform, ok := features["imageTransformation"].(map[string]any); ok {
+							if imgTransform["enabled"] != true {
+								return fmt.Errorf("expected storage.features.imageTransformation.enabled to be true, got %v", imgTransform["enabled"])
+							}
+						}
+					}
+
 					if projectRef, ok := state.Attributes["project_ref"]; !ok || projectRef != "mayuaycdtijbctgqbycg" {
 						return fmt.Errorf("expected project_ref to be mayuaycdtijbctgqbycg, got %v", projectRef)
 					}
@@ -338,6 +482,336 @@ func unmarshalStateAttr(state *terraform.InstanceState, attr string) (map[string
 	return out, nil
 }
 
+func TestAccSettingsResource_SmtpPass(t *testing.T) {
+	// Setup mock api
+	defer gock.OffAll()
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				return false, err
+			}
+			req.Body = io.NopCloser(bytes.NewBuffer(body))
+			bodyStr := string(body)
+			return strings.Contains(bodyStr, `"smtp_pass"`) &&
+				strings.Contains(bodyStr, `"secret_password_123"`), nil
+		}).
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "supabase_settings" "test" {
+  project_ref = "mayuaycdtijbctgqbycg"
+
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+    smtp_pass = "secret_password_123"
+  })
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", "mayuaycdtijbctgqbycg"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
+	defer gock.OffAll()
+
+	projectRef := "mayuaycdtijbctgqbycg"
+
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Post("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusCreated).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/postgrest").
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/" + projectRef + "/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Post("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusCreated).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32", "198.51.100.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32", "198.51.100.1/32"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	for range 5 {
+		gock.New("https://api.supabase.com").
+			Get("/v1/projects/" + projectRef + "/network-restrictions").
+			Reply(http.StatusOK).
+			JSON(api.NetworkRestrictionsResponse{
+				Config: api.NetworkRestrictionsRequest{
+					DbAllowedCidrs: Ptr([]string{"203.0.113.1/32", "198.51.100.1/32"}),
+				},
+			})
+		gock.New("https://api.supabase.com").
+			Get("/v1/projects/" + projectRef + "/config/auth").
+			Reply(http.StatusOK).
+			JSON(api.AuthConfigResponse{
+				SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+				MailerOtpExp:      3600,
+				MfaPhoneOtpLength: 6,
+				SmsOtpLength:      6,
+				SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+			})
+	}
+
+	authPatchCalled := false
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/" + projectRef + "/config/auth").
+		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+			authPatchCalled = true
+			return true, nil
+		}).
+		Reply(http.StatusBadRequest).
+		JSON(map[string]any{
+			"message": "Should not be called",
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "supabase_settings" "test" {
+  project_ref = "mayuaycdtijbctgqbycg"
+
+  network = jsonencode({
+    restrictions = ["203.0.113.1/32"]
+  })
+
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+  })
+
+  lifecycle {
+    ignore_changes = [auth]
+  }
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", projectRef),
+				),
+			},
+			{
+				Config: `
+resource "supabase_settings" "test" {
+  project_ref = "mayuaycdtijbctgqbycg"
+
+  network = jsonencode({
+    restrictions = ["203.0.113.1/32", "198.51.100.1/32"]
+  })
+
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+  })
+
+  lifecycle {
+    ignore_changes = [auth]
+  }
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", projectRef),
+					func(s *terraform.State) error {
+						if authPatchCalled {
+							return fmt.Errorf("auth PATCH was called despite lifecycle.ignore_changes")
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func TestParseConfigNestedOmitempty(t *testing.T) {
+	userConfig := `{
+		"fileSizeLimit": 52428800,
+		"features": {
+			"icebergCatalog": {"enabled": true},
+			"imageTransformation": {"enabled": true},
+			"s3Protocol": {"enabled": false}
+		}
+	}`
+	apiResponse := api.StorageConfigResponse{
+		FileSizeLimit: 52428800,
+		Features: struct {
+			IcebergCatalog struct {
+				Enabled       bool `json:"enabled"`
+				MaxCatalogs   int  `json:"maxCatalogs"`
+				MaxNamespaces int  `json:"maxNamespaces"`
+				MaxTables     int  `json:"maxTables"`
+			} `json:"icebergCatalog"`
+			ImageTransformation struct {
+				Enabled bool `json:"enabled"`
+			} `json:"imageTransformation"`
+			S3Protocol struct {
+				Enabled bool `json:"enabled"`
+			} `json:"s3Protocol"`
+			VectorBuckets struct {
+				Enabled    bool `json:"enabled"`
+				MaxBuckets int  `json:"maxBuckets"`
+				MaxIndexes int  `json:"maxIndexes"`
+			} `json:"vectorBuckets"`
+		}{
+			IcebergCatalog: struct {
+				Enabled       bool `json:"enabled"`
+				MaxCatalogs   int  `json:"maxCatalogs"`
+				MaxNamespaces int  `json:"maxNamespaces"`
+				MaxTables     int  `json:"maxTables"`
+			}{Enabled: true, MaxCatalogs: 0, MaxNamespaces: 0, MaxTables: 0},
+			ImageTransformation: struct {
+				Enabled bool `json:"enabled"`
+			}{Enabled: true},
+			S3Protocol: struct {
+				Enabled bool `json:"enabled"`
+			}{Enabled: false},
+			VectorBuckets: struct {
+				Enabled    bool `json:"enabled"`
+				MaxBuckets int  `json:"maxBuckets"`
+				MaxIndexes int  `json:"maxIndexes"`
+			}{Enabled: false, MaxBuckets: 0, MaxIndexes: 0},
+		},
+	}
+
+	field := jsontypes.NewNormalizedValue(userConfig)
+	result, err := parseConfig(field, apiResponse)
+	if err != nil {
+		t.Fatalf("parseConfig failed: %v", err)
+	}
+
+	var resultMap map[string]any
+	if err := json.Unmarshal([]byte(result.ValueString()), &resultMap); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
+
+	features, ok := resultMap["features"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected features in result, got %v", resultMap)
+	}
+
+	iceberg, exists := features["icebergCatalog"]
+	if !exists {
+		t.Fatalf("expected icebergCatalog to be preserved, got %v", features)
+	}
+	icebergMap, ok := iceberg.(map[string]any)
+	if !ok {
+		t.Fatalf("expected icebergCatalog to be a map, got %T", iceberg)
+	}
+	if icebergMap["enabled"] != true {
+		t.Errorf("expected icebergCatalog.enabled to be true, got %v", icebergMap["enabled"])
+	}
+}
+
 const testAccSettingsResourceConfig = `
 resource "supabase_settings" "production" {
   project_ref = "mayuaycdtijbctgqbycg"
@@ -361,9 +835,17 @@ resource "supabase_settings" "production" {
     jwt_exp  = 1800
   })
 
-  # storage = jsonencode({
-  #   file_size_limit = "50MB"
-  # })
+  storage = jsonencode({
+    fileSizeLimit = 52428800
+    features = {
+      imageTransformation = {
+        enabled = true
+      }
+      s3Protocol = {
+        enabled = false
+      }
+    }
+  })
 
   # pooler = jsonencode({
   #   default_pool_size         = 15

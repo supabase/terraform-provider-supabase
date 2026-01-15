@@ -11,10 +11,9 @@ func Ptr[T any](v T) *T {
 
 // NullableToString converts an oapi-codegen [nullable.Nullable] to an appropriate
 // terraform string type.
-func NullableToString(n nullable.Nullable[string]) tftypes.String {
+func NullableToString[T ~string](n nullable.Nullable[T]) tftypes.String {
 	if n.IsSpecified() && !n.IsNull() {
-		// MustGet is safe when the value is specified and not null
-		return tftypes.StringValue(n.MustGet())
+		return tftypes.StringValue(string(n.MustGet()))
 	}
 
 	return tftypes.StringNull()
