@@ -459,6 +459,16 @@ func pickConfig(source any, target map[string]any) {
 			continue
 		}
 		sourceField := v.Field(i)
+		// Skip null or unspecified Nullable fields to preserve user's original value.
+		// This prevents the API returning null from overwriting user-configured values.
+		if nullable, ok := sourceField.Interface().(interface {
+			IsNull() bool
+			IsSpecified() bool
+		}); ok {
+			if nullable.IsNull() || !nullable.IsSpecified() {
+				continue
+			}
+		}
 		// Recursively merge nested structs so user values survive when API omits fields.
 		if targetMap, isMap := targetVal.(map[string]any); isMap {
 			if sourceField.Kind() == reflect.Pointer {
