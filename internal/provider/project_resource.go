@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -37,12 +38,13 @@ type ProjectResource struct {
 
 // ProjectResourceModel describes the resource data model.
 type ProjectResourceModel struct {
-	OrganizationId   types.String `tfsdk:"organization_id"`
-	Name             types.String `tfsdk:"name"`
-	DatabasePassword types.String `tfsdk:"database_password"`
-	Region           types.String `tfsdk:"region"`
-	InstanceSize     types.String `tfsdk:"instance_size"`
-	Id               types.String `tfsdk:"id"`
+	OrganizationId       types.String `tfsdk:"organization_id"`
+	Name                 types.String `tfsdk:"name"`
+	DatabasePassword     types.String `tfsdk:"database_password"`
+	Region               types.String `tfsdk:"region"`
+	InstanceSize         types.String `tfsdk:"instance_size"`
+	Id                   types.String `tfsdk:"id"`
+	LegacyApiKeysEnabled types.Bool   `tfsdk:"legacy_api_keys_enabled"`
 }
 
 func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -111,6 +113,16 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"legacy_api_keys_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Controls whether `anon` and `service_role` JWT-based api keys should be enabled. " +
+					"Please note: these keys are no longer recommended " +
+					"([more information here](https://supabase.com/docs/guides/api/api-keys#why-are-anon-and-servicerole-jwt-based-keys-no-longer-recommended)).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 		},
 	}
 }
@@ -146,6 +158,13 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(createProject(ctx, &data, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	if !data.LegacyApiKeysEnabled.IsNull() && !data.LegacyApiKeysEnabled.IsUnknown() {
+		resp.Diagnostics.Append(updateLegacyAPIKeysEnabled(ctx, &data, r.client)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	tflog.Trace(ctx, "read up to date project")
@@ -206,6 +225,9 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 	// optional attributes
 	if !plan.InstanceSize.IsNull() && !plan.InstanceSize.Equal(state.InstanceSize) {
 		resp.Diagnostics.Append(updateInstanceSize(ctx, &plan, r.client)...)
+	}
+	if !plan.LegacyApiKeysEnabled.IsNull() && !plan.LegacyApiKeysEnabled.Equal(state.LegacyApiKeysEnabled) {
+		resp.Diagnostics.Append(updateLegacyAPIKeysEnabled(ctx, &plan, r.client)...)
 	}
 
 	if resp.Diagnostics.HasError() {
@@ -304,6 +326,24 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 	data.Region = types.StringValue(project.Region)
 	data.InstanceSize = types.StringNull()
 
+	legacyKeysResp, err := client.V1GetProjectLegacyApiKeysWithResponse(ctx, project.Id)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read project legacy api keys state, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	if legacyKeysResp.JSON200 == nil {
+		// This API endpoint will be removed in the future, so explicitly check for HTTP 404 Not Found.
+		if legacyKeysResp.StatusCode() != http.StatusNotFound {
+			msg := fmt.Sprintf("Unable to read project legacy api keys, got status %d: %s", legacyKeysResp.StatusCode(), legacyKeysResp.Body)
+			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		}
+
+		data.LegacyApiKeysEnabled = types.BoolValue(false)
+	} else {
+		data.LegacyApiKeysEnabled = types.BoolValue(legacyKeysResp.JSON200.Enabled)
+	}
+
 	addonsResp, err := client.V1ListProjectAddonsWithResponse(ctx, project.Id)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read project addons, got error: %s", err)
@@ -381,6 +421,22 @@ func updateInstanceSize(ctx context.Context, plan *ProjectResourceModel, client 
 	// Wait for project to be active after resize
 	if diags := waitForProjectActive(ctx, plan.Id.ValueString(), client); diags.HasError() {
 		return diags
+	}
+
+	return nil
+}
+
+func updateLegacyAPIKeysEnabled(ctx context.Context, plan *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.V1UpdateProjectLegacyApiKeysWithResponse(ctx, plan.Id.ValueString(), &api.V1UpdateProjectLegacyApiKeysParams{
+		Enabled: plan.LegacyApiKeysEnabled.ValueBool(),
+	})
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update legacy api keys, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.StatusCode() != http.StatusOK {
+		msg := fmt.Sprintf("Unable to update legacy api keys, got error: %s", string(httpResp.Body))
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	return nil

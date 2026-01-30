@@ -14,11 +14,12 @@ Project resource
 
 ```terraform
 resource "supabase_project" "test" {
-  organization_id   = "continued-brown-smelt"
-  name              = "foo"
-  database_password = "barbaz"
-  region            = "us-east-1"
-  instance_size     = "micro"
+  organization_id         = "continued-brown-smelt"
+  name                    = "foo"
+  database_password       = "barbaz"
+  region                  = "us-east-1"
+  instance_size           = "micro"
+  legacy_api_keys_enabled = false
 }
 ```
 
@@ -35,6 +36,7 @@ resource "supabase_project" "test" {
 ### Optional
 
 - `instance_size` (String) Desired instance size of the project
+- `legacy_api_keys_enabled` (Boolean) Controls whether `anon` and `service_role` JWT-based api keys should be enabled. Please note: these keys are no longer recommended ([more information here](https://supabase.com/docs/guides/api/api-keys#why-are-anon-and-servicerole-jwt-based-keys-no-longer-recommended)).
 
 ### Read-Only
 
