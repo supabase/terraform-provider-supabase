@@ -135,6 +135,9 @@ func (r *EdgeFunctionResource) Schema(ctx context.Context, req resource.SchemaRe
 			"project_ref": schema.StringAttribute{
 				MarkdownDescription: "Project ref",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"slug": schema.StringAttribute{
 				MarkdownDescription: "URL-friendly identifier for the function",
