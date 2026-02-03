@@ -854,6 +854,40 @@ func TestParseConfigNestedOmitempty(t *testing.T) {
 	}
 }
 
+func TestParseConfigNullablePreservesUserValue(t *testing.T) {
+	userConfig := `{
+		"site_url": "http://localhost:3000",
+		"external_apple_additional_client_ids": "com.example.app"
+	}`
+
+	apiResponse := api.AuthConfigResponse{
+		SiteUrl:                          nullable.NewNullableWithValue("http://localhost:3000"),
+		ExternalAppleAdditionalClientIds: nullable.NewNullNullable[string](),
+	}
+
+	field := jsontypes.NewNormalizedValue(userConfig)
+	result, err := parseConfig(field, apiResponse)
+	if err != nil {
+		t.Fatalf("parseConfig failed: %v", err)
+	}
+
+	var resultMap map[string]any
+	if err := json.Unmarshal([]byte(result.ValueString()), &resultMap); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
+
+	if resultMap["site_url"] != "http://localhost:3000" {
+		t.Errorf("expected site_url to be 'http://localhost:3000', got %v", resultMap["site_url"])
+	}
+
+	// external_apple_additional_client_ids should preserve the user's value
+	// because the API returned null for it
+	if resultMap["external_apple_additional_client_ids"] != "com.example.app" {
+		t.Errorf("expected external_apple_additional_client_ids to be preserved as 'com.example.app', got %v",
+			resultMap["external_apple_additional_client_ids"])
+	}
+}
+
 func TestAccSettingsResource_WaitsForProjectActive(t *testing.T) {
 	defer gock.OffAll()
 	projectRef := "testproject123"
