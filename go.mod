@@ -1,6 +1,6 @@
 module github.com/supabase/terraform-provider-supabase
 
-go 1.24.10
+go 1.25.6
 
 require (
 	github.com/google/uuid v1.6.0

@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -28,7 +30,7 @@ func NullableToString[T ~string](n nullable.Nullable[T]) tftypes.String {
 	return tftypes.StringNull()
 }
 
-const projectActiveTimeout = 5 * time.Minute
+const defaultWaitTimeout = 5 * time.Minute
 
 var terminalProjectStatuses = []api.V1ProjectWithDatabaseResponseStatus{
 	api.V1ProjectWithDatabaseResponseStatusGOINGDOWN,
@@ -77,7 +79,7 @@ func waitForProjectActive(ctx context.Context, projectRef string, client *api.Cl
 
 			return httpResp.JSON200, status, nil
 		},
-		Timeout: projectActiveTimeout,
+		Timeout: defaultWaitTimeout,
 	}
 
 	_, err := stateConf.WaitForStateContext(ctx)
@@ -88,4 +90,110 @@ func waitForProjectActive(ctx context.Context, projectRef string, client *api.Cl
 		)}
 	}
 	return nil
+}
+
+const (
+	waitForServicesStatusDone    = "WAIT_FOR_SERVICES_STATUS_DONE"
+	waitForServicesStatusPending = "WAIT_FOR_SERVICES_STATUS_PENDING"
+)
+
+var allProjectServices = []api.V1GetServicesHealthParamsServices{api.Auth, api.Db, api.DbPostgresUser, api.PgBouncer, api.Pooler, api.Realtime, api.Rest, api.Storage}
+
+func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses) diag.Diagnostics {
+	stateConf := &retry.StateChangeConf{
+		Timeout: defaultWaitTimeout,
+		Pending: []string{waitForServicesStatusPending},
+		Target:  []string{waitForServicesStatusDone},
+		Refresh: func() (any, string, error) {
+			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{Services: allProjectServices})
+			if err != nil {
+				return nil, "", fmt.Errorf("failed to get health information for project services: %w", err)
+			}
+			if resp.JSON200 == nil {
+				return nil, "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode(), resp.Body)
+			}
+			tflog.Debug(ctx, "Waiting for project services to become active", map[string]any{
+				"project_ref": projectRef,
+				"status":      resp.JSON200,
+			})
+
+			comingupCount := 0
+			var errs []error
+
+			for _, v := range *resp.JSON200 {
+				switch v.Status {
+				case api.UNHEALTHY:
+					err := errorFromServiceErrorDescription(v.Name, v.Error)
+					// errFailedToRetrieveHealth is always transient; poll again to get more information
+					if errors.Is(err, errFailedToRetrieveHealth) {
+						tflog.Debug(ctx, "Retrying a recoverable error", map[string]any{
+							"error":  err,
+							"status": v,
+						})
+						comingupCount++
+						continue
+					}
+					// pooler reports UNHEALTHY: "not found" for the first couple of seconds of provisioning,
+					// so we treat it as COMINGUP
+					if v.Name == api.V1ServiceHealthResponseNamePooler && errors.Is(err, errServiceNotFound) {
+						tflog.Debug(ctx, "Retrying a recoverable error", map[string]any{
+							"error":  err,
+							"status": v,
+						})
+						comingupCount++
+						continue
+					}
+					errs = append(errs, err)
+				case api.COMINGUP:
+					comingupCount++
+				}
+			}
+
+			if err := errors.Join(errs...); err != nil {
+				return nil, "", err
+			}
+
+			if comingupCount > 0 {
+				return nil, waitForServicesStatusPending, nil
+			}
+
+			return resp.JSON200, waitForServicesStatusDone, nil
+		},
+	}
+
+	if _, err := stateConf.WaitForStateContext(ctx); err != nil {
+		return diag.Diagnostics{diag.NewErrorDiagnostic(
+			"Project Services Unhealthy",
+			fmt.Sprintf("Project %s services did not become active within timeout: %s", projectRef, err),
+		)}
+	}
+	return nil
+}
+
+var (
+	errServiceNotFound        = errors.New("not found")
+	errFailedToRetrieveHealth = errors.New("failed to retrieve health information for the service")
+)
+
+func errorFromServiceErrorDescription(service api.V1ServiceHealthResponseName, desc *string) error {
+	if desc == nil {
+		return fmt.Errorf("unhealthy service %s: unknown reason", service)
+	}
+
+	v := struct {
+		Error string `json:"error"`
+	}{}
+	if err := json.Unmarshal([]byte(*desc), &v); err != nil {
+		return fmt.Errorf("unhealthy service %s: %s", service, *desc)
+	}
+
+	if v.Error == "not found" {
+		return fmt.Errorf("unhealthy service %s: %w", service, errServiceNotFound)
+	}
+
+	if v.Error == fmt.Sprintf("Failed to retrieve project's %s service health", service) {
+		return fmt.Errorf("unhealthy service %s: %w", service, errFailedToRetrieveHealth)
+	}
+
+	return fmt.Errorf("unhealthy service %s: %s", service, v.Error)
 }

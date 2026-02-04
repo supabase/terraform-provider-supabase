@@ -23,6 +23,17 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
+var allServicesHealthy = []api.V1ServiceHealthResponse{
+	{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+	{Name: api.V1ServiceHealthResponseNameDb, Status: api.ACTIVEHEALTHY, Healthy: true},
+	{Name: api.V1ServiceHealthResponseNameDbPostgresUser, Status: api.ACTIVEHEALTHY, Healthy: true},
+	{Name: api.V1ServiceHealthResponseNamePgBouncer, Status: api.ACTIVEHEALTHY, Healthy: true},
+	{Name: api.V1ServiceHealthResponseNamePooler, Status: api.ACTIVEHEALTHY, Healthy: true},
+	{Name: api.V1ServiceHealthResponseNameRealtime, Status: api.ACTIVEHEALTHY, Healthy: true},
+	{Name: api.V1ServiceHealthResponseNameRest, Status: api.ACTIVEHEALTHY, Healthy: true},
+	{Name: api.V1ServiceHealthResponseNameStorage, Status: api.ACTIVEHEALTHY, Healthy: true},
+}
+
 func TestAccSettingsResource(t *testing.T) {
 	defer gock.OffAll()
 	projectStatusResponse := api.V1ProjectWithDatabaseResponse{
@@ -45,6 +56,10 @@ func TestAccSettingsResource(t *testing.T) {
 		AddMatcher(exactPathMatcher).
 		Reply(http.StatusOK).
 		JSON(projectStatusResponse)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/health").
+		Reply(http.StatusOK).
+		JSON(allServicesHealthy)
 
 	// Step 1: create
 	gock.New("https://api.supabase.com").
@@ -252,6 +267,10 @@ func TestAccSettingsResource(t *testing.T) {
 			},
 		})
 	// Step 3: update
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/health").
+		Reply(http.StatusOK).
+		JSON(allServicesHealthy)
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
 		Reply(http.StatusOK).
@@ -514,6 +533,10 @@ func TestAccSettingsResource_SmtpPass(t *testing.T) {
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/health").
+		Reply(http.StatusOK).
+		JSON(allServicesHealthy)
+	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
@@ -590,6 +613,10 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/health").
+		Reply(http.StatusOK).
+		JSON(allServicesHealthy)
+	gock.New("https://api.supabase.com").
 		Get("/v1/projects/" + projectRef + "/config/database/postgres").
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{})
@@ -658,6 +685,10 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 			Id:     projectRef,
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/health").
+		Reply(http.StatusOK).
+		JSON(allServicesHealthy)
 	gock.New("https://api.supabase.com").
 		Post("/v1/projects/" + projectRef + "/network-restrictions").
 		Reply(http.StatusCreated).
@@ -907,6 +938,10 @@ func TestAccSettingsResource_WaitsForProjectActive(t *testing.T) {
 			Id:     projectRef,
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/" + projectRef + "/health").
+		Reply(http.StatusOK).
+		JSON(allServicesHealthy)
 
 	gock.New("https://api.supabase.com").
 		Post("/v1/projects/" + projectRef + "/network-restrictions").
