@@ -117,8 +117,9 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "Controls whether `anon` and `service_role` JWT-based api keys should be enabled. " +
 					"Please note: these keys are no longer recommended " +
 					"([more information here](https://supabase.com/docs/guides/api/api-keys#why-are-anon-and-servicerole-jwt-based-keys-no-longer-recommended)).",
-				Optional: true,
-				Computed: true,
+				DeprecationMessage: "Deprecated. This field will be removed once the transition to publishable and secret keys is complete.",
+				Optional:           true,
+				Computed:           true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
