@@ -25,14 +25,27 @@ func TestAccProjectResource(t *testing.T) {
 			Id:   "mayuaycdtijbctgqbycg",
 			Name: "foo",
 		})
+	// Polling for ACTIVE status after create
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
-		JSON(api.V1ProjectResponse{
+		JSON(api.V1ProjectWithDatabaseResponse{
 			Id:             "mayuaycdtijbctgqbycg",
 			Name:           "foo",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	// readProject after create
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "foo",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
@@ -50,14 +63,16 @@ func TestAccProjectResource(t *testing.T) {
 			},
 			"available_addons": []map[string]any{},
 		})
+	// Terraform refresh after create
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
-		JSON(api.V1ProjectResponse{
+		JSON(api.V1ProjectWithDatabaseResponse{
 			Id:             "mayuaycdtijbctgqbycg",
 			Name:           "foo",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
@@ -79,11 +94,12 @@ func TestAccProjectResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
-		JSON(api.V1ProjectResponse{
+		JSON(api.V1ProjectWithDatabaseResponse{
 			Id:             "mayuaycdtijbctgqbycg",
 			Name:           "foo",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
@@ -93,8 +109,8 @@ func TestAccProjectResource(t *testing.T) {
 				{
 					"type": "compute_instance",
 					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
-						"name":  "16XL",
+						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0CiMicro,
+						"name":  "Micro",
 						"price": map[string]any{},
 					},
 				},
@@ -110,14 +126,27 @@ func TestAccProjectResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Patch("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
 		Reply(http.StatusOK)
+	// Polling for ACTIVE status after instance_size update
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
-		JSON(api.V1ProjectResponse{
+		JSON(api.V1ProjectWithDatabaseResponse{
 			Id:             "mayuaycdtijbctgqbycg",
 			Name:           "bar",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	// Terraform refresh after update
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "bar",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
@@ -139,11 +168,12 @@ func TestAccProjectResource(t *testing.T) {
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
 		Reply(http.StatusOK).
-		JSON(api.V1ProjectResponse{
+		JSON(api.V1ProjectWithDatabaseResponse{
 			Id:             "mayuaycdtijbctgqbycg",
 			Name:           "bar",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
