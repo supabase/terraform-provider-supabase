@@ -138,6 +138,11 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
+	resp.Diagnostics.Append(waitForServicesActive(ctx, data.ProjectRef.ValueString(), r.client)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Initial settings are always created together with the project resource.
 	// We can simply apply partial updates here based on the given TF plan.
 	if !data.Database.IsNull() {
@@ -223,6 +228,11 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	resp.Diagnostics.Append(waitForProjectActive(ctx, planData.ProjectRef.ValueString(), r.client)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(waitForServicesActive(ctx, planData.ProjectRef.ValueString(), r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
