@@ -179,6 +179,97 @@
             "description_kind": "markdown"
           }
         },
+        "supabase_edge_function": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "checksum": {
+                "type": "string",
+                "description": "SHA256 checksum of the deployed function bundle (remote)",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "created_at": {
+                "type": "number",
+                "description": "Timestamp when the function was created",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "entrypoint": {
+                "type": "string",
+                "description": "Path to the function entrypoint file",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Function identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "import_map": {
+                "type": "string",
+                "description": "Path to the import map file",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "local_checksum": {
+                "type": "string",
+                "description": "SHA256 checksum of local source files before upload",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the function (defaults to slug if not specified)",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project ref",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "slug": {
+                "type": "string",
+                "description": "URL-friendly identifier for the function",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "static_files": {
+                "type": [
+                  "list",
+                  "string"
+                ],
+                "description": "List of glob patterns for static files to include",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "status": {
+                "type": "string",
+                "description": "Function deployment status",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "updated_at": {
+                "type": "number",
+                "description": "Timestamp when the function was last updated",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "version": {
+                "type": "number",
+                "description": "Currently deployed function version",
+                "description_kind": "markdown",
+                "computed": true
+              }
+            },
+            "description": "Edge Function resource",
+            "description_kind": "markdown"
+          }
+        },
         "supabase_project": {
           "version": 0,
           "block": {
