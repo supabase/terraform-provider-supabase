@@ -4,10 +4,11 @@
 package provider
 
 import (
+	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
@@ -36,6 +37,11 @@ func TestAccProjectResource(t *testing.T) {
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
+	// Disable legacy API keys after create
+	gock.New("https://api.supabase.com").
+		Put("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		MatchParam("enabled", "false").
+		Reply(http.StatusOK)
 	// readProject after create
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg").
@@ -47,6 +53,10 @@ func TestAccProjectResource(t *testing.T) {
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": false})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
 		Reply(http.StatusOK).
@@ -75,6 +85,10 @@ func TestAccProjectResource(t *testing.T) {
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": false})
+	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
 		Reply(http.StatusOK).
 		JSON(map[string]any{
@@ -101,6 +115,10 @@ func TestAccProjectResource(t *testing.T) {
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": false})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
 		Reply(http.StatusOK).
@@ -149,6 +167,78 @@ func TestAccProjectResource(t *testing.T) {
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": false})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"selected_addons": []map[string]any{
+				{
+					"type": "compute_instance",
+					"variant": map[string]any{
+						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
+						"name":  "16XL",
+						"price": map[string]any{},
+					},
+				},
+			},
+			"available_addons": []map[string]any{},
+		})
+	// Step 3: toggle legacy API keys
+	// Plan refresh read
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "bar",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": false})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"selected_addons": []map[string]any{
+				{
+					"type": "compute_instance",
+					"variant": map[string]any{
+						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
+						"name":  "16XL",
+						"price": map[string]any{},
+					},
+				},
+			},
+			"available_addons": []map[string]any{},
+		})
+	// Enable legacy API keys
+	gock.New("https://api.supabase.com").
+		Put("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		MatchParam("enabled", "true").
+		Reply(http.StatusOK)
+	// Post-apply refresh read
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "bar",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": true})
+	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
 		Reply(http.StatusOK).
 		JSON(map[string]any{
@@ -175,6 +265,10 @@ func TestAccProjectResource(t *testing.T) {
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": true})
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
 		Reply(http.StatusOK).
@@ -213,28 +307,42 @@ func TestAccProjectResource(t *testing.T) {
 					resource.TestCheckResourceAttr("supabase_project.test", "name", "foo"),
 					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "micro"),
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaz"),
+					resource.TestCheckResourceAttr("supabase_project.test", "legacy_api_keys_enabled", "false"),
 				),
 			},
 			// Update instance size testing
 			{
-				Config: strings.ReplaceAll(
-					strings.ReplaceAll(
-						strings.ReplaceAll(
-							examples.ProjectResourceConfig,
-							`"micro"`,
-							`"16xlarge"`,
-						),
-						`"foo"`,
-						`"bar"`,
-					),
-					`"barbaz"`,
-					`"barbaznew"`,
-				),
+				Config: projectResourceConfig(ProjectResourceModel{
+					OrganizationId:   types.StringValue("continued-brown-smelt"),
+					Name:             types.StringValue("bar"),
+					DatabasePassword: types.StringValue("barbaznew"),
+					Region:           types.StringValue("us-east-1"),
+					InstanceSize:     types.StringValue("16xlarge"),
+				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
 					resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
 					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),
+					resource.TestCheckResourceAttr("supabase_project.test", "legacy_api_keys_enabled", "false"),
+				),
+			},
+			// Toggle legacy API keys
+			{
+				Config: projectResourceConfig(ProjectResourceModel{
+					OrganizationId:       types.StringValue("continued-brown-smelt"),
+					Name:                 types.StringValue("bar"),
+					DatabasePassword:     types.StringValue("barbaznew"),
+					Region:               types.StringValue("us-east-1"),
+					InstanceSize:         types.StringValue("16xlarge"),
+					LegacyApiKeysEnabled: types.BoolValue(true),
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
+					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
+					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),
+					resource.TestCheckResourceAttr("supabase_project.test", "legacy_api_keys_enabled", "true"),
 				),
 			},
 			// ImportState testing
@@ -249,4 +357,25 @@ func TestAccProjectResource(t *testing.T) {
 			// Delete testing automatically occurs in TestCase
 		},
 	})
+}
+
+func projectResourceConfig(p ProjectResourceModel) string {
+	rv := fmt.Sprintf(`resource "supabase_project" "test" {
+  organization_id         = "%s"
+  name                    = "%s"
+  database_password       = "%s"
+  region                  = "%s"
+  instance_size           = "%s"
+`,
+		p.OrganizationId.ValueString(),
+		p.Name.ValueString(),
+		p.DatabasePassword.ValueString(),
+		p.Region.ValueString(),
+		p.InstanceSize.ValueString(),
+	)
+	if !p.LegacyApiKeysEnabled.IsNull() {
+		rv += fmt.Sprintf("\n  legacy_api_keys_enabled = %t", p.LegacyApiKeysEnabled.ValueBool())
+	}
+
+	return rv + "\n}"
 }

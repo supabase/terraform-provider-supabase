@@ -294,6 +294,14 @@
                 "optional": true,
                 "computed": true
               },
+              "legacy_api_keys_enabled": {
+                "type": "bool",
+                "description": "Controls whether `anon` and `service_role` JWT-based api keys should be enabled. Please note: these keys are no longer recommended ([more information here](https://supabase.com/docs/guides/api/api-keys#why-are-anon-and-servicerole-jwt-based-keys-no-longer-recommended)).",
+                "description_kind": "markdown",
+                "deprecated": true,
+                "optional": true,
+                "computed": true
+              },
               "name": {
                 "type": "string",
                 "description": "Name of the project",
