@@ -97,7 +97,11 @@ const (
 	waitForServicesStatusPending = "WAIT_FOR_SERVICES_STATUS_PENDING"
 )
 
-var allProjectServices = []api.V1GetServicesHealthParamsServices{api.Auth, api.Db, api.DbPostgresUser, api.PgBouncer, api.Pooler, api.Realtime, api.Rest, api.Storage}
+var allProjectServices = []api.V1GetServicesHealthParamsServices{
+	api.V1GetServicesHealthParamsServicesAuth, api.V1GetServicesHealthParamsServicesDb, api.V1GetServicesHealthParamsServicesDbPostgresUser,
+	api.V1GetServicesHealthParamsServicesPgBouncer, api.V1GetServicesHealthParamsServicesPooler, api.V1GetServicesHealthParamsServicesRealtime,
+	api.V1GetServicesHealthParamsServicesRest, api.V1GetServicesHealthParamsServicesStorage,
+}
 
 func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses) diag.Diagnostics {
 	stateConf := &retry.StateChangeConf{
