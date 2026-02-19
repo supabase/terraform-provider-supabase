@@ -12,8 +12,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -41,15 +41,15 @@ type SettingsResource struct {
 
 // SettingsResourceModel describes the resource data model.
 type SettingsResourceModel struct {
-	ProjectRef types.String          `tfsdk:"project_ref"`
-	Database   jsontypes.Normalized  `tfsdk:"database"`
-	Pooler     jsontypes.Normalized  `tfsdk:"pooler"`
-	Network    jsontypes.Normalized  `tfsdk:"network"`
-	Storage    jsontypes.Normalized  `tfsdk:"storage"`
-	Auth       jsontypes.Normalized  `tfsdk:"auth"`
-	Api        jsontypes.Normalized  `tfsdk:"api"`
+	ProjectRef types.String         `tfsdk:"project_ref"`
+	Database   jsontypes.Normalized `tfsdk:"database"`
+	Pooler     jsontypes.Normalized `tfsdk:"pooler"`
+	Network    jsontypes.Normalized `tfsdk:"network"`
+	Storage    jsontypes.Normalized `tfsdk:"storage"`
+	Auth       jsontypes.Normalized `tfsdk:"auth"`
+	Api        jsontypes.Normalized `tfsdk:"api"`
 	Id         types.String         `tfsdk:"id"`
-	Timeouts   timeouts.Value        `tfsdk:"timeouts"`
+	Timeouts   timeouts.Value       `tfsdk:"timeouts"`
 }
 
 func (r *SettingsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -65,7 +65,7 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 			"timeouts": timeouts.Block(ctx, timeouts.Opts{
 				Create: true,
 				Update: true,
-				Delete: true,
+				Delete: false,
 			}),
 		},
 		Attributes: map[string]schema.Attribute{
