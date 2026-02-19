@@ -533,7 +533,7 @@ func TestAccSettingsResource_Timeouts(t *testing.T) {
 	projectStatusResponse := api.V1ProjectWithDatabaseResponse{
 		Id:             "mayuaycdtijbctgqbycg",
 		Name:           "test",
-		OrganizationId:  "test-org",
+		OrganizationId: "test-org",
 		Region:         "us-east-1",
 		Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 	}
@@ -555,6 +555,7 @@ func TestAccSettingsResource_Timeouts(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
 
+	// Create and post-apply refresh
 	gock.New("https://api.supabase.com").
 		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
 		Reply(http.StatusOK).
