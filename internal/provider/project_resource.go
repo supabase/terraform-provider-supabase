@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -38,13 +40,14 @@ type ProjectResource struct {
 
 // ProjectResourceModel describes the resource data model.
 type ProjectResourceModel struct {
-	OrganizationId       types.String `tfsdk:"organization_id"`
-	Name                 types.String `tfsdk:"name"`
-	DatabasePassword     types.String `tfsdk:"database_password"`
-	Region               types.String `tfsdk:"region"`
-	InstanceSize         types.String `tfsdk:"instance_size"`
-	Id                   types.String `tfsdk:"id"`
-	LegacyApiKeysEnabled types.Bool   `tfsdk:"legacy_api_keys_enabled"`
+	OrganizationId       types.String   `tfsdk:"organization_id"`
+	Name                 types.String   `tfsdk:"name"`
+	DatabasePassword     types.String   `tfsdk:"database_password"`
+	Region               types.String   `tfsdk:"region"`
+	InstanceSize         types.String   `tfsdk:"instance_size"`
+	Id                   types.String   `tfsdk:"id"`
+	LegacyApiKeysEnabled types.Bool     `tfsdk:"legacy_api_keys_enabled"`
+	Timeouts             timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -55,6 +58,13 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Project resource",
 
+		Blocks: map[string]schema.Block{
+			"timeouts": timeouts.Block(ctx, timeouts.Opts{
+				Create: true,
+				Update: true,
+				Delete: true,
+			}),
+		},
 		Attributes: map[string]schema.Attribute{
 			"organization_id": schema.StringAttribute{
 				MarkdownDescription: "Organization slug (found in the Supabase dashboard URL or organization settings)",
@@ -155,8 +165,17 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	createTimeout, diags := data.Timeouts.Create(ctx, defaultWaitTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	tflog.Trace(ctx, "create project")
-	resp.Diagnostics.Append(createProject(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(createProject(ctx, &data, r.client, createTimeout)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -207,6 +226,15 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	updateTimeout, diags := plan.Timeouts.Update(ctx, defaultWaitTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// required attributes
 	if !plan.Name.Equal(state.Name) {
 		resp.Diagnostics.Append(updateName(ctx, &plan, r.client)...)
@@ -225,7 +253,7 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	// optional attributes
 	if !plan.InstanceSize.IsNull() && !plan.InstanceSize.Equal(state.InstanceSize) {
-		resp.Diagnostics.Append(updateInstanceSize(ctx, &plan, r.client)...)
+		resp.Diagnostics.Append(updateInstanceSize(ctx, &plan, r.client, updateTimeout)...)
 	}
 	if !plan.LegacyApiKeysEnabled.IsNull() && !plan.LegacyApiKeysEnabled.Equal(state.LegacyApiKeysEnabled) {
 		resp.Diagnostics.Append(updateLegacyAPIKeysEnabled(ctx, &plan, r.client)...)
@@ -246,6 +274,15 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
+	deleteTimeout, diags := data.Timeouts.Delete(ctx, defaultWaitTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
 	resp.Diagnostics.Append(deleteProject(ctx, &data, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -261,7 +298,7 @@ func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportSt
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
 	regionSelection := api.V1CreateProjectBodyRegionSelection0{
 		Type: api.Specific,
 		Code: api.V1CreateProjectBodyRegionSelection0Code(data.Region.ValueString()),
@@ -298,7 +335,7 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 	data.Id = types.StringValue(httpResp.JSON201.Id)
 
 	// Wait for project to be fully provisioned
-	if diags := waitForProjectActive(ctx, data.Id.ValueString(), client); diags.HasError() {
+	if diags := waitForProjectActive(ctx, data.Id.ValueString(), client, timeout); diags.HasError() {
 		return diags
 	}
 
@@ -394,7 +431,7 @@ func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.
 	return nil
 }
 
-func updateInstanceSize(ctx context.Context, plan *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+func updateInstanceSize(ctx context.Context, plan *ProjectResourceModel, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
 	addon := api.ApplyProjectAddonBody_AddonVariant{}
 	variant := api.ApplyProjectAddonBodyAddonVariant0("ci_" + plan.InstanceSize.ValueString())
 	if err := addon.FromApplyProjectAddonBodyAddonVariant0(variant); err != nil {
@@ -420,7 +457,7 @@ func updateInstanceSize(ctx context.Context, plan *ProjectResourceModel, client 
 	}
 
 	// Wait for project to be active after resize
-	if diags := waitForProjectActive(ctx, plan.Id.ValueString(), client); diags.HasError() {
+	if diags := waitForProjectActive(ctx, plan.Id.ValueString(), client, timeout); diags.HasError() {
 		return diags
 	}
 

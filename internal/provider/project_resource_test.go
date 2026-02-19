@@ -6,6 +6,7 @@ package provider
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -378,4 +379,134 @@ func projectResourceConfig(p ProjectResourceModel) string {
 	}
 
 	return rv + "\n}"
+}
+
+// projectResourceConfigWithTimeouts returns a project resource config string with a timeouts block.
+func projectResourceConfigWithTimeouts(p ProjectResourceModel) string {
+	s := projectResourceConfig(p)
+	idx := strings.LastIndex(s, "}")
+	return s[:idx] + `
+  timeouts {
+    create = "30m"
+    update = "30m"
+    delete = "30m"
+  }
+` + s[idx:]
+}
+
+func TestAccProjectResource_Timeouts(t *testing.T) {
+	defer gock.OffAll()
+	// Create
+	gock.New("https://api.supabase.com").
+		Post("/v1/projects").
+		Reply(http.StatusCreated).
+		JSON(api.V1ProjectResponse{
+			Id:   "mayuaycdtijbctgqbycg",
+			Name: "foo",
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "foo",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	gock.New("https://api.supabase.com").
+		Put("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		MatchParam("enabled", "false").
+		Reply(http.StatusOK)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "foo",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": false})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"selected_addons": []map[string]any{
+				{
+					"type": "compute_instance",
+					"variant": map[string]any{
+						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0CiMicro,
+						"name":  "Micro",
+						"price": map[string]any{},
+					},
+				},
+			},
+			"available_addons": []map[string]any{},
+		})
+	// Post-apply refresh: read project, legacy keys, addons
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:             "mayuaycdtijbctgqbycg",
+			Name:           "foo",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": false})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"selected_addons": []map[string]any{
+				{
+					"type": "compute_instance",
+					"variant": map[string]any{
+						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0CiMicro,
+						"name":  "Micro",
+						"price": map[string]any{},
+					},
+				},
+			},
+			"available_addons": []map[string]any{},
+		})
+	// Delete
+	gock.New("https://api.supabase.com").
+		Delete("/v1/projects/mayuaycdtijbctgqbycg").
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           1000,
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: projectResourceConfigWithTimeouts(ProjectResourceModel{
+					OrganizationId:       types.StringValue("continued-brown-smelt"),
+					Name:                 types.StringValue("foo"),
+					DatabasePassword:     types.StringValue("barbaz"),
+					Region:               types.StringValue("us-east-1"),
+					InstanceSize:         types.StringValue("micro"),
+					LegacyApiKeysEnabled: types.BoolValue(false),
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "name", "foo"),
+				),
+			},
+		},
+	})
 }

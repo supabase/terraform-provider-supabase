@@ -507,6 +507,191 @@ func TestAccSettingsResource(t *testing.T) {
 	})
 }
 
+// settingsConfigWithTimeouts returns the default settings resource config with a timeouts block.
+func settingsConfigWithTimeouts() string {
+	s := examples.SettingsResourceConfig
+	idx := strings.LastIndex(s, "}")
+	return s[:idx] + `
+  timeouts {
+    create = "30m"
+    update = "30m"
+    delete = "30m"
+  }
+` + s[idx:]
+}
+
+func TestAccSettingsResource_Timeouts(t *testing.T) {
+	defer gock.OffAll()
+	projectStatusResponse := api.V1ProjectWithDatabaseResponse{
+		Id:             "mayuaycdtijbctgqbycg",
+		Name:           "test",
+		OrganizationId:  "test-org",
+		Region:         "us-east-1",
+		Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+	}
+	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
+		return req.URL.Path == "/v1/projects/mayuaycdtijbctgqbycg", nil
+	}
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		AddMatcher(exactPathMatcher).
+		Reply(http.StatusOK).
+		JSON(projectStatusResponse)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg").
+		AddMatcher(exactPathMatcher).
+		Reply(http.StatusOK).
+		JSON(projectStatusResponse)
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/health").
+		Reply(http.StatusOK).
+		JSON(allServicesHealthy)
+
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("10s"),
+		})
+	gock.New("https://api.supabase.com").
+		Put("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("10s"),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
+				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Post("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusCreated).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
+				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           1000,
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           1000,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+		})
+	// Post-apply refresh: read configs again
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+		Reply(http.StatusOK).
+		JSON(api.PostgresConfigResponse{
+			StatementTimeout: Ptr("10s"),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{
+				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
+				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
+			},
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{
+			DbExtraSearchPath: "public,extensions",
+			DbSchema:          "public,storage,graphql_public",
+			MaxRows:           1000,
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+		Reply(http.StatusOK).
+		JSON(api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		})
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"fileSizeLimit": 52428800,
+			"features": map[string]any{
+				"imageTransformation": map[string]any{"enabled": true},
+				"s3Protocol":          map[string]any{"enabled": false},
+			},
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: settingsConfigWithTimeouts(),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.production", "id", "mayuaycdtijbctgqbycg"),
+				),
+			},
+		},
+	})
+}
+
 func unmarshalStateAttr(state *terraform.InstanceState, attr string) (map[string]any, error) {
 	raw, ok := state.Attributes[attr]
 	if !ok {
