@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/supabase/cli/pkg/api"
 	"gopkg.in/h2non/gock.v1"
@@ -34,7 +35,7 @@ func TestWaitForProjectActive_TerminalState(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForProjectActive(t.Context(), testProjectRef, client)
+	diags := waitForProjectActive(t.Context(), testProjectRef, client, 5*time.Minute)
 
 	if !diags.HasError() {
 		t.Errorf("Expected error for terminal state, got success")
@@ -68,7 +69,7 @@ func TestWaitForServicesActive_AllHealthy(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForServicesActive(t.Context(), testProjectRef, client)
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
 	if diags.HasError() {
 		t.Errorf("Expected success, got errors: %v", diags)
 	}
@@ -101,7 +102,7 @@ func TestWaitForServicesActive_UnhealthyFails(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForServicesActive(t.Context(), testProjectRef, client)
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
 	if !diags.HasError() {
 		t.Error("Expected error for unhealthy service, got success")
 	}
@@ -205,7 +206,7 @@ func TestWaitForServicesActive_ContinuesWhenPostgrestConfigFails(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForServicesActive(t.Context(), testProjectRef, client)
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
 	if diags.HasError() {
 		t.Errorf("Expected success when PostgREST config fails but services are healthy, got errors: %v", diags)
 	}
@@ -246,7 +247,7 @@ func TestWaitForServicesActive_SkipsRestWhenDataApiDisabled(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForServicesActive(t.Context(), testProjectRef, client)
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
 	if diags.HasError() {
 		t.Errorf("Expected success when data API is disabled, got errors: %v", diags)
 	}
@@ -302,7 +303,7 @@ func TestWaitForServicesActive_TransientErrorsKeepsPolling(t *testing.T) {
 			t.Fatalf("Failed to create client: %v", err)
 		}
 
-		diags := waitForServicesActive(t.Context(), testProjectRef, client)
+		diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
 		if diags.HasError() {
 			t.Errorf("Expected success, got errors: %v", diags)
 		}
