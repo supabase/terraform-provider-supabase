@@ -29,7 +29,7 @@ terraform {
 
 # Alternatively, you can set the env var for SUPABASE_ACCESS_TOKEN
 provider "supabase" {
-  access_token = file("${path.module}/access-token")
+  access_token = trimspace(file("${path.module}/access-token"))
 }
 
 # Define a linked project variable as user input
