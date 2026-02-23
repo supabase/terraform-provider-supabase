@@ -30,6 +30,10 @@ linters:
       - text: 'ST1003:'
         linters:
           - staticcheck
+      - text: 'G101:'
+        linters:
+          - gosec
+        path: '_test\.go$'
     presets:
       - comments
       - common-false-positives
