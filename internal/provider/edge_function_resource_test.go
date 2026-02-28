@@ -12,6 +12,7 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -841,6 +842,181 @@ resource "supabase_edge_function" "collision" {
 						return nil
 					},
 				),
+			},
+		},
+	})
+}
+
+func TestAccEdgeFunctionResource_ImportSlugDotDot(t *testing.T) {
+	// Slug ".." should be rejected by validation before any API call.
+	// No gock mocks needed since it fails at the slug validation stage.
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "supabase_edge_function" "test" {
+  project_ref = "proj"
+  slug        = "x"
+  entrypoint  = "x.ts"
+}
+`,
+				ResourceName:      "supabase_edge_function.test",
+				ImportState:       true,
+				ImportStateId:     "proj/..",
+				ExpectError:       regexp.MustCompile(`path separators or traversal segments`),
+				ImportStateVerify: false,
+			},
+		},
+	})
+}
+
+func TestAccEdgeFunctionResource_ImportSlugDot(t *testing.T) {
+	// Slug "." should be rejected by validation before any API call.
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "supabase_edge_function" "test" {
+  project_ref = "proj"
+  slug        = "x"
+  entrypoint  = "x.ts"
+}
+`,
+				ResourceName:      "supabase_edge_function.test",
+				ImportState:       true,
+				ImportStateId:     "proj/.",
+				ExpectError:       regexp.MustCompile(`path separators or traversal segments`),
+				ImportStateVerify: false,
+			},
+		},
+	})
+}
+
+func TestAccEdgeFunctionResource_ImportDotDotEntrypoint(t *testing.T) {
+	// When the bundle metadata returns entrypointPath="..", downloadFunctionSource
+	// should reject it with the "invalid entrypoint path" error.
+	// ImportState gracefully degrades to metadata-only import with a warning.
+	defer gock.OffAll()
+
+	testFunctionID := uuid.New().String()
+	projectRef := "mayuaycdtijbctgqbycg"
+	functionSlug := "dotdot-ep"
+
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	entrypointPath := filepath.Join(tmpDir, "deploy-src", "index.ts")
+	if err := os.MkdirAll(filepath.Dir(entrypointPath), 0o755); err != nil {
+		t.Fatalf("Failed to create deploy-src dir: %v", err)
+	}
+	if err := os.WriteFile(entrypointPath, []byte(`Deno.serve((req) => new Response("Hello"));`), 0o600); err != nil {
+		t.Fatalf("Failed to write entrypoint file: %v", err)
+	}
+
+	testConfig := fmt.Sprintf(`
+resource "supabase_edge_function" "dotdot" {
+  project_ref = "%s"
+  slug        = "%s"
+  entrypoint  = "%s"
+}
+`, projectRef, functionSlug, entrypointPath)
+
+	createdAt := int64(1234567890)
+	updatedAt := int64(1234567890)
+
+	gock.New("https://api.supabase.com").
+		Post(fmt.Sprintf("/v1/projects/%s/functions/deploy", projectRef)).
+		Reply(http.StatusCreated).
+		JSON(api.DeployFunctionResponse{
+			Id:        testFunctionID,
+			Slug:      functionSlug,
+			Name:      functionSlug,
+			Status:    api.DeployFunctionResponseStatusACTIVE,
+			Version:   1,
+			CreatedAt: &createdAt,
+			UpdatedAt: &updatedAt,
+		})
+
+	gock.New("https://api.supabase.com").
+		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+		Reply(http.StatusOK).
+		JSON(api.FunctionSlugResponse{
+			Id:        testFunctionID,
+			Slug:      functionSlug,
+			Name:      functionSlug,
+			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Version:   1,
+			CreatedAt: 1234567890,
+			UpdatedAt: 1234567890,
+		})
+
+	gock.New("https://api.supabase.com").
+		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+		Reply(http.StatusOK).
+		JSON(api.FunctionSlugResponse{
+			Id:        testFunctionID,
+			Slug:      functionSlug,
+			Name:      functionSlug,
+			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Version:   1,
+			CreatedAt: 1234567890,
+			UpdatedAt: 1234567890,
+		})
+
+	gock.New("https://api.supabase.com").
+		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+		Reply(http.StatusOK).
+		JSON(api.FunctionSlugResponse{
+			Id:        testFunctionID,
+			Slug:      functionSlug,
+			Name:      functionSlug,
+			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Version:   1,
+			CreatedAt: 1234567890,
+			UpdatedAt: 1234567890,
+		})
+
+	mockMultipartBodyResponse(t, projectRef, functionSlug, "..", map[string]string{
+		"..": `Deno.serve((req) => new Response("Hello"));`,
+	})
+
+	gock.New("https://api.supabase.com").
+		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+		Reply(http.StatusOK).
+		JSON(api.FunctionSlugResponse{
+			Id:        testFunctionID,
+			Slug:      functionSlug,
+			Name:      functionSlug,
+			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Version:   1,
+			CreatedAt: 1234567890,
+			UpdatedAt: 1234567890,
+		})
+
+	gock.New("https://api.supabase.com").
+		Delete(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function.dotdot", "id", testFunctionID),
+				),
+			},
+			{
+				ResourceName:            "supabase_edge_function.dotdot",
+				ImportState:             true,
+				ImportStateId:           fmt.Sprintf("%s/%s", projectRef, functionSlug),
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
 			},
 		},
 	})

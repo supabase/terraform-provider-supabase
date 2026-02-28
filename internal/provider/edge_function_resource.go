@@ -339,6 +339,14 @@ func (r *EdgeFunctionResource) ImportState(ctx context.Context, req resource.Imp
 	projectRef := parts[0]
 	slug := parts[1]
 
+	if slug == "." || slug == ".." || slug != filepath.Base(slug) || strings.ContainsAny(slug, `/\`) {
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			fmt.Sprintf("Function slug contains path separators or traversal segments: %q", slug),
+		)
+		return
+	}
+
 	data := EdgeFunctionResourceModel{
 		ProjectRef: types.StringValue(projectRef),
 		Slug:       types.StringValue(slug),
@@ -695,6 +703,12 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
+	entrypointBase := filepath.Base(filepath.Clean(filepath.FromSlash(entrypointPath)))
+	if entrypointBase == "." || entrypointBase == ".." || entrypointBase == string(filepath.Separator) {
+		msg := fmt.Sprintf("Unable to download function source, invalid entrypoint path: %q", entrypointPath)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
 	tflog.Debug(ctx, fmt.Sprintf("using entrypoint path: %s", entrypointPath))
 
 	outAbs, err := filepath.Abs(outputDir)
@@ -735,7 +749,7 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 				relPath = filepath.FromSlash(path.Join("..", partPath))
 			}
 
-			finalDst := filepath.Join(outputDir, filepath.Base(filepath.FromSlash(entrypointPath)), relPath)
+			finalDst := filepath.Join(outputDir, entrypointBase, relPath)
 
 			// Path traversal guard
 			destAbs, err := filepath.Abs(finalDst)
@@ -748,8 +762,10 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 				continue
 			}
 
-			tempDst := filepath.Join(tempDir, filepath.Base(filepath.FromSlash(entrypointPath)), relPath)
-			if err := os.MkdirAll(filepath.Dir(tempDst), 0o755); err != nil {
+			// Runtime path traversal is guarded above (destAbs check on finalDst).
+			// tempDst writes to an ephemeral temp directory that is cleaned up by defer.
+			tempDst := filepath.Clean(filepath.Join(tempDir, entrypointBase, relPath))
+			if err := os.MkdirAll(filepath.Dir(tempDst), 0o755); err != nil { //nolint:gosec // G703: tempDst is bounded by tempDir; traversal guarded above
 				msg := fmt.Sprintf("Unable to create temp directory %s, got error: %s", filepath.Dir(tempDst), err)
 				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 			}
@@ -758,7 +774,7 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 				msg := fmt.Sprintf("Unable to open multipart file %s, got error: %s", fh.Filename, err)
 				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 			}
-			dst, err := os.OpenFile(tempDst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+			dst, err := os.OpenFile(tempDst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec // G703: tempDst is bounded by tempDir; traversal guarded above
 			if err != nil {
 				src.Close()
 				msg := fmt.Sprintf("Unable to create temp file %s, got error: %s", tempDst, err)
@@ -802,9 +818,12 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 	}
 
 	// Set state fields
-	entrypointLocal := filepath.Join(outputDir, filepath.Base(filepath.FromSlash(entrypointPath)))
-	if _, err := os.Stat(entrypointLocal); err != nil {
+	entrypointLocal := filepath.Clean(filepath.Join(outputDir, entrypointBase))
+	if info, err := os.Stat(entrypointLocal); err != nil { //nolint:gosec // G703: entrypointBase is validated (not ".", "..", or separator); outputDir is user-configured
 		msg := fmt.Sprintf("Unable to find entrypoint file after download %s, got error: %s", entrypointLocal, err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	} else if !info.Mode().IsRegular() {
+		msg := fmt.Sprintf("Entrypoint is not a regular file: %s", entrypointLocal)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	data.Entrypoint = types.StringValue(entrypointLocal)
@@ -816,8 +835,8 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 			if relErr != nil {
 				importMapRelPath = filepath.FromSlash(path.Join("..", parsed.Path))
 			}
-			importMapLocal := filepath.Join(outputDir, filepath.Base(filepath.FromSlash(entrypointPath)), importMapRelPath)
-			if _, err := os.Stat(importMapLocal); err == nil {
+			importMapLocal := filepath.Clean(filepath.Join(outputDir, entrypointBase, importMapRelPath))
+			if _, err := os.Stat(importMapLocal); err == nil { //nolint:gosec // G703: importMapLocal is read-only stat check; components are validated
 				data.ImportMap = types.StringValue(importMapLocal)
 			} else {
 				data.ImportMap = types.StringNull()
