@@ -10,15 +10,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
+	tfpath "github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
@@ -52,7 +57,7 @@ func (m localChecksumPlanModifier) PlanModifyString(ctx context.Context, req pla
 	}
 
 	var entrypoint types.String
-	diags := req.Plan.GetAttribute(ctx, path.Root("entrypoint"), &entrypoint)
+	diags := req.Plan.GetAttribute(ctx, tfpath.Root("entrypoint"), &entrypoint)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -63,14 +68,14 @@ func (m localChecksumPlanModifier) PlanModifyString(ctx context.Context, req pla
 	}
 
 	var importMap types.String
-	diags = req.Plan.GetAttribute(ctx, path.Root("import_map"), &importMap)
+	diags = req.Plan.GetAttribute(ctx, tfpath.Root("import_map"), &importMap)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	var staticFiles types.List
-	diags = req.Plan.GetAttribute(ctx, path.Root("static_files"), &staticFiles)
+	diags = req.Plan.GetAttribute(ctx, tfpath.Root("static_files"), &staticFiles)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -121,6 +126,25 @@ type functionMetadata struct {
 	Name           string   `json:"name"`
 	ImportMapPath  *string  `json:"import_map_path,omitempty"`
 	StaticPatterns []string `json:"static_patterns,omitempty"`
+}
+
+type bundleMetadata struct {
+	EntrypointPath string `json:"deno2_entrypoint_path,omitempty"`
+}
+
+func getPartPath(header textproto.MIMEHeader) string {
+	if relPath := header.Get("Supabase-Path"); relPath != "" {
+		return relPath
+	}
+	cd := header.Get("Content-Disposition")
+	if cd == "" {
+		return ""
+	}
+	_, params, err := mime.ParseMediaType(cd)
+	if err != nil {
+		return ""
+	}
+	return params["filename"]
 }
 
 func (r *EdgeFunctionResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -315,27 +339,73 @@ func (r *EdgeFunctionResource) ImportState(ctx context.Context, req resource.Imp
 	projectRef := parts[0]
 	slug := parts[1]
 
+	if slug == "." || slug == ".." || slug != filepath.Base(slug) || strings.ContainsAny(slug, `/\`) {
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			fmt.Sprintf("Function slug contains path separators or traversal segments: %q", slug),
+		)
+		return
+	}
+
 	data := EdgeFunctionResourceModel{
 		ProjectRef: types.StringValue(projectRef),
 		Slug:       types.StringValue(slug),
 	}
 
-	found, diags := readEdgeFunction(ctx, &data, r.client)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	httpResp, err := r.client.V1GetAFunctionWithResponse(ctx, projectRef, slug)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error",
+			fmt.Sprintf("Unable to read edge function, got error: %s", err))
 		return
 	}
 
-	if !found {
-		resp.Diagnostics.AddError(
-			"Resource Not Found",
-			fmt.Sprintf("Edge function %s/%s does not exist", projectRef, slug),
-		)
+	if httpResp.StatusCode() == http.StatusNotFound {
+		resp.Diagnostics.AddError("Resource Not Found",
+			fmt.Sprintf("Edge function %s/%s does not exist", projectRef, slug))
 		return
 	}
 
-	data.Entrypoint = types.StringNull()
-	data.ImportMap = types.StringNull()
+	if httpResp.JSON200 == nil {
+		resp.Diagnostics.AddError("Client Error",
+			fmt.Sprintf("Unable to read edge function, got status %d: %s", httpResp.StatusCode(), httpResp.Body))
+		return
+	}
+
+	result := httpResp.JSON200
+	data.Id = types.StringValue(result.Id)
+	data.Name = types.StringValue(result.Name)
+	data.Version = types.Int64Value(int64(result.Version))
+	data.Status = types.StringValue(string(result.Status))
+	if result.EzbrSha256 != nil {
+		data.Checksum = types.StringValue(*result.EzbrSha256)
+	} else {
+		data.Checksum = types.StringNull()
+	}
+	data.CreatedAt = types.Int64Value(result.CreatedAt)
+	data.UpdatedAt = types.Int64Value(result.UpdatedAt)
+
+	outputDir := filepath.Join(".", "supabase", "functions", slug)
+	downloadDiags := downloadFunctionSource(ctx, &data, outputDir, r.client, result.EntrypointPath, result.ImportMapPath)
+	if downloadDiags.HasError() {
+		detail := "unknown error"
+		for _, d := range downloadDiags {
+			if d.Severity() == diag.SeverityError {
+				detail = d.Detail()
+				break
+			}
+		}
+		resp.Diagnostics.Append(diag.NewWarningDiagnostic(
+			"Source Download Unavailable",
+			fmt.Sprintf("Could not download function source code: %s. "+
+				"Import succeeded with metadata only. "+
+				"Use 'supabase functions download' to obtain source files, then update your Terraform config.",
+				detail),
+		))
+		data.Entrypoint = types.StringNull()
+		data.ImportMap = types.StringNull()
+	}
+
+	// Cannot reconstruct from download
 	data.StaticFiles = types.ListNull(types.StringType)
 	data.LocalChecksum = types.StringNull()
 
@@ -509,7 +579,6 @@ func deployEdgeFunction(ctx context.Context, data *EdgeFunctionResourceModel, cl
 	return nil
 }
 
-// Returns (true, nil) if found, (false, nil) if not found (404), or (false, diags) on error.
 func readEdgeFunction(ctx context.Context, data *EdgeFunctionResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
 	projectRef := data.ProjectRef.ValueString()
 	slug := data.Slug.ValueString()
@@ -566,6 +635,220 @@ func deleteEdgeFunction(ctx context.Context, data *EdgeFunctionResourceModel, cl
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
+	return nil
+}
+
+func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel, outputDir string, client *api.ClientWithResponses, apiEntrypointPath, apiImportMapPath *string) diag.Diagnostics {
+	projectRef := data.ProjectRef.ValueString()
+	slug := data.Slug.ValueString()
+
+	httpResp, err := client.V1GetAFunctionBody(ctx, projectRef, slug, func(ctx context.Context, req *http.Request) error {
+		req.Header.Set("Accept", "multipart/form-data")
+		return nil
+	})
+	if err != nil {
+		msg := fmt.Sprintf("Unable to download function body, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(httpResp.Body, 4096))
+		msg := fmt.Sprintf("Unable to download function body, got status %d: %s", httpResp.StatusCode, string(body))
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	mediaType, params, err := mime.ParseMediaType(httpResp.Header.Get("Content-Type"))
+	if err != nil {
+		msg := fmt.Sprintf("Unable to parse Content-Type, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if !strings.HasPrefix(mediaType, "multipart/") {
+		msg := fmt.Sprintf("Unable to download function body, expected multipart response got %s", mediaType)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	mr := multipart.NewReader(httpResp.Body, params["boundary"])
+	form, err := mr.ReadForm(10 << 20)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read multipart form, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	defer func() {
+		_ = form.RemoveAll()
+	}()
+
+	meta := bundleMetadata{}
+	if metaParts, ok := form.Value["metadata"]; ok {
+		for _, part := range metaParts {
+			if err := json.Unmarshal([]byte(part), &meta); err != nil {
+				tflog.Warn(ctx, fmt.Sprintf("unable to parse bundle metadata: %s", err))
+			} else {
+				break
+			}
+		}
+	}
+
+	entrypointPath := meta.EntrypointPath
+
+	if entrypointPath == "" && apiEntrypointPath != nil && *apiEntrypointPath != "" {
+		parsed, err := url.Parse(*apiEntrypointPath)
+		if err == nil {
+			entrypointPath = parsed.Path
+		}
+	}
+
+	if entrypointPath == "" {
+		msg := "Unable to determine entrypoint path from bundle or API metadata"
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	entrypointBase := filepath.Base(filepath.Clean(filepath.FromSlash(entrypointPath)))
+	if entrypointBase == "." || entrypointBase == ".." || entrypointBase == string(filepath.Separator) {
+		msg := fmt.Sprintf("Unable to download function source, invalid entrypoint path: %q", entrypointPath)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	tflog.Debug(ctx, fmt.Sprintf("using entrypoint path: %s", entrypointPath))
+
+	outAbs, err := filepath.Abs(outputDir)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to resolve output directory, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+
+	// Create temp dir in same parent (ensures same filesystem for os.Rename)
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		msg := fmt.Sprintf("Unable to create output directory, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	tempDir, err := os.MkdirTemp(filepath.Dir(outAbs), ".tf-import-*")
+	if err != nil {
+		msg := fmt.Sprintf("Unable to create temp directory, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	defer os.RemoveAll(tempDir)
+
+	type stagedFile struct {
+		tempPath  string
+		finalPath string
+	}
+	var staged []stagedFile
+
+	for _, fileHeaders := range form.File {
+		for _, fh := range fileHeaders {
+			partPath := getPartPath(fh.Header)
+			if partPath == "" {
+				tflog.Debug(ctx, fmt.Sprintf("skipping file with empty path: %s", fh.Filename))
+				continue
+			}
+
+			relPath, err := filepath.Rel(filepath.FromSlash(entrypointPath), filepath.FromSlash(partPath))
+			if err != nil {
+				tflog.Warn(ctx, fmt.Sprintf("filepath.Rel failed for %s: %s, using fallback", partPath, err))
+				relPath = filepath.FromSlash(path.Join("..", partPath))
+			}
+
+			finalDst := filepath.Join(outputDir, entrypointBase, relPath)
+
+			// Path traversal guard
+			destAbs, err := filepath.Abs(finalDst)
+			if err != nil {
+				msg := fmt.Sprintf("Unable to resolve path %s, got error: %s", finalDst, err)
+				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			}
+			if destAbs != outAbs && !strings.HasPrefix(destAbs, outAbs+string(os.PathSeparator)) {
+				tflog.Info(ctx, fmt.Sprintf("skipping file outside output directory: bundle path %s resolved to %s (outside %s)", partPath, finalDst, outputDir))
+				continue
+			}
+
+			// Runtime path traversal is guarded above (destAbs check on finalDst).
+			// tempDst writes to an ephemeral temp directory that is cleaned up by defer.
+			tempDst := filepath.Clean(filepath.Join(tempDir, entrypointBase, relPath))
+			if err := os.MkdirAll(filepath.Dir(tempDst), 0o755); err != nil { //nolint:gosec // G703: tempDst is bounded by tempDir; traversal guarded above
+				msg := fmt.Sprintf("Unable to create temp directory %s, got error: %s", filepath.Dir(tempDst), err)
+				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			}
+			src, err := fh.Open()
+			if err != nil {
+				msg := fmt.Sprintf("Unable to open multipart file %s, got error: %s", fh.Filename, err)
+				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			}
+			dst, err := os.OpenFile(tempDst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec // G703: tempDst is bounded by tempDir; traversal guarded above
+			if err != nil {
+				src.Close()
+				msg := fmt.Sprintf("Unable to create temp file %s, got error: %s", tempDst, err)
+				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			}
+			_, copyErr := io.Copy(dst, src)
+			src.Close()
+			closeErr := dst.Close()
+			if copyErr != nil {
+				msg := fmt.Sprintf("Unable to write temp file %s, got error: %s", tempDst, copyErr)
+				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			}
+			if closeErr != nil {
+				msg := fmt.Sprintf("Unable to close temp file %s, got error: %s", tempDst, closeErr)
+				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			}
+
+			staged = append(staged, stagedFile{tempPath: tempDst, finalPath: finalDst})
+		}
+	}
+
+	// Preflight collision check
+	for _, sf := range staged {
+		if _, err := os.Stat(sf.finalPath); err == nil {
+			msg := fmt.Sprintf("Unable to download function source, existing file would be overwritten: %s. "+
+				"Delete existing files or use 'supabase functions download' to refresh", sf.finalPath)
+			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		}
+	}
+
+	// Move all files from temp to final destination
+	for _, sf := range staged {
+		if err := os.MkdirAll(filepath.Dir(sf.finalPath), 0o755); err != nil {
+			msg := fmt.Sprintf("Unable to create directory %s, got error: %s", filepath.Dir(sf.finalPath), err)
+			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		}
+		if err := os.Rename(sf.tempPath, sf.finalPath); err != nil {
+			msg := fmt.Sprintf("Unable to move file to %s, got error: %s", sf.finalPath, err)
+			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		}
+	}
+
+	// Set state fields
+	entrypointLocal := filepath.Clean(filepath.Join(outputDir, entrypointBase))
+	if info, err := os.Stat(entrypointLocal); err != nil { //nolint:gosec // G703: entrypointBase is validated (not ".", "..", or separator); outputDir is user-configured
+		msg := fmt.Sprintf("Unable to find entrypoint file after download %s, got error: %s", entrypointLocal, err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	} else if !info.Mode().IsRegular() {
+		msg := fmt.Sprintf("Entrypoint is not a regular file: %s", entrypointLocal)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	data.Entrypoint = types.StringValue(entrypointLocal)
+
+	if apiImportMapPath != nil && *apiImportMapPath != "" {
+		parsed, err := url.Parse(*apiImportMapPath)
+		if err == nil && parsed.Path != "" {
+			importMapRelPath, relErr := filepath.Rel(filepath.FromSlash(entrypointPath), filepath.FromSlash(parsed.Path))
+			if relErr != nil {
+				importMapRelPath = filepath.FromSlash(path.Join("..", parsed.Path))
+			}
+			importMapLocal := filepath.Clean(filepath.Join(outputDir, entrypointBase, importMapRelPath))
+			if _, err := os.Stat(importMapLocal); err == nil { //nolint:gosec // G703: importMapLocal is read-only stat check; components are validated
+				data.ImportMap = types.StringValue(importMapLocal)
+			} else {
+				data.ImportMap = types.StringNull()
+			}
+		} else {
+			data.ImportMap = types.StringNull()
+		}
+	} else {
+		data.ImportMap = types.StringNull()
+	}
+
+	tflog.Info(ctx, fmt.Sprintf("downloaded function source to %s", outputDir))
 	return nil
 }
 
