@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -22,4 +23,10 @@ func testAccPreCheck(t *testing.T) {
 	// You can add code here to run prior to any test case execution, for example assertions
 	// about the appropriate environment variables being set are common to see in a pre-check
 	// function.
+
+	// Setting an access token is required now because it is validated in the
+	// Configure function in provider.go
+	if os.Getenv("SUPABASE_ACCESS_TOKEN") == "" {
+		os.Setenv("SUPABASE_ACCESS_TOKEN", "test")
+	}
 }
