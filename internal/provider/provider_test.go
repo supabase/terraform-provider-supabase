@@ -46,7 +46,11 @@ func getUnderlyingClient(t *testing.T, client *api.ClientWithResponses) *api.Cli
 	if !clientInterfaceField.IsValid() {
 		t.Fatal("Cannot access ClientInterface field")
 	}
-	return clientInterfaceField.Interface().(*api.Client)
+	underlyingClient, ok := clientInterfaceField.Interface().(*api.Client)
+	if !ok {
+		t.Fatal("ClientInterface is not a *api.Client")
+	}
+	return underlyingClient
 }
 
 // getClientEndpoint extracts the server endpoint URL from the API client using reflection.
@@ -73,7 +77,10 @@ func getAuthorizationHeader(t *testing.T, client *api.Client) string {
 		t.Fatal("Cannot access RequestEditors field")
 	}
 
-	requestEditors := requestEditorsField.Interface().([]api.RequestEditorFn)
+	requestEditors, ok := requestEditorsField.Interface().([]api.RequestEditorFn)
+	if !ok {
+		t.Fatal("RequestEditors is not a []api.RequestEditorFn")
+	}
 	for _, editor := range requestEditors {
 		if err := editor(context.Background(), mockReq); err != nil {
 			t.Fatalf("Request editor failed: %v", err)
