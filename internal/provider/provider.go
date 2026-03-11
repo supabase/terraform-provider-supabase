@@ -111,7 +111,7 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 		apiEndpoint,
 		api.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer "+accessToken)
-			req.Header.Set("User-Agent", "SupabsaeTerraformProvider/"+p.version)
+			req.Header.Set("User-Agent", "TFProvider/"+p.version)
 			return nil
 		}),
 	)
