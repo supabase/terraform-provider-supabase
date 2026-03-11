@@ -69,7 +69,10 @@ func getAuthorizationHeader(t *testing.T, client *api.Client) string {
 	t.Helper()
 
 	// Create a mock request to apply the request editors to
-	mockReq, _ := http.NewRequest("GET", "https://api.supabase.com/test", nil)
+	mockReq, err := http.NewRequest("GET", "https://api.supabase.com/test", nil)
+	if err != nil {
+		t.Fatalf("Failed to create mock request: %v", err)
+	}
 
 	// Apply the request editors to see what Authorization header they set
 	requestEditorsField := reflect.ValueOf(client).Elem().FieldByName("RequestEditors")

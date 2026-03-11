@@ -107,7 +107,7 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	}
 
 	// Example client configuration for data sources and resources
-	client, _ := api.NewClientWithResponses(
+	client, err := api.NewClientWithResponses(
 		apiEndpoint,
 		api.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer "+accessToken)
@@ -115,6 +115,17 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 			return nil
 		}),
 	)
+	if err != nil {
+		tflog.Error(ctx, "NewClientWithResponses Error: "+err.Error())
+		resp.Diagnostics.AddError(
+			"NewClientWithResponses Failed, API is not usable.",
+			err.Error(),
+		)
+	}
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	resp.DataSourceData = client
 	resp.ResourceData = client
