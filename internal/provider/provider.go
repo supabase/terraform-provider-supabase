@@ -87,8 +87,8 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	if data.AccessToken.IsUnknown() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("access_token"),
-			"Unknown Supabase API Accesss Token",
-			"The provider cannot create the Supabase API client as there is an unknown configuration value for the Supbase API accesss token. "+
+			"Unknown Supabase API Access Token",
+			"The provider cannot create the Supabase API client as there is an unknown configuration value for the Supbase API access token. "+
 				"Either target apply the source of the value first, set the value statically in the configuration, or use the SUPABASE_ACCESS_TOKEN environment variable.",
 		)
 	}
