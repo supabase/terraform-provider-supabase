@@ -6,6 +6,6 @@
 # - slug: Found in the Supabase dashboard under Edge Functions,
 #   or in the function's URL: https://supabase.com/dashboard/project/<project_ref>/functions/<slug>
 #
-# Note: Local-only fields (entrypoint, import_map, etc.) will be null after
-# import and must be set manually in your Terraform configuration.
+# Note: Local-only fields (entrypoint, import_map, static_files, local_checksum)
+# may not be populated by import and must be configured manually in your Terraform configuration.
 terraform import supabase_edge_function.example <project_ref>/<slug>
