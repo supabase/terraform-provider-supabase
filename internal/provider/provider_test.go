@@ -27,6 +27,6 @@ func testAccPreCheck(t *testing.T) {
 	// Setting an access token is required now because it is validated in the
 	// Configure function in provider.go
 	if os.Getenv("SUPABASE_ACCESS_TOKEN") == "" {
-		os.Setenv("SUPABASE_ACCESS_TOKEN", "test")
+		t.Setenv("SUPABASE_ACCESS_TOKEN", "test")
 	}
 }
