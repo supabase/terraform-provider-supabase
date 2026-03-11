@@ -70,7 +70,7 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 		resp.Diagnostics.AddAttributeError(
 			path.Root("endpoint"),
 			"Unknown Supabase API Endpoint",
-			"The provider cannot create the Supabase API client as there is an unknown configuration value for the Supbase API endpoint. "+
+			"The provider cannot create the Supabase API client as there is an unknown configuration value for the Supabase API endpoint. "+
 				"Either target apply the source of the value first, set the value statically in the configuration, use the SUPABASE_API_ENDPOINT environment variable."+
 				", or use none of these options to let the endpoint default to https://api.supabase.com",
 		)
@@ -88,7 +88,7 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 		resp.Diagnostics.AddAttributeError(
 			path.Root("access_token"),
 			"Unknown Supabase API Access Token",
-			"The provider cannot create the Supabase API client as there is an unknown configuration value for the Supbase API access token. "+
+			"The provider cannot create the Supabase API client as there is an unknown configuration value for the Supabase API access token. "+
 				"Either target apply the source of the value first, set the value statically in the configuration, or use the SUPABASE_ACCESS_TOKEN environment variable.",
 		)
 	}
