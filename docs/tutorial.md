@@ -17,7 +17,7 @@ terraform {
 }
 
 provider "supabase" {
-  access_token = trimspace(file("${path.cwd}/access-token"))
+  access_token = file("${path.cwd}/access-token")
 }
 ```
 
