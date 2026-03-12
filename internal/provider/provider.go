@@ -102,6 +102,7 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	if !data.AccessToken.IsNull() {
 		accessToken = data.AccessToken.ValueString()
 	}
+	accessToken = strings.TrimSpace(accessToken)
 	if accessToken == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("access_token"),
 			"Missing Supabase API Access Token",
@@ -116,7 +117,7 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	client, err := api.NewClientWithResponses(
 		apiEndpoint,
 		api.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
-			req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(data.AccessToken.ValueString()))
+			req.Header.Set("Authorization", "Bearer "+accessToken)
 			req.Header.Set("User-Agent", "TFProvider/"+p.version)
 			return nil
 		}),
