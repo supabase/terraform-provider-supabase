@@ -15,7 +15,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/supabase/cli/pkg/api"
+	"gopkg.in/h2non/gock.v1"
 )
 
 // testAccProtoV6ProviderFactories are used to instantiate a provider during
@@ -558,4 +560,34 @@ func TestProviderConfigure_EndpointConfigTakesPrecedence(t *testing.T) {
 		t.Errorf("Expected endpoint %q, got %q (env endpoint would be 'https://api.env-endpoint.com/')",
 			expectedEndpoint, endpoint)
 	}
+}
+
+func TestAccProviderTrimsAccessTokenWhitespace(t *testing.T) {
+	// Verify that access tokens with trailing whitespace (common from file() function)
+	// are trimmed before being set in the Authorization header.
+	defer gock.OffAll()
+	gock.New("https://api.supabase.com").
+		Get("/v1/projects/test-ref/branches").
+		MatchHeader("Authorization", "^Bearer sbp_test123$").
+		Persist().
+		Reply(http.StatusOK).
+		JSON([]map[string]any{})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+provider "supabase" {
+  access_token = "sbp_test123\n"
+}
+
+data "supabase_branch" "test" {
+  parent_project_ref = "test-ref"
+}
+`,
+			},
+		},
+	})
 }
