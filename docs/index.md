@@ -12,8 +12,11 @@ description: |-
 ## Example Usage
 
 ```terraform
+# Configure the Supabase Provider
 provider "supabase" {
-  access_token = ""
+  # Recommended: Use environment variable SUPABASE_ACCESS_TOKEN
+  # Or specify directly (not recommended for production)
+  # access_token = "your-access-token"
 }
 ```
 
@@ -22,5 +25,5 @@ provider "supabase" {
 
 ### Optional
 
-- `access_token` (String, Sensitive) Supabase access token
-- `endpoint` (String) Supabase API endpoint
+- `access_token` (String, Sensitive) Supabase access token. Can also be set via the `SUPABASE_ACCESS_TOKEN` environment variable. When both are specified, the provider configuration takes precedence over the environment variable. Generate a token from the [Supabase Dashboard](https://supabase.com/dashboard/account/tokens).
+- `endpoint` (String) Supabase API endpoint. Can also be set via the `SUPABASE_API_ENDPOINT` environment variable. If neither is set, defaults to `https://api.supabase.com`. When both are specified, the provider configuration takes precedence over the environment variable.
