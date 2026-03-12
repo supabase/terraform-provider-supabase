@@ -57,6 +57,8 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# The ID is the branch identifier.
+# Branches can be imported using the branch ID.
+#
+# - branch_id: The UUID of the branch. Run `supabase branches list` to find it.
 terraform import supabase_branch.development <branch_id>
 ```
