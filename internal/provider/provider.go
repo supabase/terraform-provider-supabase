@@ -98,10 +98,11 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 				"Either target apply the source of the value first, set the value statically in the configuration, or use the SUPABASE_ACCESS_TOKEN environment variable.",
 		)
 	}
-	accessToken := strings.TrimSpace(os.Getenv("SUPABASE_ACCESS_TOKEN"))
+	accessToken := os.Getenv("SUPABASE_ACCESS_TOKEN")
 	if !data.AccessToken.IsNull() {
-		accessToken = strings.TrimSpace(data.AccessToken.ValueString())
+		accessToken = data.AccessToken.ValueString()
 	}
+	accessToken = strings.TrimSpace(accessToken)
 	if accessToken == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("access_token"),
 			"Missing Supabase API Access Token",
