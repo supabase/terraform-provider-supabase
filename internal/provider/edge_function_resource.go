@@ -711,29 +711,30 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 
 	tflog.Debug(ctx, fmt.Sprintf("using entrypoint path: %s", entrypointPath))
 
-	outAbs, err := filepath.Abs(outputDir)
+	// Create parent of output dir (ensures same filesystem for os.Rename).
+	// outputDir itself is created by renaming tempDir into it.
+	if err := os.MkdirAll(filepath.Dir(outputDir), 0o755); err != nil {
+		msg := fmt.Sprintf("Unable to create output parent directory, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	absParentDir, err := filepath.Abs(filepath.Dir(outputDir))
 	if err != nil {
 		msg := fmt.Sprintf("Unable to resolve output directory, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-
-	// Create temp dir in same parent (ensures same filesystem for os.Rename)
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		msg := fmt.Sprintf("Unable to create output directory, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
-	}
-	tempDir, err := os.MkdirTemp(filepath.Dir(outAbs), ".tf-import-*")
+	tempDir, err := os.MkdirTemp(absParentDir, ".tf-import-*")
 	if err != nil {
 		msg := fmt.Sprintf("Unable to create temp directory, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	defer os.RemoveAll(tempDir)
 
-	type stagedFile struct {
-		tempPath  string
-		finalPath string
+	tempRoot, err := os.OpenRoot(tempDir)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to open temp directory root, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-	var staged []stagedFile
+	defer tempRoot.Close()
 
 	for _, fileHeaders := range form.File {
 		for _, fh := range fileHeaders {
@@ -749,24 +750,13 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 				relPath = filepath.FromSlash(path.Join("..", partPath))
 			}
 
-			finalDst := filepath.Join(outputDir, entrypointBase, relPath)
-
-			// Path traversal guard
-			destAbs, err := filepath.Abs(finalDst)
-			if err != nil {
-				msg := fmt.Sprintf("Unable to resolve path %s, got error: %s", finalDst, err)
-				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
-			}
-			if destAbs != outAbs && !strings.HasPrefix(destAbs, outAbs+string(os.PathSeparator)) {
-				tflog.Info(ctx, fmt.Sprintf("skipping file outside output directory: bundle path %s resolved to %s (outside %s)", partPath, finalDst, outputDir))
+			tempRelPath := filepath.Join(entrypointBase, relPath)
+			if !filepath.IsLocal(tempRelPath) {
+				tflog.Info(ctx, fmt.Sprintf("skipping file outside output directory: bundle path %s resolved to %s", partPath, tempRelPath))
 				continue
 			}
-
-			// Runtime path traversal is guarded above (destAbs check on finalDst).
-			// tempDst writes to an ephemeral temp directory that is cleaned up by defer.
-			tempDst := filepath.Clean(filepath.Join(tempDir, entrypointBase, relPath))
-			if err := os.MkdirAll(filepath.Dir(tempDst), 0o755); err != nil { //nolint:gosec // G703: tempDst is bounded by tempDir; traversal guarded above
-				msg := fmt.Sprintf("Unable to create temp directory %s, got error: %s", filepath.Dir(tempDst), err)
+			if err := tempRoot.MkdirAll(filepath.Dir(tempRelPath), 0o755); err != nil {
+				msg := fmt.Sprintf("Unable to create temp directory for %s, got error: %s", tempRelPath, err)
 				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 			}
 			src, err := fh.Open()
@@ -774,52 +764,42 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 				msg := fmt.Sprintf("Unable to open multipart file %s, got error: %s", fh.Filename, err)
 				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 			}
-			dst, err := os.OpenFile(tempDst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec // G703: tempDst is bounded by tempDir; traversal guarded above
+			dst, err := tempRoot.OpenFile(tempRelPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 			if err != nil {
 				src.Close()
-				msg := fmt.Sprintf("Unable to create temp file %s, got error: %s", tempDst, err)
+				msg := fmt.Sprintf("Unable to create temp file %s, got error: %s", tempRelPath, err)
 				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 			}
 			_, copyErr := io.Copy(dst, src)
 			src.Close()
 			closeErr := dst.Close()
 			if copyErr != nil {
-				msg := fmt.Sprintf("Unable to write temp file %s, got error: %s", tempDst, copyErr)
+				msg := fmt.Sprintf("Unable to write temp file %s, got error: %s", tempRelPath, copyErr)
 				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 			}
 			if closeErr != nil {
-				msg := fmt.Sprintf("Unable to close temp file %s, got error: %s", tempDst, closeErr)
+				msg := fmt.Sprintf("Unable to close temp file %s, got error: %s", tempRelPath, closeErr)
 				return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 			}
-
-			staged = append(staged, stagedFile{tempPath: tempDst, finalPath: finalDst})
 		}
 	}
 
-	// Preflight collision check
-	for _, sf := range staged {
-		if _, err := os.Stat(sf.finalPath); err == nil {
-			msg := fmt.Sprintf("Unable to download function source, existing file would be overwritten: %s. "+
-				"Delete existing files or use 'supabase functions download' to refresh", sf.finalPath)
-			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
-		}
+	// Preflight collision check — verify destination directory doesn't exist
+	if _, err := os.Stat(outputDir); err == nil {
+		msg := fmt.Sprintf("Unable to download function source, directory already exists: %s. "+
+			"Delete the directory or use 'supabase functions download' to refresh", outputDir)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	// Move all files from temp to final destination
-	for _, sf := range staged {
-		if err := os.MkdirAll(filepath.Dir(sf.finalPath), 0o755); err != nil {
-			msg := fmt.Sprintf("Unable to create directory %s, got error: %s", filepath.Dir(sf.finalPath), err)
-			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
-		}
-		if err := os.Rename(sf.tempPath, sf.finalPath); err != nil {
-			msg := fmt.Sprintf("Unable to move file to %s, got error: %s", sf.finalPath, err)
-			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
-		}
+	// Move entire directory tree atomically from temp to final destination
+	if err := os.Rename(tempDir, outputDir); err != nil {
+		msg := fmt.Sprintf("Unable to move downloaded directory to %s, got error: %s", outputDir, err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	// Set state fields
 	entrypointLocal := filepath.Clean(filepath.Join(outputDir, entrypointBase))
-	if info, err := os.Stat(entrypointLocal); err != nil { //nolint:gosec // G703: entrypointBase is validated (not ".", "..", or separator); outputDir is user-configured
+	if info, err := os.Stat(entrypointLocal); err != nil { //nolint:gosec // G703: read-only stat; entrypointBase is validated, outputDir is user-configured
 		msg := fmt.Sprintf("Unable to find entrypoint file after download %s, got error: %s", entrypointLocal, err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	} else if !info.Mode().IsRegular() {
@@ -836,7 +816,7 @@ func downloadFunctionSource(ctx context.Context, data *EdgeFunctionResourceModel
 				importMapRelPath = filepath.FromSlash(path.Join("..", parsed.Path))
 			}
 			importMapLocal := filepath.Clean(filepath.Join(outputDir, entrypointBase, importMapRelPath))
-			if _, err := os.Stat(importMapLocal); err == nil { //nolint:gosec // G703: importMapLocal is read-only stat check; components are validated
+			if _, err := os.Stat(importMapLocal); err == nil { //nolint:gosec // G703: read-only stat; components are validated
 				data.ImportMap = types.StringValue(importMapLocal)
 			} else {
 				data.ImportMap = types.StringNull()

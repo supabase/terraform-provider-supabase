@@ -533,11 +533,9 @@ resource "supabase_edge_function" "test" {
 				),
 			},
 			{
-				ResourceName:  "supabase_edge_function.test",
-				ImportState:   true,
-				ImportStateId: fmt.Sprintf("%s/%s", projectRef, functionSlug),
-				// Can't use ImportStateVerify because entrypoint path differs between
-				// deployed (absolute tmp path) and imported (relative ./supabase/functions/...)
+				ResourceName:            "supabase_edge_function.test",
+				ImportState:             true,
+				ImportStateId:           fmt.Sprintf("%s/%s", projectRef, functionSlug),
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
 				Check: resource.ComposeAggregateTestCheckFunc(
