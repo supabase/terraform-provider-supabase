@@ -43,8 +43,9 @@ func (m SecretModel) AttributeTypes() map[string]attr.Type {
 }
 
 type EdgeFunctionSecretsResourceModel struct {
-	ProjectRef types.String `tfsdk:"project_ref"`
-	Secrets    types.Set    `tfsdk:"secrets"`
+	ProjectRef    types.String `tfsdk:"project_ref"`
+	Secrets       types.Set    `tfsdk:"secrets"`
+	SecretDigests types.Map    `tfsdk:"secret_digests"`
 }
 
 func (r *EdgeFunctionSecretsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -75,6 +76,11 @@ func (r *EdgeFunctionSecretsResource) Schema(ctx context.Context, req resource.S
 						},
 					},
 				},
+			},
+			"secret_digests": schema.MapAttribute{
+				ElementType:         types.StringType,
+				Computed:            true,
+				MarkdownDescription: "Map of secret name to SHA-256 digest of the secret value. Used to detect if a secret has been changed outside of Terraform management.",
 			},
 		},
 	}
@@ -209,6 +215,12 @@ func (r *EdgeFunctionSecretsResource) ImportState(ctx context.Context, req resou
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
+// computeSecretDigest returns the hex-encoded SHA-256 digest of the given string value.
+func computeSecretDigest(value string) string {
+	hash := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(hash[:])
+}
+
 func createEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	projectRef := data.ProjectRef.ValueString()
 
@@ -242,6 +254,17 @@ func createEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsRes
 		msg := fmt.Sprintf("Unable to create edge function secrets, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("API Error", msg)}
 	}
+
+	// Compute and store SHA-256 digests for all secrets
+	digestElements := make(map[string]attr.Value, len(secrets))
+	for _, secret := range secrets {
+		digestElements[secret.Name.ValueString()] = types.StringValue(computeSecretDigest(secret.Value.ValueString()))
+	}
+	secretDigests, mapDiags := types.MapValue(types.StringType, digestElements)
+	if mapDiags.HasError() {
+		return mapDiags
+	}
+	data.SecretDigests = secretDigests
 
 	return nil
 }
@@ -280,26 +303,38 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 		valueMap[secret.Name.ValueString()] = secret.Value.ValueString()
 	}
 
-	// Convert API response to our model
+	// Build a map of existing digests from state (may be null on first use or import)
+	existingDigests := make(map[string]string)
+	if !data.SecretDigests.IsNull() && !data.SecretDigests.IsUnknown() {
+		_ = data.SecretDigests.ElementsAs(ctx, &existingDigests, false)
+	}
+
+	// Convert API response to our model and build the updated digest map
 	var secretModels []SecretModel
+	newDigestElements := make(map[string]attr.Value, len(*httpResp.JSON200))
 	for _, apiSecret := range *httpResp.JSON200 {
-		// Compute SHA-256 of existing valueDigest and compare to API digest
-		valueDigest := apiSecret.Value // This is the SHA-256 digest from API
+		apiDigest := apiSecret.Value // SHA-256 digest returned by the API
+		secretValue := apiDigest     // Default: store API digest as value (signals drift to Terraform)
+
 		if existingValue, exists := valueMap[apiSecret.Name]; exists {
-			hash := sha256.Sum256([]byte(existingValue))
-			computedDigest := hex.EncodeToString(hash[:])
-			if computedDigest == valueDigest {
-				// Digest matches, preserve the actual value from state
-				valueDigest = existingValue
+			// Prefer the stored digest for comparison; fall back to computing sha256(value)
+			localDigest, hasStoredDigest := existingDigests[apiSecret.Name]
+			if !hasStoredDigest {
+				localDigest = computeSecretDigest(existingValue)
 			}
-			// If not match, value remains as digest to indicate drift
+			if localDigest == apiDigest {
+				// Digest matches – preserve the actual plaintext value from state
+				secretValue = existingValue
+			}
+			// If no match, secretValue remains as the API digest to indicate drift
 		}
-		// If no existing value, value is the digest
 
 		secretModels = append(secretModels, SecretModel{
 			Name:  types.StringValue(apiSecret.Name),
-			Value: types.StringValue(valueDigest),
+			Value: types.StringValue(secretValue),
 		})
+		// Always record the API's digest as the authoritative remote value
+		newDigestElements[apiSecret.Name] = types.StringValue(apiDigest)
 	}
 
 	// Convert to a set
@@ -311,7 +346,14 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 		return false, setDiags
 	}
 
+	// Build the updated digest map
+	newSecretDigests, mapDiags := types.MapValue(types.StringType, newDigestElements)
+	if mapDiags.HasError() {
+		return false, mapDiags
+	}
+
 	data.Secrets = secretSet
+	data.SecretDigests = newSecretDigests
 
 	return len(secretModels) > 0, nil
 }
