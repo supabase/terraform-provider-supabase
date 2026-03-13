@@ -16,25 +16,28 @@ func TestAccEdgeFunctionSecretsResource(t *testing.T) {
 
 	projectRef := "mayuaycdtijbctgqbycg"
 
-	// Pre-compute SHA-256 digests matching what the real API returns
-	apiKeyDigest := fmt.Sprintf("%x", sha256.Sum256([]byte("secret-api-key-123")))
-	dbUrlDigest := fmt.Sprintf("%x", sha256.Sum256([]byte("postgresql://user:pass@localhost:5432/db")))
+	apiKeyPlain := "secret-api-key-123"
+	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
+
+	// Pre-compute SHA-256 digests matching what the API returns
+	apiKeyDigest := fmt.Sprintf("%x", sha256.Sum256([]byte(apiKeyPlain)))
+	dbUrlDigest := fmt.Sprintf("%x", sha256.Sum256([]byte(dbUrlPlain)))
 
 	testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
-  project_ref = "%s"
-  secrets = [
-    {
-      name  = "API_KEY"
-      value = "secret-api-key-123"
-    },
-    {
-      name  = "DATABASE_URL"
-      value = "postgresql://user:pass@localhost:5432/db"
-    }
-  ]
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "API_KEY"
+			value = "%s"
+		},
+		{
+			name  = "DATABASE_URL"
+			value = "%s"
+		}
+	]
 }
-`, projectRef)
+`, projectRef, apiKeyPlain, dbUrlPlain)
 
 	// Mock create secrets
 	gock.New("https://api.supabase.com").
