@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
-	"os"
 	"regexp"
 	"testing"
 
@@ -20,15 +19,7 @@ func testDigest(value string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(value)))
 }
 
-// testAPIBase returns the Supabase API base URL, respecting the
-// SUPABASE_API_ENDPOINT environment variable so that gock intercepts use the
-// same host that the provider under test will dial.
-func testAPIBase() string {
-	if ep := os.Getenv("SUPABASE_API_ENDPOINT"); ep != "" {
-		return ep
-	}
-	return "https://api.supabase.com"
-}
+const apiEndpoint = "https://api.supabase.com"
 
 func TestAccEdgeFunctionSecretsResource(t *testing.T) {
 	defer gock.OffAll()
@@ -59,12 +50,12 @@ resource "supabase_edge_function_secrets" "test" {
 `, projectRef, apiKeyPlain, dbUrlPlain)
 
 	// Mock create secrets
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
 	// Mock read secrets after create – API returns SHA-256 digests, not plaintext
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -79,7 +70,7 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Mock read secrets for refresh
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -94,7 +85,7 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Mock delete secrets
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
@@ -164,12 +155,12 @@ resource "supabase_edge_function_secrets" "test" {
 `, projectRef, apiKeyV2, dbUrlPlain)
 
 	// Step 1: create
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
 	// Step 1: read after create
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -178,7 +169,7 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Step 1: read for refresh (plan check)
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -187,16 +178,16 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Step 2: update – delete existing then recreate
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
 	// Step 2: read after update
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -205,7 +196,7 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Step 2: read for refresh
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -214,7 +205,7 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Teardown: delete
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
@@ -278,36 +269,36 @@ resource "supabase_edge_function_secrets" "test" {
 `, projectRef, apiKeyPlain, dbUrlPlain)
 
 	// Step 1: create
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
 	// Step 1: read after create
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
 
 	// Step 1: read for refresh
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
 
 	// Step 2 (ImportState): read during import
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
 
 	// Step 2 (ImportState): read for import verification
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
 
 	// Teardown: delete
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
@@ -391,12 +382,12 @@ resource "supabase_edge_function_secrets" "test" {
 `, projectRef, apiKeyPlain)
 
 	// Step 1: create
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
 	// Step 1: read after create and refresh - return original digest
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Times(2).
 		Reply(http.StatusOK).
@@ -405,7 +396,7 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Step 2: all subsequent reads return drifted digest
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Persist().
 		Reply(http.StatusOK).
@@ -414,7 +405,7 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Teardown: delete
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
@@ -455,13 +446,13 @@ resource "supabase_edge_function_secrets" "test" {
 `, projectRef)
 
 	// Create call: empty body – still expected to succeed
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
 	// All reads return an empty list (post-create read, refresh read, and
 	// the framework's post-step consistency-check refresh).
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Persist().
 		Reply(http.StatusOK).
@@ -504,7 +495,7 @@ resource "supabase_edge_function_secrets" "test" {
 }
 `, projectRef)
 
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusInternalServerError).
 		BodyString(`{"message":"internal server error"}`)
@@ -542,12 +533,12 @@ resource "supabase_edge_function_secrets" "test" {
 `, projectRef)
 
 	// Create succeeds...
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
 	// ...but the subsequent read fails with 500
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusInternalServerError).
 		BodyString(`{"message":"internal server error"}`)
@@ -555,7 +546,7 @@ resource "supabase_edge_function_secrets" "test" {
 	// If the provider committed partial state before the error, the framework
 	// will attempt a destroy. No state should be committed on a failed Create,
 	// but register a mock as a safety net to prevent a spurious teardown error.
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
@@ -596,18 +587,18 @@ resource "supabase_edge_function_secrets" "test" {
 `, projectRef, apiKeyPlain)
 
 	// Step 1: create and read the real resource
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -615,12 +606,12 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Step 2: import a different project_ref that returns 404
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", notFoundRef)).
 		Reply(http.StatusNotFound)
 
 	// Teardown: delete the real resource
-	gock.New(testAPIBase()).
+	gock.New(apiEndpoint).
 		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
