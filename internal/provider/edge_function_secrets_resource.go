@@ -291,10 +291,12 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 
 	// Parse the secrets from state to get the values (API returns SHA-256 digest of secret values)
 	var existingSecrets []SecretModel
-	diags := data.Secrets.ElementsAs(ctx, &existingSecrets, false)
-	if diags.HasError() {
-		// If we can't parse existing secrets during read, just use the API response
-		existingSecrets = nil
+	if !data.Secrets.IsNull() && !data.Secrets.IsUnknown() {
+		diags := data.Secrets.ElementsAs(ctx, &existingSecrets, false)
+		if diags.HasError() {
+			// If we can't parse existing secrets during read, just use the API response
+			existingSecrets = nil
+		}
 	}
 
 	// Build a map of existing secret values
@@ -310,7 +312,7 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 	}
 
 	// Convert API response to our model and build the updated digest map
-	var secretModels []SecretModel
+	secretModels := make([]SecretModel, 0, len(*httpResp.JSON200))
 	newDigestElements := make(map[string]attr.Value, len(*httpResp.JSON200))
 	for _, apiSecret := range *httpResp.JSON200 {
 		apiDigest := apiSecret.Value // SHA-256 digest returned by the API
@@ -355,7 +357,7 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 	data.Secrets = secretSet
 	data.SecretDigests = newSecretDigests
 
-	return len(secretModels) > 0, nil
+	return true, nil
 }
 
 func deleteEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
