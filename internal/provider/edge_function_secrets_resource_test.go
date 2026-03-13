@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"testing"
@@ -14,6 +15,10 @@ func TestAccEdgeFunctionSecretsResource(t *testing.T) {
 	defer gock.OffAll()
 
 	projectRef := "mayuaycdtijbctgqbycg"
+
+	// Pre-compute SHA-256 digests matching what the real API returns
+	apiKeyDigest := fmt.Sprintf("%x", sha256.Sum256([]byte("secret-api-key-123")))
+	dbUrlDigest := fmt.Sprintf("%x", sha256.Sum256([]byte("postgresql://user:pass@localhost:5432/db")))
 
 	testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
@@ -36,18 +41,18 @@ resource "supabase_edge_function_secrets" "test" {
 		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK)
 
-	// Mock read secrets after create
+	// Mock read secrets after create – API returns SHA-256 digests, not plaintext
 	gock.New("https://api.supabase.com").
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
 			{
 				Name:  "API_KEY",
-				Value: "secret-api-key-123",
+				Value: apiKeyDigest,
 			},
 			{
 				Name:  "DATABASE_URL",
-				Value: "postgresql://user:pass@localhost:5432/db",
+				Value: dbUrlDigest,
 			},
 		})
 
@@ -58,11 +63,11 @@ resource "supabase_edge_function_secrets" "test" {
 		JSON([]api.SecretResponse{
 			{
 				Name:  "API_KEY",
-				Value: "secret-api-key-123",
+				Value: apiKeyDigest,
 			},
 			{
 				Name:  "DATABASE_URL",
-				Value: "postgresql://user:pass@localhost:5432/db",
+				Value: dbUrlDigest,
 			},
 		})
 
@@ -80,6 +85,9 @@ resource "supabase_edge_function_secrets" "test" {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", projectRef),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
 				),
 			},
 		},
