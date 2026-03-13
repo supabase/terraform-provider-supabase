@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -312,9 +313,15 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 	}
 
 	// Convert API response to our model and build the updated digest map
+	// Filter out SUPABASE_ prefixed secrets as they cannot be managed by the provider
 	secretModels := make([]SecretModel, 0, len(*httpResp.JSON200))
 	newDigestElements := make(map[string]attr.Value, len(*httpResp.JSON200))
 	for _, apiSecret := range *httpResp.JSON200 {
+		// Skip secrets starting with SUPABASE_ as the API does not allow create/update/delete operations on them
+		if strings.HasPrefix(apiSecret.Name, "SUPABASE_") {
+			continue
+		}
+
 		apiDigest := apiSecret.Value // SHA-256 digest returned by the API
 		secretValue := apiDigest     // Default: store API digest as value (signals drift to Terraform)
 

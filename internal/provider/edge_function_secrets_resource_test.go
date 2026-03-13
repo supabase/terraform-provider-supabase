@@ -637,3 +637,96 @@ resource "supabase_edge_function_secrets" "test" {
 		},
 	})
 }
+
+// TestAccEdgeFunctionSecretsResource_FilterSupabaseSecrets verifies that secrets
+// with names starting with SUPABASE_ are filtered out from the read operation,
+// as the API does not allow create/update/delete operations on these secrets.
+func TestAccEdgeFunctionSecretsResource_FilterSupabaseSecrets(t *testing.T) {
+	defer gock.OffAll()
+
+	projectRef := "mayuaycdtijbctgqbycg"
+
+	apiKeyPlain := "secret-api-key-123"
+	apiKeyDigest := testDigest(apiKeyPlain)
+
+	testConfig := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "API_KEY"
+			value = "%s"
+		}
+	]
+}
+`, projectRef, apiKeyPlain)
+
+	// Mock create secrets
+	gock.New(apiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
+		Reply(http.StatusOK)
+
+	// Mock read secrets after create – API returns both user secrets and SUPABASE_ prefixed secrets
+	// The SUPABASE_ secrets should be filtered out and not appear in state
+	gock.New(apiEndpoint).
+		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{
+				Name:  "API_KEY",
+				Value: apiKeyDigest,
+			},
+			{
+				Name:  "SUPABASE_URL",
+				Value: testDigest("https://example.supabase.co"),
+			},
+			{
+				Name:  "SUPABASE_ANON_KEY",
+				Value: testDigest("anon-key-value"),
+			},
+		})
+
+	// Mock read secrets for refresh – same response
+	gock.New(apiEndpoint).
+		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{
+				Name:  "API_KEY",
+				Value: apiKeyDigest,
+			},
+			{
+				Name:  "SUPABASE_URL",
+				Value: testDigest("https://example.supabase.co"),
+			},
+			{
+				Name:  "SUPABASE_ANON_KEY",
+				Value: testDigest("anon-key-value"),
+			},
+		})
+
+	// Mock delete secrets
+	gock.New(apiEndpoint).
+		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRef)).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", projectRef),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+					// Verify only 1 secret digest (API_KEY) – SUPABASE_ secrets should be filtered
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					// Verify SUPABASE_ secrets are NOT in state
+					resource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.SUPABASE_URL"),
+					resource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.SUPABASE_ANON_KEY"),
+				),
+			},
+		},
+	})
+}
