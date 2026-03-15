@@ -233,20 +233,9 @@ func (r *EdgeFunctionResource) Schema(ctx context.Context, req resource.SchemaRe
 }
 
 func (r *EdgeFunctionResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if client, ok := extractClient(req.ProviderData, &resp.Diagnostics); ok {
+		r.client = client
 	}
-
-	client, ok := req.ProviderData.(*api.ClientWithResponses)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *api.ClientWithResponses, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-		return
-	}
-
-	r.client = client
 }
 
 func (r *EdgeFunctionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

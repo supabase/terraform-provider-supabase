@@ -17,8 +17,8 @@ import (
 func TestAccBranchDataSource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/branches").
+	gock.New(defaultApiEndpoint).
+		Get(branchesApiPath).
 		Times(3).
 		Reply(http.StatusOK).
 		JSON([]api.BranchResponse{{Id: uuid.New()}})

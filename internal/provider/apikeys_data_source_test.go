@@ -17,8 +17,8 @@ import (
 func TestAccProjectAPIKeysDataSource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys").
+	gock.New(defaultApiEndpoint).
+		Get(apiKeysApiPath).
 		Times(3).
 		Reply(http.StatusOK).
 		JSON([]api.ApiKeyResponse{

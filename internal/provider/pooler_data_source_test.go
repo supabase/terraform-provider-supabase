@@ -18,8 +18,8 @@ func TestAccPoolerDataSource(t *testing.T) {
 	poolerUrl := "postgres://user:pass@db.supabase.co:5432/postgres"
 	// Setup mock api
 	defer gock.OffAll()
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/pooler").
+	gock.New(defaultApiEndpoint).
+		Get(poolerApiPath).
 		Times(3).
 		Reply(http.StatusOK).
 		JSON([]api.SupavisorConfigResponse{{

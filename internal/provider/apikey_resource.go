@@ -25,8 +25,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &APIKeyResource{}
-var _ resource.ResourceWithImportState = &APIKeyResource{}
+var (
+	_ resource.Resource                = &APIKeyResource{}
+	_ resource.ResourceWithImportState = &APIKeyResource{}
+)
 
 func NewApiKeyResource() resource.Resource {
 	return &APIKeyResource{}
@@ -126,21 +128,9 @@ func (d *APIKeyResource) Schema(ctx context.Context, req resource.SchemaRequest,
 }
 
 func (d *APIKeyResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client, ok := extractClient(req.ProviderData, &resp.Diagnostics); ok {
+		d.client = client
 	}
-
-	client, ok := req.ProviderData.(*api.ClientWithResponses)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *api.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-		return
-	}
-
-	d.client = client
 }
 
 func (r *APIKeyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -347,7 +337,6 @@ func createApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 		Description:       nullable.Nullable[string]{},
 		SecretJwtTemplate: nullable.NewNullableWithValue(map[string]interface{}{"role": "service_role"}),
 	})
-
 	if err != nil {
 		msg := fmt.Sprintf("Unable to create apiKey, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -393,7 +382,6 @@ func updateApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 		Description:       description,
 		SecretJwtTemplate: secretJwtTemplate,
 	})
-
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update apiKey, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}

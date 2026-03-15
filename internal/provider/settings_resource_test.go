@@ -37,45 +37,45 @@ var allServicesHealthy = []api.V1ServiceHealthResponse{
 func TestAccSettingsResource(t *testing.T) {
 	defer gock.OffAll()
 	projectStatusResponse := api.V1ProjectWithDatabaseResponse{
-		Id:             "mayuaycdtijbctgqbycg",
+		Id:             testProjectRef,
 		Name:           "test",
 		OrganizationId: "test-org",
 		Region:         "us-east-1",
 		Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 	}
 	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
-		return req.URL.Path == "/v1/projects/mayuaycdtijbctgqbycg", nil
+		return req.URL.Path == projectApiPath, nil
 	}
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		AddMatcher(exactPathMatcher).
 		Reply(http.StatusOK).
 		JSON(projectStatusResponse)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		AddMatcher(exactPathMatcher).
 		Reply(http.StatusOK).
 		JSON(projectStatusResponse)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/health").
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
 
 	// Step 1: create
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+	gock.New(defaultApiEndpoint).
+		Get(dbConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{
 			StatementTimeout: Ptr("10s"),
 		})
-	gock.New("https://api.supabase.com").
-		Put("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+	gock.New(defaultApiEndpoint).
+		Put(dbConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{
 			StatementTimeout: Ptr("10s"),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
@@ -83,8 +83,8 @@ func TestAccSettingsResource(t *testing.T) {
 				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Post("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Post(networkRestrictionsApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
@@ -92,24 +92,24 @@ func TestAccSettingsResource(t *testing.T) {
 				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
 		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+	gock.New(defaultApiEndpoint).
+		Patch(postgrestApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -118,8 +118,8 @@ func TestAccSettingsResource(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Patch(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -128,8 +128,8 @@ func TestAccSettingsResource(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+	gock.New(defaultApiEndpoint).
+		Get(storageConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"fileSizeLimit": 52428800,
@@ -145,11 +145,11 @@ func TestAccSettingsResource(t *testing.T) {
 				"upstreamTarget": "main",
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+	gock.New(defaultApiEndpoint).
+		Patch(storageConfigApiPath).
 		Reply(http.StatusOK)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+	gock.New(defaultApiEndpoint).
+		Get(storageConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"fileSizeLimit": 52428800,
@@ -166,20 +166,20 @@ func TestAccSettingsResource(t *testing.T) {
 			},
 		})
 	// Step 2: read
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+	gock.New(defaultApiEndpoint).
+		Get(dbConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{
 			StatementTimeout: Ptr("10s"),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+	gock.New(defaultApiEndpoint).
+		Get(dbConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{
 			StatementTimeout: Ptr("10s"),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
@@ -187,8 +187,8 @@ func TestAccSettingsResource(t *testing.T) {
 				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
@@ -196,24 +196,24 @@ func TestAccSettingsResource(t *testing.T) {
 				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -222,8 +222,8 @@ func TestAccSettingsResource(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -232,8 +232,8 @@ func TestAccSettingsResource(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+	gock.New(defaultApiEndpoint).
+		Get(storageConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"fileSizeLimit": 52428800,
@@ -249,8 +249,8 @@ func TestAccSettingsResource(t *testing.T) {
 				"upstreamTarget": "main",
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+	gock.New(defaultApiEndpoint).
+		Get(storageConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"fileSizeLimit": 52428800,
@@ -267,30 +267,30 @@ func TestAccSettingsResource(t *testing.T) {
 			},
 		})
 	// Step 3: update
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/health").
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+	gock.New(defaultApiEndpoint).
+		Get(dbConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{
 			StatementTimeout: Ptr("10s"),
 		})
-	gock.New("https://api.supabase.com").
-		Put("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+	gock.New(defaultApiEndpoint).
+		Put(dbConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{
 			StatementTimeout: Ptr("20s"),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
+	gock.New(defaultApiEndpoint).
+		Get(dbConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{
 			StatementTimeout: Ptr("20s"),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
@@ -298,72 +298,72 @@ func TestAccSettingsResource(t *testing.T) {
 				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Post("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Post(networkRestrictionsApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
 				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
 				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           1000,
 		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+	gock.New(defaultApiEndpoint).
+		Patch(postgrestApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           100,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
 			DbSchema:          "public,storage,graphql_public",
 			MaxRows:           100,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:        nullable.NewNullableWithValue("http://localhost:3000"),
 			JwtExp:         nullable.NewNullableWithValue(3600),
 			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Patch(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:        nullable.NewNullableWithValue("http://localhost:3000"),
 			JwtExp:         nullable.NewNullableWithValue(1800),
 			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:        nullable.NewNullableWithValue("http://localhost:3000"),
 			JwtExp:         nullable.NewNullableWithValue(1800),
 			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+	gock.New(defaultApiEndpoint).
+		Get(storageConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"fileSizeLimit": 52428800,
@@ -379,11 +379,11 @@ func TestAccSettingsResource(t *testing.T) {
 				"upstreamTarget": "main",
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+	gock.New(defaultApiEndpoint).
+		Patch(storageConfigApiPath).
 		Reply(http.StatusOK)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+	gock.New(defaultApiEndpoint).
+		Get(storageConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"fileSizeLimit": 52428800,
@@ -399,8 +399,8 @@ func TestAccSettingsResource(t *testing.T) {
 				"upstreamTarget": "main",
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
+	gock.New(defaultApiEndpoint).
+		Get(storageConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"fileSizeLimit": 52428800,
@@ -425,7 +425,7 @@ func TestAccSettingsResource(t *testing.T) {
 			{
 				Config: examples.SettingsResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.production", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_settings.production", "id", testProjectRef),
 				),
 			},
 			// ImportState testing
@@ -488,8 +488,8 @@ func TestAccSettingsResource(t *testing.T) {
 						}
 					}
 
-					if projectRef, ok := state.Attributes["project_ref"]; !ok || projectRef != "mayuaycdtijbctgqbycg" {
-						return fmt.Errorf("expected project_ref to be mayuaycdtijbctgqbycg, got %v", projectRef)
+					if projectRef, ok := state.Attributes["project_ref"]; !ok || projectRef != testProjectRef {
+						return fmt.Errorf("expected project_ref to be %s, got %v", testProjectRef, projectRef)
 					}
 
 					return nil
@@ -525,19 +525,19 @@ func TestAccSettingsResource_SmtpPass(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
 
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     "mayuaycdtijbctgqbycg",
+			Id:     testProjectRef,
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/health").
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -546,8 +546,8 @@ func TestAccSettingsResource_SmtpPass(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Patch(authConfigApiPath).
 		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -566,8 +566,8 @@ func TestAccSettingsResource_SmtpPass(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -582,18 +582,18 @@ func TestAccSettingsResource_SmtpPass(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 resource "supabase_settings" "test" {
-  project_ref = "mayuaycdtijbctgqbycg"
+  project_ref = "%s"
 
   auth = jsonencode({
     site_url = "http://localhost:3000"
     smtp_pass = "secret_password_123"
   })
 }
-`,
+`, testProjectRef),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
 				),
 			},
 		},
@@ -603,45 +603,43 @@ resource "supabase_settings" "test" {
 func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 	defer gock.OffAll()
 
-	projectRef := "mayuaycdtijbctgqbycg"
-
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef).
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     projectRef,
+			Id:     testProjectRef,
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/health").
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/config/database/postgres").
+	gock.New(defaultApiEndpoint).
+		Get(dbConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.PostgresConfigResponse{})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
 				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Post("/v1/projects/" + projectRef + "/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Post(networkRestrictionsApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
 				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/postgrest").
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -650,8 +648,8 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/" + projectRef + "/config/auth").
+	gock.New(defaultApiEndpoint).
+		Patch(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -660,16 +658,16 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
 				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -678,35 +676,35 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 			SmsOtpLength:      6,
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef).
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     projectRef,
+			Id:     testProjectRef,
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/health").
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
-	gock.New("https://api.supabase.com").
-		Post("/v1/projects/" + projectRef + "/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Post(networkRestrictionsApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
 				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32", "198.51.100.1/32"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
 				DbAllowedCidrs: Ptr([]string{"203.0.113.1/32", "198.51.100.1/32"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/config/auth").
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
 		Reply(http.StatusOK).
 		JSON(api.AuthConfigResponse{
 			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -716,16 +714,16 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
 		})
 	for range 5 {
-		gock.New("https://api.supabase.com").
-			Get("/v1/projects/" + projectRef + "/network-restrictions").
+		gock.New(defaultApiEndpoint).
+			Get(networkRestrictionsApiPath).
 			Reply(http.StatusOK).
 			JSON(api.NetworkRestrictionsResponse{
 				Config: api.NetworkRestrictionsRequest{
 					DbAllowedCidrs: Ptr([]string{"203.0.113.1/32", "198.51.100.1/32"}),
 				},
 			})
-		gock.New("https://api.supabase.com").
-			Get("/v1/projects/" + projectRef + "/config/auth").
+		gock.New(defaultApiEndpoint).
+			Get(authConfigApiPath).
 			Reply(http.StatusOK).
 			JSON(api.AuthConfigResponse{
 				SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
@@ -737,8 +735,8 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 	}
 
 	authPatchCalled := false
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/" + projectRef + "/config/auth").
+	gock.New(defaultApiEndpoint).
+		Patch(authConfigApiPath).
 		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
 			authPatchCalled = true
 			return true, nil
@@ -753,9 +751,9 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 resource "supabase_settings" "test" {
-  project_ref = "mayuaycdtijbctgqbycg"
+  project_ref = "%s"
 
   network = jsonencode({
     restrictions = ["203.0.113.1/32"]
@@ -769,15 +767,15 @@ resource "supabase_settings" "test" {
     ignore_changes = [auth]
   }
 }
-`,
+`, testProjectRef),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.test", "id", projectRef),
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
 				),
 			},
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 resource "supabase_settings" "test" {
-  project_ref = "mayuaycdtijbctgqbycg"
+  project_ref = "%s"
 
   network = jsonencode({
     restrictions = ["203.0.113.1/32", "198.51.100.1/32"]
@@ -791,9 +789,9 @@ resource "supabase_settings" "test" {
     ignore_changes = [auth]
   }
 }
-`,
+`, testProjectRef),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.test", "id", projectRef),
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
 					func(s *terraform.State) error {
 						if authPatchCalled {
 							return fmt.Errorf("auth PATCH was called despite lifecycle.ignore_changes")
@@ -921,30 +919,29 @@ func TestParseConfigNullablePreservesUserValue(t *testing.T) {
 
 func TestAccSettingsResource_WaitsForProjectActive(t *testing.T) {
 	defer gock.OffAll()
-	projectRef := "testproject123"
 
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef).
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     projectRef,
+			Id:     testProjectRef,
 			Status: api.V1ProjectWithDatabaseResponseStatusCOMINGUP,
 		})
 
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef).
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     projectRef,
+			Id:     testProjectRef,
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/health").
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
 
-	gock.New("https://api.supabase.com").
-		Post("/v1/projects/" + projectRef + "/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Post(networkRestrictionsApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
@@ -952,16 +949,16 @@ func TestAccSettingsResource_WaitsForProjectActive(t *testing.T) {
 			},
 		})
 
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
 				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/" + projectRef + "/network-restrictions").
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
 		Reply(http.StatusOK).
 		JSON(api.NetworkRestrictionsResponse{
 			Config: api.NetworkRestrictionsRequest{
@@ -981,18 +978,18 @@ resource "supabase_settings" "test" {
     restrictions = ["0.0.0.0/0"]
   })
 }
-`, projectRef),
+`, testProjectRef),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.test", "id", projectRef),
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
 				),
 			},
 		},
 	})
 }
 
-const testAccSettingsResourceConfig = `
+var testAccSettingsResourceConfig = fmt.Sprintf(`
 resource "supabase_settings" "production" {
-  project_ref = "mayuaycdtijbctgqbycg"
+  project_ref = "%s"
 
   database = jsonencode({
     statement_timeout = "20s"
@@ -1032,4 +1029,4 @@ resource "supabase_settings" "production" {
   #   pool_mode                 = "transaction"
   # })
 }
-`
+`, testProjectRef)

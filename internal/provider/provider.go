@@ -36,6 +36,8 @@ type SupabaseProviderModel struct {
 	AccessToken types.String `tfsdk:"access_token"`
 }
 
+const defaultApiEndpoint = "https://api.supabase.com"
+
 func (p *SupabaseProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "supabase"
 	resp.Version = p.version
@@ -86,7 +88,7 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 		apiEndpoint = data.Endpoint.ValueString()
 	}
 	if apiEndpoint == "" {
-		apiEndpoint = "https://api.supabase.com"
+		apiEndpoint = defaultApiEndpoint
 	}
 
 	// Validate access_token

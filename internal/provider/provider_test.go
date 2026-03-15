@@ -4,8 +4,8 @@
 package provider
 
 import (
+	"fmt"
 	"net/http"
-	"os"
 	"regexp"
 	"testing"
 
@@ -28,11 +28,15 @@ func testAccPreCheck(t *testing.T) {
 	// about the appropriate environment variables being set are common to see in a pre-check
 	// function.
 
+	// We override the env vars to make sure tests pass
+
 	// Setting an access token is required now because it is validated in the
 	// Configure function in provider.go
-	if os.Getenv("SUPABASE_ACCESS_TOKEN") == "" {
-		t.Setenv("SUPABASE_ACCESS_TOKEN", "test")
-	}
+	t.Setenv("SUPABASE_ACCESS_TOKEN", "test")
+
+	// Setting the API endpoint to a value used in the tests so that mocks
+	// can verify the correct endpoint calls
+	t.Setenv("SUPABASE_API_ENDPOINT", defaultApiEndpoint)
 }
 
 func TestAccProviderConfigure_AccessTokenRequired(t *testing.T) {
@@ -47,11 +51,11 @@ func TestAccProviderConfigure_AccessTokenRequired(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 data "supabase_branch" "test" {
-  parent_project_ref = "test-ref"
+  parent_project_ref = "%s"
 }
-`,
+`, testProjectRef),
 				ExpectError: regexp.MustCompile("Missing Supabase API Access Token"),
 			},
 		},
@@ -62,8 +66,8 @@ func TestAccProviderConfigure_EnvVarOnly(t *testing.T) {
 	// Verify that setting only the SUPABASE_ACCESS_TOKEN
 	// environment variable successfully configures the provider.
 	defer gock.OffAll()
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/test-ref/branches").
+	gock.New(defaultApiEndpoint).
+		Get(branchesApiPath).
 		MatchHeader("Authorization", "^Bearer env-token$").
 		Persist().
 		Reply(http.StatusOK).
@@ -77,11 +81,11 @@ func TestAccProviderConfigure_EnvVarOnly(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 data "supabase_branch" "test" {
-  parent_project_ref = "test-ref"
+  parent_project_ref = "%s"
 }
-`,
+`, testProjectRef),
 			},
 		},
 	})
@@ -91,8 +95,8 @@ func TestAccProviderConfigure_ConfigOnly(t *testing.T) {
 	// Verify that setting only the access_token
 	// in the provider configuration successfully configures the provider.
 	defer gock.OffAll()
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/test-ref/branches").
+	gock.New(defaultApiEndpoint).
+		Get(branchesApiPath).
 		MatchHeader("Authorization", "^Bearer config-token$").
 		Persist().
 		Reply(http.StatusOK).
@@ -106,15 +110,15 @@ func TestAccProviderConfigure_ConfigOnly(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 provider "supabase" {
   access_token = "config-token"
 }
 
 data "supabase_branch" "test" {
-  parent_project_ref = "test-ref"
+  parent_project_ref = "%s"
 }
-`,
+`, testProjectRef),
 			},
 		},
 	})
@@ -125,8 +129,8 @@ func TestAccProviderConfigure_ConfigTakesPrecedence(t *testing.T) {
 	// SUPABASE_ACCESS_TOKEN environment variable
 	// are set, the configuration value takes precedence.
 	defer gock.OffAll()
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/test-ref/branches").
+	gock.New(defaultApiEndpoint).
+		Get(branchesApiPath).
 		MatchHeader("Authorization", "^Bearer config-token$").
 		Persist().
 		Reply(http.StatusOK).
@@ -140,15 +144,15 @@ func TestAccProviderConfigure_ConfigTakesPrecedence(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 provider "supabase" {
   access_token = "config-token"
 }
 
 data "supabase_branch" "test" {
-  parent_project_ref = "test-ref"
+  parent_project_ref = "%s"
 }
-`,
+`, testProjectRef),
 			},
 		},
 	})
@@ -157,11 +161,11 @@ data "supabase_branch" "test" {
 func TestAccProviderConfigure_EndpointDefault(t *testing.T) {
 	// Verify that when neither the endpoint configuration nor the
 	// SUPABASE_API_ENDPOINT environment variable is set,
-	// the endpoint defaults to "https://api.supabase.com".
+	// the endpoint defaults to defaultApiEndpoint.
 
 	defer gock.OffAll()
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/test-ref/branches").
+	gock.New(defaultApiEndpoint).
+		Get(branchesApiPath).
 		Persist().
 		Reply(http.StatusOK).
 		JSON([]map[string]any{})
@@ -175,11 +179,11 @@ func TestAccProviderConfigure_EndpointDefault(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 data "supabase_branch" "test" {
-  parent_project_ref = "test-ref"
+  parent_project_ref = "%s"
 }
-`,
+`, testProjectRef),
 			},
 		},
 	})
@@ -190,7 +194,7 @@ func TestAccProviderConfigure_EndpointEnvVarOnly(t *testing.T) {
 	// successfully configures the provider.
 	defer gock.OffAll()
 	gock.New("https://api.env-endpoint.com").
-		Get("/v1/projects/test-ref/branches").
+		Get(branchesApiPath).
 		Persist().
 		Reply(http.StatusOK).
 		JSON([]map[string]any{})
@@ -204,11 +208,11 @@ func TestAccProviderConfigure_EndpointEnvVarOnly(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 data "supabase_branch" "test" {
-  parent_project_ref = "test-ref"
+  parent_project_ref = "%s"
 }
-`,
+`, testProjectRef),
 			},
 		},
 	})
@@ -219,7 +223,7 @@ func TestAccProviderConfigure_EndpointConfigOnly(t *testing.T) {
 	// configuration successfully configures the provider.
 	defer gock.OffAll()
 	gock.New("https://api.config-endpoint.com").
-		Get("/v1/projects/test-ref/branches").
+		Get(branchesApiPath).
 		Persist().
 		Reply(http.StatusOK).
 		JSON([]map[string]any{})
@@ -233,15 +237,15 @@ func TestAccProviderConfigure_EndpointConfigOnly(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 provider "supabase" {
   endpoint = "https://api.config-endpoint.com"
 }
 
 data "supabase_branch" "test" {
-  parent_project_ref = "test-ref"
+  parent_project_ref = "%s"
 }
-`,
+`, testProjectRef),
 			},
 		},
 	})
@@ -252,7 +256,7 @@ func TestAccProviderConfigure_EndpointConfigTakesPrecedence(t *testing.T) {
 	// environment variable are set, the configuration value takes precedence.
 	defer gock.OffAll()
 	gock.New("https://api.config-endpoint.com").
-		Get("/v1/projects/test-ref/branches").
+		Get(branchesApiPath).
 		Persist().
 		Reply(http.StatusOK).
 		JSON([]map[string]any{})
@@ -266,15 +270,15 @@ func TestAccProviderConfigure_EndpointConfigTakesPrecedence(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 provider "supabase" {
   endpoint = "https://api.config-endpoint.com"
 }
 
 data "supabase_branch" "test" {
-  parent_project_ref = "test-ref"
+  parent_project_ref = "%s"
 }
-`,
+`, testProjectRef),
 			},
 		},
 	})
@@ -284,8 +288,8 @@ func TestAccProviderTrimsAccessTokenWhitespace(t *testing.T) {
 	// Verify that access tokens with trailing whitespace (common from file() function)
 	// are trimmed before being set in the Authorization header.
 	defer gock.OffAll()
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/test-ref/branches").
+	gock.New(defaultApiEndpoint).
+		Get(branchesApiPath).
 		MatchHeader("Authorization", "^Bearer sbp_test123$").
 		Persist().
 		Reply(http.StatusOK).
@@ -296,15 +300,15 @@ func TestAccProviderTrimsAccessTokenWhitespace(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 provider "supabase" {
   access_token = "sbp_test123\n"
 }
 
 data "supabase_branch" "test" {
-  parent_project_ref = "test-ref"
+  parent_project_ref = "%s"
 }
-`,
+`, testProjectRef),
 			},
 		},
 	})

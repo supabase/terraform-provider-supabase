@@ -19,46 +19,46 @@ func TestAccProjectResource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
 	// Step 1: create
-	gock.New("https://api.supabase.com").
-		Post("/v1/projects").
+	gock.New(defaultApiEndpoint).
+		Post(projectsApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.V1ProjectResponse{
-			Id:   "mayuaycdtijbctgqbycg",
+			Id:   testProjectRef,
 			Name: "foo",
 		})
 	// Polling for ACTIVE status after create
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "mayuaycdtijbctgqbycg",
+			Id:             testProjectRef,
 			Name:           "foo",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	// Disable legacy API keys after create
-	gock.New("https://api.supabase.com").
-		Put("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+	gock.New(defaultApiEndpoint).
+		Put(legacyApiKeysApiPath).
 		MatchParam("enabled", "false").
 		Reply(http.StatusOK)
 	// readProject after create
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "mayuaycdtijbctgqbycg",
+			Id:             testProjectRef,
 			Name:           "foo",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+	gock.New(defaultApiEndpoint).
+		Get(legacyApiKeysApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{"enabled": false})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+	gock.New(defaultApiEndpoint).
+		Get(billingApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"selected_addons": []map[string]any{
@@ -74,22 +74,22 @@ func TestAccProjectResource(t *testing.T) {
 			"available_addons": []map[string]any{},
 		})
 	// Terraform refresh after create
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "mayuaycdtijbctgqbycg",
+			Id:             testProjectRef,
 			Name:           "foo",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+	gock.New(defaultApiEndpoint).
+		Get(legacyApiKeysApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{"enabled": false})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+	gock.New(defaultApiEndpoint).
+		Get(billingApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"selected_addons": []map[string]any{
@@ -105,22 +105,22 @@ func TestAccProjectResource(t *testing.T) {
 			"available_addons": []map[string]any{},
 		})
 	// Step 2: update instance size
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "mayuaycdtijbctgqbycg",
+			Id:             testProjectRef,
 			Name:           "foo",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+	gock.New(defaultApiEndpoint).
+		Get(legacyApiKeysApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{"enabled": false})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+	gock.New(defaultApiEndpoint).
+		Get(billingApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"selected_addons": []map[string]any{
@@ -135,43 +135,43 @@ func TestAccProjectResource(t *testing.T) {
 			},
 			"available_addons": []map[string]any{},
 		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Patch(projectApiPath).
 		Reply(http.StatusOK)
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/database/password").
+	gock.New(defaultApiEndpoint).
+		Patch(dbPasswordApiPath).
 		Reply(http.StatusOK)
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+	gock.New(defaultApiEndpoint).
+		Patch(billingApiPath).
 		Reply(http.StatusOK)
 	// Polling for ACTIVE status after instance_size update
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "mayuaycdtijbctgqbycg",
+			Id:             testProjectRef,
 			Name:           "bar",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	// Terraform refresh after update
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "mayuaycdtijbctgqbycg",
+			Id:             testProjectRef,
 			Name:           "bar",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+	gock.New(defaultApiEndpoint).
+		Get(legacyApiKeysApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{"enabled": false})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+	gock.New(defaultApiEndpoint).
+		Get(billingApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"selected_addons": []map[string]any{
@@ -188,22 +188,22 @@ func TestAccProjectResource(t *testing.T) {
 		})
 	// Step 3: toggle legacy API keys
 	// Plan refresh read
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "mayuaycdtijbctgqbycg",
+			Id:             testProjectRef,
 			Name:           "bar",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+	gock.New(defaultApiEndpoint).
+		Get(legacyApiKeysApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{"enabled": false})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+	gock.New(defaultApiEndpoint).
+		Get(billingApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"selected_addons": []map[string]any{
@@ -219,27 +219,27 @@ func TestAccProjectResource(t *testing.T) {
 			"available_addons": []map[string]any{},
 		})
 	// Enable legacy API keys
-	gock.New("https://api.supabase.com").
-		Put("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+	gock.New(defaultApiEndpoint).
+		Put(legacyApiKeysApiPath).
 		MatchParam("enabled", "true").
 		Reply(http.StatusOK)
 	// Post-apply refresh read
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "mayuaycdtijbctgqbycg",
+			Id:             testProjectRef,
 			Name:           "bar",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+	gock.New(defaultApiEndpoint).
+		Get(legacyApiKeysApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{"enabled": true})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+	gock.New(defaultApiEndpoint).
+		Get(billingApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"selected_addons": []map[string]any{
@@ -255,22 +255,22 @@ func TestAccProjectResource(t *testing.T) {
 			"available_addons": []map[string]any{},
 		})
 	// Step 4: import state
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "mayuaycdtijbctgqbycg",
+			Id:             testProjectRef,
 			Name:           "bar",
 			OrganizationId: "continued-brown-smelt",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/api-keys/legacy").
+	gock.New(defaultApiEndpoint).
+		Get(legacyApiKeysApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{"enabled": true})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/billing/addons").
+	gock.New(defaultApiEndpoint).
+		Get(billingApiPath).
 		Reply(http.StatusOK).
 		JSON(map[string]any{
 			"selected_addons": []map[string]any{
@@ -286,8 +286,8 @@ func TestAccProjectResource(t *testing.T) {
 			"available_addons": []map[string]any{},
 		})
 	// Step 5: delete
-	gock.New("https://api.supabase.com").
-		Delete("/v1/projects/mayuaycdtijbctgqbycg").
+	gock.New(defaultApiEndpoint).
+		Delete(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbExtraSearchPath: "public,extensions",
@@ -303,7 +303,7 @@ func TestAccProjectResource(t *testing.T) {
 			{
 				Config: examples.ProjectResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
 					resource.TestCheckResourceAttr("supabase_project.test", "name", "foo"),
 					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "micro"),
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaz"),
@@ -320,7 +320,7 @@ func TestAccProjectResource(t *testing.T) {
 					InstanceSize:     types.StringValue("16xlarge"),
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
 					resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
 					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),
@@ -338,7 +338,7 @@ func TestAccProjectResource(t *testing.T) {
 					LegacyApiKeysEnabled: types.BoolValue(true),
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_project.test", "id", "mayuaycdtijbctgqbycg"),
+					resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
 					resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
 					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),

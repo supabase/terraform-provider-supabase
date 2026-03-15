@@ -16,17 +16,19 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-const testProjectRef = "mayuaycdtijbctgqbycg" //nolint:gosec
+const testAccApikeyResourceConfig = `
+resource "supabase_apikey" "new" {
+  project_ref = "` + testProjectRef + `"
+  name        = "test"
+}
+`
 
 func TestAccApiKeyResource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
 	// Step 1: create
-	testApiKeyUUID := uuid.New()
-	apiKeysEndpoint := fmt.Sprintf("/v1/projects/%s/api-keys", testProjectRef)
-	apiKeyEndpoint := fmt.Sprintf("%s/%s", apiKeysEndpoint, testApiKeyUUID.String())
-	gock.New("https://api.supabase.com").
-		Get(apiKeysEndpoint).
+	gock.New(defaultApiEndpoint).
+		Get(apiKeysApiPath).
 		Reply(http.StatusOK).
 		JSON([]api.ApiKeyResponse{
 			{
@@ -40,8 +42,8 @@ func TestAccApiKeyResource(t *testing.T) {
 				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
 			},
 		})
-	gock.New("https://api.supabase.com").
-		Post(apiKeysEndpoint).
+	gock.New(defaultApiEndpoint).
+		Post(apiKeysApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.ApiKeyResponse{
 			Id:     nullable.NewNullableWithValue(uuid.New().String()),
@@ -49,21 +51,21 @@ func TestAccApiKeyResource(t *testing.T) {
 			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
 			ApiKey: nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 		})
-	gock.New("https://api.supabase.com").
-		Post(apiKeysEndpoint).
+	gock.New(defaultApiEndpoint).
+		Post(apiKeysApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.ApiKeyResponse{
-			Id:     nullable.NewNullableWithValue(testApiKeyUUID.String()),
+			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
 			Name:   "test",
 			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
 			ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 		})
-	gock.New("https://api.supabase.com").
-		Get(apiKeyEndpoint).
+	gock.New(defaultApiEndpoint).
+		Get(apiKeyApiPath).
 		Persist().
 		Reply(http.StatusOK).
 		JSON(api.ApiKeyResponse{
-			Id:     nullable.NewNullableWithValue(testApiKeyUUID.String()),
+			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
 			Name:   "test",
 			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
 			ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
@@ -71,8 +73,8 @@ func TestAccApiKeyResource(t *testing.T) {
 				"role": "service_role",
 			}),
 		})
-	gock.New("https://api.supabase.com").
-		Delete(apiKeyEndpoint).
+	gock.New(defaultApiEndpoint).
+		Delete(apiKeyApiPath).
 		Reply(http.StatusOK)
 
 	// Run test
@@ -84,7 +86,7 @@ func TestAccApiKeyResource(t *testing.T) {
 			{
 				Config: examples.ApiKeyResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_apikey.new", "id", testApiKeyUUID.String()),
+					resource.TestCheckResourceAttr("supabase_apikey.new", "id", testApiKeyUUID),
 				),
 			},
 			// ImportState testing
@@ -93,7 +95,7 @@ func TestAccApiKeyResource(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"name", "project_ref"},
-				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, testApiKeyUUID.String()),
+				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, testApiKeyUUID),
 			},
 			// Update and Read testing
 			{
@@ -107,10 +109,3 @@ func TestAccApiKeyResource(t *testing.T) {
 		},
 	})
 }
-
-const testAccApikeyResourceConfig = `
-resource "supabase_apikey" "new" {
-  project_ref = "` + testProjectRef + `"
-  name        = "test"
-}
-`
