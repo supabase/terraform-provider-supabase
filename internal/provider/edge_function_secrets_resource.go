@@ -179,7 +179,7 @@ func (r *EdgeFunctionSecretsResource) Read(ctx context.Context, req resource.Rea
 		return
 	}
 
-	found, diags := readEdgeFunctionSecrets(ctx, &data, r.client, false)
+	found, diags := readEdgeFunctionSecretsForRead(ctx, &data, r.client)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -241,7 +241,7 @@ func (r *EdgeFunctionSecretsResource) ImportState(ctx context.Context, req resou
 	var data EdgeFunctionSecretsResourceModel
 	data.ProjectRef = types.StringValue(projectRef)
 
-	found, diags := readEdgeFunctionSecrets(ctx, &data, r.client, true)
+	found, diags := readEdgeFunctionSecretsForImport(ctx, &data, r.client)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -278,6 +278,32 @@ func computeSecretDigestsMap(secretModels []SecretModel) (types.Map, diag.Diagno
 
 	// Build the digest map
 	return types.MapValue(types.StringType, digestElements)
+}
+
+// buildSecretSetAndDigestMap converts secretModels and newDigestElements into
+// types.Set and types.Map respectively, returning diagnostics on error.
+func buildSecretSetAndDigestMap(ctx context.Context, secretModels []SecretModel, newDigestElements map[string]attr.Value) (types.Set, types.Map, diag.Diagnostics) {
+	// Ensure newDigestElements is non-nil
+	if newDigestElements == nil {
+		newDigestElements = make(map[string]attr.Value)
+	}
+
+	// Convert to a set
+	secretType := types.ObjectType{
+		AttrTypes: SecretModel{}.AttributeTypes(),
+	}
+	secretSet, setDiags := types.SetValueFrom(ctx, secretType, secretModels)
+	if setDiags.HasError() {
+		return types.SetNull(secretType), types.MapNull(types.StringType), setDiags
+	}
+
+	// Build the updated digest map
+	newSecretDigests, mapDiags := types.MapValue(types.StringType, newDigestElements)
+	if mapDiags.HasError() {
+		return types.SetNull(secretType), types.MapNull(types.StringType), mapDiags
+	}
+
+	return secretSet, newSecretDigests, nil
 }
 
 func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
@@ -317,40 +343,88 @@ func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSe
 	return nil
 }
 
-// Returns (true, nil) if secrets are found, (false, nil) if not found, or (false, diags) on error.
-func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses, isImport bool) (bool, diag.Diagnostics) {
-	projectRef := data.ProjectRef.ValueString()
-
+// fetchEdgeFunctionSecrets calls the API to fetch secrets and handles common error cases.
+// Returns (secrets, found, diagnostics) where:
+// - secrets is the list from the API (nil if error or not found)
+// - found is false only when 404 is returned
+// - diagnostics contains any errors encountered
+func fetchEdgeFunctionSecrets(ctx context.Context, projectRef string, client *api.ClientWithResponses) (*[]api.SecretResponse, diag.Diagnostics) {
 	httpResp, err := client.V1ListAllSecretsWithResponse(ctx, projectRef)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read edge function secrets, got error: %s", err)
-		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return nil, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	if httpResp.StatusCode() == http.StatusNotFound {
 		tflog.Trace(ctx, fmt.Sprintf("edge function secrets not found for project: %s", projectRef))
-		return false, nil
+		return nil, nil
 	}
 
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read edge function secrets, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
-		return false, diag.Diagnostics{diag.NewErrorDiagnostic("API Error", msg)}
+		return nil, diag.Diagnostics{diag.NewErrorDiagnostic("API Error", msg)}
 	}
+
+	return httpResp.JSON200, nil
+}
+
+// readEdgeFunctionSecretsForImport populates state from ALL non-SUPABASE_ secrets returned by the API.
+// Returns (true, nil) if secrets are found, (false, nil) if not found, or (false, diags) on error.
+func readEdgeFunctionSecretsForImport(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
+	projectRef := data.ProjectRef.ValueString()
+
+	apiSecrets, diags := fetchEdgeFunctionSecrets(ctx, projectRef, client)
+	if diags.HasError() || apiSecrets == nil {
+		return false, diags
+	}
+
+	secretModels := make([]SecretModel, 0)
+	newDigestElements := make(map[string]attr.Value)
+
+	for _, apiSecret := range *apiSecrets {
+		// Skip secrets starting with SUPABASE_ as the API does not allow create/update/delete operations on them
+		// So we don't want to import them
+		if strings.HasPrefix(apiSecret.Name, supabasePrefix) {
+			continue
+		}
+
+		secretModels = append(secretModels, SecretModel{
+			Name: types.StringValue(apiSecret.Name),
+			// On import, the value field contains the digest not the actual secret, so store null as the value
+			Value: types.StringNull(),
+		})
+		newDigestElements[apiSecret.Name] = types.StringValue(apiSecret.Value)
+	}
+
+	secretSet, newSecretDigests, buildDiags := buildSecretSetAndDigestMap(ctx, secretModels, newDigestElements)
+	if buildDiags.HasError() {
+		return false, buildDiags
+	}
+
+	data.Secrets = secretSet
+	data.SecretDigests = newSecretDigests
+
+	return true, nil
+}
+
+// readEdgeFunctionSecretsForRead reconciles only the secrets declared in the Terraform configuration.
+// This prevents absorbing unmanaged secrets into state.
+// Returns (true, nil) if secrets are found, (false, nil) if not found, or (false, diags) on error.
+func readEdgeFunctionSecretsForRead(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
+	projectRef := data.ProjectRef.ValueString()
+
+	apiSecrets, diags := fetchEdgeFunctionSecrets(ctx, projectRef, client)
+	if diags.HasError() || apiSecrets == nil {
+		return false, diags
+	}
+
+	secretModels := make([]SecretModel, 0)
+	newDigestElements := make(map[string]attr.Value)
 
 	// Parse the secrets from state to get the values (API returns SHA-256 digest of secret values)
 	var existingSecrets []SecretModel
 	if !data.Secrets.IsNull() && !data.Secrets.IsUnknown() {
-		diags := data.Secrets.ElementsAs(ctx, &existingSecrets, false)
-		if diags.HasError() {
-			// If we can't parse existing secrets during read, just use the API response
-			existingSecrets = nil
-		}
-	}
-
-	// Build a map of existing secret values
-	valueMap := make(map[string]string)
-	for _, secret := range existingSecrets {
-		valueMap[secret.Name.ValueString()] = secret.Value.ValueString()
+		_ = data.Secrets.ElementsAs(ctx, &existingSecrets, false)
 	}
 
 	// Build a map of existing digests from state (may be null on first use or import)
@@ -361,83 +435,47 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 
 	// Build a map of API secrets for quick lookup
 	apiSecretsMap := make(map[string]string) // name -> digest
-	for _, apiSecret := range *httpResp.JSON200 {
+	for _, apiSecret := range *apiSecrets {
 		apiSecretsMap[apiSecret.Name] = apiSecret.Value
 	}
 
-	secretModels := make([]SecretModel, 0)
-	newDigestElements := make(map[string]attr.Value)
+	// We only read secrets already existing in state to avoid reading secrets added out of band
+	for _, existingSecret := range existingSecrets {
+		secretName := existingSecret.Name.ValueString()
 
-	if isImport {
-		// Import mode: populate state from ALL non-SUPABASE_ secrets returned by API
-		for _, apiSecret := range *httpResp.JSON200 {
-			// Skip secrets starting with SUPABASE_ as the API does not allow create/update/delete operations on them
-			if strings.HasPrefix(apiSecret.Name, supabasePrefix) {
-				continue
-			}
-
-			// On import, we only have digests (no plaintext), so store the digest as the value
-			secretModels = append(secretModels, SecretModel{
-				Name:  types.StringValue(apiSecret.Name),
-				Value: types.StringValue(apiSecret.Value),
-			})
-			newDigestElements[apiSecret.Name] = types.StringValue(apiSecret.Value)
+		apiDigest, existsInAPI := apiSecretsMap[secretName]
+		if !existsInAPI {
+			// Secret is in state but not in API - it was deleted out-of-band
+			// Don't add it to the new state (will cause Terraform to detect drift)
+			continue
 		}
-	} else {
-		// Normal read mode: only track secrets that are declared in the Terraform configuration
-		// This prevents absorbing unmanaged secrets into state
-		for _, existingSecret := range existingSecrets {
-			secretName := existingSecret.Name.ValueString()
 
-			// Skip SUPABASE_ prefixed secrets
-			if strings.HasPrefix(secretName, supabasePrefix) {
-				continue
-			}
+		// Secret exists in both state and API
+		var secretValue types.String = types.StringNull() // Default: use nil to signal drift to Terraform
 
-			apiDigest, existsInAPI := apiSecretsMap[secretName]
-			if !existsInAPI {
-				// Secret is in state but not in API - it was deleted out-of-band
-				// Don't add it to the new state (will cause Terraform to detect drift)
-				continue
-			}
-
-			// Secret exists in both state and API
-			secretValue := apiDigest // Default: store API digest as value (signals drift to Terraform)
-
-			existingValue := existingSecret.Value.ValueString()
-			// Prefer the stored digest for comparison; fall back to computing sha256(value)
-			localDigest, hasStoredDigest := existingDigests[secretName]
-			if !hasStoredDigest {
-				localDigest = computeSecretDigest(existingValue)
-			}
-			if localDigest == apiDigest {
-				// Digest matches – preserve the actual plaintext value from state
-				secretValue = existingValue
-			}
-			// If no match, secretValue remains as the API digest to indicate drift
-
-			secretModels = append(secretModels, SecretModel{
-				Name:  types.StringValue(secretName),
-				Value: types.StringValue(secretValue),
-			})
-			// Always record the API's digest as the authoritative remote value
-			newDigestElements[secretName] = types.StringValue(apiDigest)
+		existingValue := existingSecret.Value.ValueString()
+		// Prefer the stored digest for comparison; fall back to computing sha256(value)
+		localDigest, hasStoredDigest := existingDigests[secretName]
+		if !hasStoredDigest {
+			localDigest = computeSecretDigest(existingValue)
 		}
+		if localDigest == apiDigest {
+			// Digest matches – preserve the actual plaintext value from state
+			secretValue = types.StringValue(existingValue)
+		}
+		// If no match, secretValue remains null to signal drift
+
+		secretModels = append(secretModels, SecretModel{
+			Name:  types.StringValue(secretName),
+			Value: secretValue,
+		})
+		// Always record the API's digest as the authoritative remote value
+		newDigestElements[secretName] = types.StringValue(apiDigest)
 	}
 
-	// Convert to a set
-	secretType := types.ObjectType{
-		AttrTypes: SecretModel{}.AttributeTypes(),
-	}
-	secretSet, setDiags := types.SetValueFrom(ctx, secretType, secretModels)
-	if setDiags.HasError() {
-		return false, setDiags
-	}
-
-	// Build the updated digest map
-	newSecretDigests, mapDiags := types.MapValue(types.StringType, newDigestElements)
-	if mapDiags.HasError() {
-		return false, mapDiags
+	secretSet, newSecretDigests, buildDiags := buildSecretSetAndDigestMap(ctx, secretModels, newDigestElements)
+	if buildDiags.HasError() {
+		return false, buildDiags
 	}
 
 	data.Secrets = secretSet
