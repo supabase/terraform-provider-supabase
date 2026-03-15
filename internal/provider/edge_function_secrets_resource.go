@@ -121,11 +121,11 @@ func (r *EdgeFunctionSecretsResource) Schema(ctx context.Context, req resource.S
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
-							MarkdownDescription: "Name of the secret (must not start with SUPABASE_ prefix)",
+							MarkdownDescription: "Name of the secret. Must not start with the `SUPABASE_` prefix — such names are reserved internally by Supabase, cannot be created, updated, or deleted via the API, and are automatically filtered out from reads and imports.",
 							Required:            true,
 						},
 						"value": schema.StringAttribute{
-							MarkdownDescription: "The secret value",
+							MarkdownDescription: "The plaintext secret value. Stored in Terraform state when managed by Terraform. After an import this field will be `null` because the Supabase API only returns SHA-256 digests — see the Import section below.",
 							Required:            true,
 							Sensitive:           true,
 						},
@@ -135,7 +135,7 @@ func (r *EdgeFunctionSecretsResource) Schema(ctx context.Context, req resource.S
 			"secret_digests": schema.MapAttribute{
 				ElementType:         types.StringType,
 				Computed:            true,
-				MarkdownDescription: "Map of secret name to SHA-256 digest of the secret value. Used to detect if a secret has been changed outside of Terraform management.",
+				MarkdownDescription: "Map of secret name to the SHA-256 hex digest of the secret value. Computed by the provider at plan time (when plaintext values are known) and updated after each apply. Used to detect drift when a secret has been changed outside of Terraform: if the digest returned by the API no longer matches the locally computed digest, the provider marks the affected secret value as unknown so Terraform will plan an update.",
 				PlanModifiers: []planmodifier.Map{
 					secretDigestsPlanModifier{},
 				},
