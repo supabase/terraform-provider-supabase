@@ -270,6 +270,53 @@
             "description_kind": "markdown"
           }
         },
+        "supabase_edge_function_secrets": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "secret_digests": {
+                "type": [
+                  "map",
+                  "string"
+                ],
+                "description": "Map of secret name to the SHA-256 hex digest of the secret value. Computed by the provider at plan time (when plaintext values are known) and updated after each apply. Used to detect drift when a secret has been changed outside of Terraform: if the digest returned by the API no longer matches the locally computed digest, the provider marks the affected secret value as unknown so Terraform will plan an update.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "secrets": {
+                "nested_type": {
+                  "attributes": {
+                    "name": {
+                      "type": "string",
+                      "description": "Name of the secret. Must not start with the `SUPABASE_` prefix — such names are reserved internally by Supabase, cannot be created, updated, or deleted via the API, and are automatically filtered out from reads and imports.",
+                      "description_kind": "markdown",
+                      "required": true
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "The plaintext secret value. Stored in Terraform state when managed by Terraform. After an import this field will be `null` because the Supabase API only returns SHA-256 digests — see the Import section below.",
+                      "description_kind": "markdown",
+                      "required": true,
+                      "sensitive": true
+                    }
+                  },
+                  "nesting_mode": "set"
+                },
+                "description": "Set of secrets for edge functions",
+                "description_kind": "markdown",
+                "required": true
+              }
+            },
+            "description": "Edge function secrets resource - manages multiple secrets for edge functions",
+            "description_kind": "markdown"
+          }
+        },
         "supabase_project": {
           "version": 0,
           "block": {
