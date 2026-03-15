@@ -581,8 +581,8 @@ resource "supabase_edge_function" "fallback" {
 	createdAt := int64(1234567890)
 	updatedAt := int64(1234567890)
 
-	gock.New(defaultApiEndpoint).
-		Post(deployFunctionApiPath).
+	gock.New("https://api.supabase.com").
+		Post(fmt.Sprintf("/v1/projects/%s/functions/deploy", projectRef)).
 		Reply(http.StatusCreated).
 		JSON(api.DeployFunctionResponse{
 			Id:        testFunctionID,
@@ -1006,7 +1006,7 @@ resource "supabase_edge_function" "dotdot" {
 			{
 				ResourceName:            "supabase_edge_function.dotdot",
 				ImportState:             true,
-				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, functionSlug),
+				ImportStateId:           fmt.Sprintf("%s/%s", projectRef, functionSlug),
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
 			},
