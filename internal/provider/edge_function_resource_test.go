@@ -16,12 +16,16 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
+var (
+	functionSlug          = "foo"
+	deployFunctionApiPath = fmt.Sprintf("/v1/projects/%s/functions/deploy", testProjectRef)
+	functionApiPath       = fmt.Sprintf("/v1/projects/%s/functions/%s", testProjectRef, functionSlug)
+)
+
 func TestAccEdgeFunctionResource(t *testing.T) {
 	defer gock.OffAll()
 
 	testFunctionID := uuid.New().String()
-	projectRef := "mayuaycdtijbctgqbycg"
-	functionSlug := "foo"
 
 	// Create a temp directory with the entrypoint file
 	tmpDir := t.TempDir()
@@ -36,13 +40,13 @@ resource "supabase_edge_function" "foo" {
   slug        = "%s"
   entrypoint  = "%s"
 }
-`, projectRef, functionSlug, entrypointPath)
+`, testProjectRef, functionSlug, entrypointPath)
 
 	// Step 1: Create - Deploy function
 	createdAt := int64(1234567890)
 	updatedAt := int64(1234567890)
-	gock.New("https://api.supabase.com").
-		Post(fmt.Sprintf("/v1/projects/%s/functions/deploy", projectRef)).
+	gock.New(defaultApiEndpoint).
+		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.DeployFunctionResponse{
 			Id:        testFunctionID,
@@ -55,8 +59,8 @@ resource "supabase_edge_function" "foo" {
 		})
 
 	// Step 1: Read after create
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -69,8 +73,8 @@ resource "supabase_edge_function" "foo" {
 		})
 
 	// Step 2: Read for refresh
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -83,8 +87,8 @@ resource "supabase_edge_function" "foo" {
 		})
 
 	// Step 3: Delete
-	gock.New("https://api.supabase.com").
-		Delete(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Delete(functionApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -112,8 +116,6 @@ func TestAccEdgeFunctionResource_Update(t *testing.T) {
 	defer gock.OffAll()
 
 	testFunctionID := uuid.New().String()
-	projectRef := "mayuaycdtijbctgqbycg"
-	functionSlug := "foo"
 
 	tmpDir := t.TempDir()
 	entrypointPath := filepath.Join(tmpDir, "index.ts")
@@ -132,7 +134,7 @@ resource "supabase_edge_function" "foo" {
   slug        = "%s"
   entrypoint  = "%s"
 }
-`, projectRef, functionSlug, entrypointPath)
+`, testProjectRef, functionSlug, entrypointPath)
 
 	testConfig2 := fmt.Sprintf(`
 resource "supabase_edge_function" "foo" {
@@ -140,14 +142,14 @@ resource "supabase_edge_function" "foo" {
   slug        = "%s"
   entrypoint  = "%s"
 }
-`, projectRef, functionSlug, entrypointPath2)
+`, testProjectRef, functionSlug, entrypointPath2)
 
 	createdAt := int64(1234567890)
 	updatedAt := int64(1234567890)
 	updatedAt2 := int64(1234567999)
 
-	gock.New("https://api.supabase.com").
-		Post(fmt.Sprintf("/v1/projects/%s/functions/deploy", projectRef)).
+	gock.New(defaultApiEndpoint).
+		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.DeployFunctionResponse{
 			Id:        testFunctionID,
@@ -159,8 +161,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: &updatedAt,
 		})
 
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -172,8 +174,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: 1234567890,
 		})
 
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -185,8 +187,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: 1234567890,
 		})
 
-	gock.New("https://api.supabase.com").
-		Post(fmt.Sprintf("/v1/projects/%s/functions/deploy", projectRef)).
+	gock.New(defaultApiEndpoint).
+		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.DeployFunctionResponse{
 			Id:        testFunctionID,
@@ -198,8 +200,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: &updatedAt2,
 		})
 
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -211,8 +213,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: 1234567999,
 		})
 
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -224,8 +226,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: 1234567999,
 		})
 
-	gock.New("https://api.supabase.com").
-		Delete(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Delete(functionApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -254,8 +256,6 @@ func TestAccEdgeFunctionResource_Import(t *testing.T) {
 	defer gock.OffAll()
 
 	testFunctionID := uuid.New().String()
-	projectRef := "mayuaycdtijbctgqbycg"
-	functionSlug := "foo"
 
 	tmpDir := t.TempDir()
 	entrypointPath := filepath.Join(tmpDir, "index.ts")
@@ -269,13 +269,13 @@ resource "supabase_edge_function" "foo" {
   slug        = "%s"
   entrypoint  = "%s"
 }
-`, projectRef, functionSlug, entrypointPath)
+`, testProjectRef, functionSlug, entrypointPath)
 
 	createdAt := int64(1234567890)
 	updatedAt := int64(1234567890)
 
-	gock.New("https://api.supabase.com").
-		Post(fmt.Sprintf("/v1/projects/%s/functions/deploy", projectRef)).
+	gock.New(defaultApiEndpoint).
+		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.DeployFunctionResponse{
 			Id:        testFunctionID,
@@ -287,8 +287,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: &updatedAt,
 		})
 
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -300,8 +300,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: 1234567890,
 		})
 
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -313,8 +313,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: 1234567890,
 		})
 
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -326,8 +326,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: 1234567890,
 		})
 
-	gock.New("https://api.supabase.com").
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Get(functionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -339,8 +339,8 @@ resource "supabase_edge_function" "foo" {
 			UpdatedAt: 1234567890,
 		})
 
-	gock.New("https://api.supabase.com").
-		Delete(fmt.Sprintf("/v1/projects/%s/functions/%s", projectRef, functionSlug)).
+	gock.New(defaultApiEndpoint).
+		Delete(functionApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -356,7 +356,7 @@ resource "supabase_edge_function" "foo" {
 			{
 				ResourceName:            "supabase_edge_function.foo",
 				ImportState:             true,
-				ImportStateId:           fmt.Sprintf("%s/%s", projectRef, functionSlug),
+				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, functionSlug),
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
 			},

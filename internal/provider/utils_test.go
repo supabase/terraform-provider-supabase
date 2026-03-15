@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 	"testing/synctest"
@@ -12,28 +13,35 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
+const projectsApiPath = "/v1/projects"
+
+var (
+	projectApiPath = fmt.Sprintf("%s/%s", projectsApiPath, testProjectRef)
+	healthApiPath  = fmt.Sprintf("%s/health", projectApiPath)
+)
+
 func TestWaitForProjectActive_TerminalState(t *testing.T) {
 	defer gock.OffAll()
 	gock.InterceptClient(http.DefaultClient)
 	defer gock.RestoreClient(http.DefaultClient)
 
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/test-project").
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             "test-project",
+			Id:             testProjectRef,
 			Name:           "Test Project",
 			OrganizationId: "test-org",
 			Region:         "us-east-1",
 			Status:         api.V1ProjectWithDatabaseResponseStatusINITFAILED,
 		})
 
-	client, err := api.NewClientWithResponses("https://api.supabase.com")
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForProjectActive(t.Context(), "test-project", client)
+	diags := waitForProjectActive(t.Context(), testProjectRef, client)
 
 	if !diags.HasError() {
 		t.Errorf("Expected error for terminal state, got success")
@@ -45,20 +53,20 @@ func TestWaitForServicesActive_AllHealthy(t *testing.T) {
 	gock.InterceptClient(http.DefaultClient)
 	defer gock.RestoreClient(http.DefaultClient)
 
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/test-project/health").
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON([]api.V1ServiceHealthResponse{
 			{Name: api.V1ServiceHealthResponseNameDb, Status: api.ACTIVEHEALTHY, Healthy: true},
 			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
 		})
 
-	client, err := api.NewClientWithResponses("https://api.supabase.com")
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForServicesActive(t.Context(), "test-project", client)
+	diags := waitForServicesActive(t.Context(), testProjectRef, client)
 	if diags.HasError() {
 		t.Errorf("Expected success, got errors: %v", diags)
 	}
@@ -69,20 +77,20 @@ func TestWaitForServicesActive_UnhealthyFails(t *testing.T) {
 	gock.InterceptClient(http.DefaultClient)
 	defer gock.RestoreClient(http.DefaultClient)
 
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/test-project/health").
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON([]api.V1ServiceHealthResponse{
 			{Name: api.V1ServiceHealthResponseNameDb, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "fatal"}`)},
 			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
 		})
 
-	client, err := api.NewClientWithResponses("https://api.supabase.com")
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForServicesActive(t.Context(), "test-project", client)
+	diags := waitForServicesActive(t.Context(), testProjectRef, client)
 	if !diags.HasError() {
 		t.Error("Expected error for unhealthy service, got success")
 	}
@@ -113,19 +121,19 @@ func TestWaitForServicesActive_TransientErrorsKeepsPolling(t *testing.T) {
 	}
 
 	for _, resp := range responses {
-		gock.New("https://api.supabase.com").
-			Get("/v1/projects/test-project/health").
+		gock.New(defaultApiEndpoint).
+			Get(healthApiPath).
 			Reply(http.StatusOK).
 			JSON(resp)
 	}
 
 	synctest.Test(t, func(t *testing.T) {
-		client, err := api.NewClientWithResponses("https://api.supabase.com")
+		client, err := api.NewClientWithResponses(defaultApiEndpoint)
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
 
-		diags := waitForServicesActive(t.Context(), "test-project", client)
+		diags := waitForServicesActive(t.Context(), testProjectRef, client)
 		if diags.HasError() {
 			t.Errorf("Expected success, got errors: %v", diags)
 		}
