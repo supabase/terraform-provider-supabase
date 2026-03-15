@@ -664,7 +664,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Steps: []resource.TestStep{
 			{
 				Config:      testConfig,
-				ExpectError: regexp.MustCompile("SUPABASE_"),
+				ExpectError: regexp.MustCompile(supabasePrefix),
 			},
 		},
 	})
@@ -752,7 +752,7 @@ resource "supabase_edge_function_secrets" "test" {
 			},
 			{
 				Config:      config2,
-				ExpectError: regexp.MustCompile("SUPABASE_"),
+				ExpectError: regexp.MustCompile(supabasePrefix),
 			},
 		},
 	})

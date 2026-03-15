@@ -25,6 +25,8 @@ var (
 	_ resource.ResourceWithImportState = &EdgeFunctionSecretsResource{}
 )
 
+const supabasePrefix = "SUPABASE_"
+
 // secretDigestsPlanModifier computes SHA-256 digests from secret values during plan phase
 // to make secret_digests known before apply.
 type secretDigestsPlanModifier struct{}
@@ -64,25 +66,15 @@ func (m secretDigestsPlanModifier) PlanModifyMap(ctx context.Context, req planmo
 		return
 	}
 
-	// Compute digests for all secrets
-	digestElements := make(map[string]attr.Value)
-	for _, secretModel := range secretModels {
-		if secretModel.Value.IsUnknown() || strings.HasPrefix(secretModel.Name.ValueString(), "SUPABASE_") {
-			continue
-		}
+	secretDigests, mapDiags := computeSecretDigestsMap(secretModels)
 
-		digestElements[secretModel.Name.ValueString()] = types.StringValue(computeSecretDigest(secretModel.Value.ValueString()))
-	}
-
-	// Build the digest map
-	digestMap, mapDiags := types.MapValue(types.StringType, digestElements)
 	resp.Diagnostics.Append(mapDiags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Set the planned value for secret_digests
-	resp.PlanValue = digestMap
+	resp.PlanValue = secretDigests
 }
 
 func NewEdgeFunctionSecretsResource() resource.Resource {
@@ -273,25 +265,40 @@ func computeSecretDigest(value string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+func computeSecretDigestsMap(secretModels []SecretModel) (types.Map, diag.Diagnostics) {
+	// Compute and store SHA-256 digests for all secrets
+	digestElements := make(map[string]attr.Value, len(secretModels))
+	for _, secret := range secretModels {
+		if secret.Value.IsUnknown() || strings.HasPrefix(secret.Name.ValueString(), supabasePrefix) {
+			continue
+		}
+
+		digestElements[secret.Name.ValueString()] = types.StringValue(computeSecretDigest(secret.Value.ValueString()))
+	}
+
+	// Build the digest map
+	return types.MapValue(types.StringType, digestElements)
+}
+
 func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	projectRef := data.ProjectRef.ValueString()
 
-	// Parse secrets from the model
-	var secrets []SecretModel
-	diags := data.Secrets.ElementsAs(ctx, &secrets, false)
+	// Parse secretModels from the model
+	var secretModels []SecretModel
+	diags := data.Secrets.ElementsAs(ctx, &secretModels, false)
 	if diags.HasError() {
 		return diags
 	}
 
 	// Build the API request body
 	var createSecretBody api.CreateSecretBody
-	for _, secretModel := range secrets {
+	for _, secret := range secretModels {
 		createSecretBody = append(createSecretBody, struct {
 			Name  string `json:"name"`
 			Value string `json:"value"`
 		}{
-			Name:  secretModel.Name.ValueString(),
-			Value: secretModel.Value.ValueString(),
+			Name:  secret.Name.ValueString(),
+			Value: secret.Value.ValueString(),
 		})
 	}
 
@@ -306,17 +313,6 @@ func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSe
 		msg := fmt.Sprintf("Unable to create/update edge function secrets, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("API Error", msg)}
 	}
-
-	// Compute and store SHA-256 digests for all secrets
-	digestElements := make(map[string]attr.Value, len(secrets))
-	for _, secret := range secrets {
-		digestElements[secret.Name.ValueString()] = types.StringValue(computeSecretDigest(secret.Value.ValueString()))
-	}
-	secretDigests, mapDiags := types.MapValue(types.StringType, digestElements)
-	if mapDiags.HasError() {
-		return mapDiags
-	}
-	data.SecretDigests = secretDigests
 
 	return nil
 }
@@ -379,7 +375,7 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 		// Import mode: populate state from ALL non-SUPABASE_ secrets returned by API
 		for _, apiSecret := range *httpResp.JSON200 {
 			// Skip secrets starting with SUPABASE_ as the API does not allow create/update/delete operations on them
-			if strings.HasPrefix(apiSecret.Name, "SUPABASE_") {
+			if strings.HasPrefix(apiSecret.Name, supabasePrefix) {
 				continue
 			}
 
@@ -397,7 +393,7 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 			secretName := existingSecret.Name.ValueString()
 
 			// Skip SUPABASE_ prefixed secrets
-			if strings.HasPrefix(secretName, "SUPABASE_") {
+			if strings.HasPrefix(secretName, supabasePrefix) {
 				continue
 			}
 
