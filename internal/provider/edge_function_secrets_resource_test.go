@@ -768,3 +768,91 @@ resource "supabase_edge_function_secrets" "test" {
 		},
 	})
 }
+
+// TestAccEdgeFunctionSecretsResource_IgnoresUnmanagedSecrets verifies that when
+// the API returns secrets that are not declared in the Terraform configuration,
+// those unmanaged secrets are NOT added to the state. This prevents Terraform
+// from planning unnecessary updates when pre-existing secrets exist in the project.
+//
+// Reproduces bug: User creates API_KEY via Terraform, but MANAGEMENT_API_URL
+// already exists. On refresh, the provider should only track API_KEY in state,
+// not absorb MANAGEMENT_API_URL.
+func TestAccEdgeFunctionSecretsResource_IgnoresUnmanagedSecrets(t *testing.T) {
+	defer gock.OffAll()
+
+	apiKeyPlain := "test-api-key"
+	apiKeyDigest := testDigest(apiKeyPlain)
+
+	// Pre-existing secret that exists in the project but is NOT managed by Terraform
+	managementApiUrlDigest := testDigest("https://api.management.example.com")
+
+	testConfig := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "API_KEY"
+			value = "%s"
+		}
+	]
+}
+`, testProjectRef, apiKeyPlain)
+
+	// Step 1: create - user only creates API_KEY
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusOK)
+
+	// Step 1: read after create and refresh
+	// API returns BOTH the managed API_KEY AND the pre-existing MANAGEMENT_API_URL
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "API_KEY", Value: apiKeyDigest},
+			{Name: "MANAGEMENT_API_URL", Value: managementApiUrlDigest}, // Pre-existing, unmanaged
+		})
+
+	// Step 2: additional refresh to verify no plan needed
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(1).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "API_KEY", Value: apiKeyDigest},
+			{Name: "MANAGEMENT_API_URL", Value: managementApiUrlDigest},
+		})
+
+	// Teardown: delete - should only delete API_KEY (the managed secret)
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+					// CRITICAL: only 1 secret should be in state (API_KEY), not 2
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+					// CRITICAL: only 1 digest should be tracked
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
+					// Verify API_KEY is present
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					// Verify MANAGEMENT_API_URL is NOT in state
+					resource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.MANAGEMENT_API_URL"),
+				),
+			},
+			// Step 2: second plan should be empty (no updates needed)
+			{
+				Config:             testConfig,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}

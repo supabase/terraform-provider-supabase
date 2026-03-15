@@ -312,22 +312,57 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 		_ = data.SecretDigests.ElementsAs(ctx, &existingDigests, false)
 	}
 
-	// Convert API response to our model and build the updated digest map
-	// Filter out SUPABASE_ prefixed secrets as they cannot be managed by the provider
-	secretModels := make([]SecretModel, 0, len(*httpResp.JSON200))
-	newDigestElements := make(map[string]attr.Value, len(*httpResp.JSON200))
+	// Build a map of API secrets for quick lookup
+	apiSecretsMap := make(map[string]string) // name -> digest
 	for _, apiSecret := range *httpResp.JSON200 {
-		// Skip secrets starting with SUPABASE_ as the API does not allow create/update/delete operations on them
-		if strings.HasPrefix(apiSecret.Name, "SUPABASE_") {
-			continue
+		apiSecretsMap[apiSecret.Name] = apiSecret.Value
+	}
+
+	// Determine if this is an import operation (no existing secrets in state)
+	isImport := len(existingSecrets) == 0
+
+	secretModels := make([]SecretModel, 0)
+	newDigestElements := make(map[string]attr.Value)
+
+	if isImport {
+		// Import mode: populate state from ALL non-SUPABASE_ secrets returned by API
+		for _, apiSecret := range *httpResp.JSON200 {
+			// Skip secrets starting with SUPABASE_ as the API does not allow create/update/delete operations on them
+			if strings.HasPrefix(apiSecret.Name, "SUPABASE_") {
+				continue
+			}
+
+			// On import, we only have digests (no plaintext), so store the digest as the value
+			secretModels = append(secretModels, SecretModel{
+				Name:  types.StringValue(apiSecret.Name),
+				Value: types.StringValue(apiSecret.Value),
+			})
+			newDigestElements[apiSecret.Name] = types.StringValue(apiSecret.Value)
 		}
+	} else {
+		// Normal read mode: only track secrets that are declared in the Terraform configuration
+		// This prevents absorbing unmanaged secrets into state
+		for _, existingSecret := range existingSecrets {
+			secretName := existingSecret.Name.ValueString()
 
-		apiDigest := apiSecret.Value // SHA-256 digest returned by the API
-		secretValue := apiDigest     // Default: store API digest as value (signals drift to Terraform)
+			// Skip SUPABASE_ prefixed secrets
+			if strings.HasPrefix(secretName, "SUPABASE_") {
+				continue
+			}
 
-		if existingValue, exists := valueMap[apiSecret.Name]; exists {
+			apiDigest, existsInAPI := apiSecretsMap[secretName]
+			if !existsInAPI {
+				// Secret is in state but not in API - it was deleted out-of-band
+				// Don't add it to the new state (will cause Terraform to detect drift)
+				continue
+			}
+
+			// Secret exists in both state and API
+			secretValue := apiDigest // Default: store API digest as value (signals drift to Terraform)
+
+			existingValue := existingSecret.Value.ValueString()
 			// Prefer the stored digest for comparison; fall back to computing sha256(value)
-			localDigest, hasStoredDigest := existingDigests[apiSecret.Name]
+			localDigest, hasStoredDigest := existingDigests[secretName]
 			if !hasStoredDigest {
 				localDigest = computeSecretDigest(existingValue)
 			}
@@ -336,14 +371,14 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 				secretValue = existingValue
 			}
 			// If no match, secretValue remains as the API digest to indicate drift
-		}
 
-		secretModels = append(secretModels, SecretModel{
-			Name:  types.StringValue(apiSecret.Name),
-			Value: types.StringValue(secretValue),
-		})
-		// Always record the API's digest as the authoritative remote value
-		newDigestElements[apiSecret.Name] = types.StringValue(apiDigest)
+			secretModels = append(secretModels, SecretModel{
+				Name:  types.StringValue(secretName),
+				Value: types.StringValue(secretValue),
+			})
+			// Always record the API's digest as the authoritative remote value
+			newDigestElements[secretName] = types.StringValue(apiDigest)
+		}
 	}
 
 	// Convert to a set
