@@ -321,6 +321,34 @@
                 "required": true
               }
             },
+            "block_types": {
+              "timeouts": {
+                "nesting_mode": "single",
+                "block": {
+                  "attributes": {
+                    "create": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    },
+                    "delete": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.",
+                      "description_kind": "plain",
+                      "optional": true
+                    },
+                    "update": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    }
+                  },
+                  "description_kind": "plain"
+                }
+              }
+            },
             "description": "Project resource",
             "description_kind": "markdown"
           }
@@ -376,6 +404,590 @@
                 "description": "Storage settings as serialised JSON",
                 "description_kind": "markdown",
                 "optional": true
+              }
+            },
+            "block_types": {
+              "timeouts": {
+                "nesting_mode": "single",
+                "block": {
+                  "attributes": {
+                    "create": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    },
+                    "update": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    }
+                  },
+                  "description_kind": "plain"
+                }
+              }
+            },
+            "description": "Settings resource",
+            "description_kind": "markdown"
+          }
+        }
+      },
+      "data_source_schemas": {
+        "supabase_apikeys": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "anon_key": {
+                "type": "string",
+                "description": "Anonymous API key for the project",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "publishable_key": {
+                "type": "string",
+                "description": "Publishable API key for the project",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              },
+              "secret_keys": {
+                "nested_type": {
+                  "attributes": {
+                    "api_key": {
+                      "type": "string",
+                      "description": "The secret API key value",
+                      "description_kind": "markdown",
+                      "computed": true,
+                      "sensitive": true
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Name of the secret key",
+                      "description_kind": "markdown",
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "list"
+                },
+                "description": "List of secret API keys for the project",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              },
+              "service_role_key": {
+                "type": "string",
+                "description": "Service role API key for the project",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              }
+            },
+            "description": "API Keys data source",
+            "description_kind": "markdown"
+          }
+        },
+        "supabase_branch": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "branches": {
+                "nested_type": {
+                  "attributes": {
+                    "git_branch": {
+                      "type": "string",
+                      "description": "Git branch",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Branch identifier",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "project_ref": {
+                      "type": "string",
+                      "description": "Branch project ref",
+                      "description_kind": "markdown",
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "set"
+                },
+                "description": "Branch databases",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "parent_project_ref": {
+                "type": "string",
+                "description": "Parent project ref",
+                "description_kind": "markdown",
+                "required": true
+              }
+            },
+            "description": "Branch data source",
+            "description_kind": "markdown"
+          }
+        },
+        "supabase_pooler": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "project_ref": {
+                "type": "string",
+                "description": "Project ref",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "url": {
+                "type": [
+                  "map",
+                  "string"
+                ],
+                "description": "Map of pooler mode to connection string",
+                "description_kind": "markdown",
+                "computed": true
+              }
+            },
+            "description": "Pooler data source",
+            "description_kind": "markdown"
+          }
+        }
+      }
+    },
+    "supabase": {
+      "provider": {
+        "version": 0,
+        "block": {
+          "attributes": {
+            "access_token": {
+              "type": "string",
+              "description": "Supabase access token",
+              "description_kind": "markdown",
+              "optional": true,
+              "sensitive": true
+            },
+            "endpoint": {
+              "type": "string",
+              "description": "Supabase API endpoint",
+              "description_kind": "markdown",
+              "optional": true
+            }
+          },
+          "description_kind": "plain"
+        }
+      },
+      "resource_schemas": {
+        "supabase_apikey": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "api_key": {
+                "type": "string",
+                "description": "API key",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of the API key",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "id": {
+                "type": "string",
+                "description": "API key identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the API key",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "secret_jwt_template": {
+                "nested_type": {
+                  "attributes": {
+                    "role": {
+                      "type": "string",
+                      "description": "Role of the secret JWT template",
+                      "description_kind": "markdown",
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Secret JWT template",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "type": {
+                "type": "string",
+                "description": "Type of the API key",
+                "description_kind": "markdown",
+                "computed": true
+              }
+            },
+            "description": "API Key resource",
+            "description_kind": "markdown"
+          }
+        },
+        "supabase_branch": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "database": {
+                "nested_type": {
+                  "attributes": {
+                    "host": {
+                      "type": "string",
+                      "description": "Host",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Branch project ref",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "jwt_secret": {
+                      "type": "string",
+                      "description": "JWT secret",
+                      "description_kind": "markdown",
+                      "computed": true,
+                      "sensitive": true
+                    },
+                    "password": {
+                      "type": "string",
+                      "description": "Password",
+                      "description_kind": "markdown",
+                      "computed": true,
+                      "sensitive": true
+                    },
+                    "port": {
+                      "type": "number",
+                      "description": "Port",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "Status",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "user": {
+                      "type": "string",
+                      "description": "User",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "Postgres version",
+                      "description_kind": "markdown",
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Database connection details",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "git_branch": {
+                "type": "string",
+                "description": "Git branch",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Branch identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "parent_project_ref": {
+                "type": "string",
+                "description": "Parent project ref",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "region": {
+                "type": "string",
+                "description": "Database region",
+                "description_kind": "markdown",
+                "optional": true
+              }
+            },
+            "description": "Branch database resource",
+            "description_kind": "markdown"
+          }
+        },
+        "supabase_edge_function": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "checksum": {
+                "type": "string",
+                "description": "SHA256 checksum of the deployed function bundle (remote)",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "created_at": {
+                "type": "number",
+                "description": "Timestamp when the function was created",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "entrypoint": {
+                "type": "string",
+                "description": "Path to the function entrypoint file",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Function identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "import_map": {
+                "type": "string",
+                "description": "Path to the import map file",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "local_checksum": {
+                "type": "string",
+                "description": "SHA256 checksum of local source files before upload",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the function (defaults to slug if not specified)",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project ref",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "slug": {
+                "type": "string",
+                "description": "URL-friendly identifier for the function",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "static_files": {
+                "type": [
+                  "list",
+                  "string"
+                ],
+                "description": "List of glob patterns for static files to include",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "status": {
+                "type": "string",
+                "description": "Function deployment status",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "updated_at": {
+                "type": "number",
+                "description": "Timestamp when the function was last updated",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "version": {
+                "type": "number",
+                "description": "Currently deployed function version",
+                "description_kind": "markdown",
+                "computed": true
+              }
+            },
+            "description": "Edge Function resource",
+            "description_kind": "markdown"
+          }
+        },
+        "supabase_project": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "database_password": {
+                "type": "string",
+                "description": "Password for the project database",
+                "description_kind": "markdown",
+                "required": true,
+                "sensitive": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Project identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "instance_size": {
+                "type": "string",
+                "description": "Desired instance size of the project",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "legacy_api_keys_enabled": {
+                "type": "bool",
+                "description": "Controls whether `anon` and `service_role` JWT-based api keys should be enabled. Please note: these keys are no longer recommended ([more information here](https://supabase.com/docs/guides/api/api-keys#why-are-anon-and-servicerole-jwt-based-keys-no-longer-recommended)).",
+                "description_kind": "markdown",
+                "deprecated": true,
+                "optional": true,
+                "computed": true
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the project",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "organization_id": {
+                "type": "string",
+                "description": "Organization slug (found in the Supabase dashboard URL or organization settings)",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "region": {
+                "type": "string",
+                "description": "Region where the project is located",
+                "description_kind": "markdown",
+                "required": true
+              }
+            },
+            "block_types": {
+              "timeouts": {
+                "nesting_mode": "single",
+                "block": {
+                  "attributes": {
+                    "create": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    },
+                    "delete": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.",
+                      "description_kind": "plain",
+                      "optional": true
+                    },
+                    "update": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    }
+                  },
+                  "description_kind": "plain"
+                }
+              }
+            },
+            "description": "Project resource",
+            "description_kind": "markdown"
+          }
+        },
+        "supabase_settings": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "api": {
+                "type": "string",
+                "description": "API settings as [serialised JSON](https://api.supabase.com/api/v1#/services/updatePostgRESTConfig)",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "auth": {
+                "type": "string",
+                "description": "Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig)",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "database": {
+                "type": "string",
+                "description": "Database settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateConfig)",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Project identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "network": {
+                "type": "string",
+                "description": "Network settings as serialised JSON",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "pooler": {
+                "type": "string",
+                "description": "Pooler settings as serialised JSON",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "storage": {
+                "type": "string",
+                "description": "Storage settings as serialised JSON",
+                "description_kind": "markdown",
+                "optional": true
+              }
+            },
+            "block_types": {
+              "timeouts": {
+                "nesting_mode": "single",
+                "block": {
+                  "attributes": {
+                    "create": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    },
+                    "update": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    }
+                  },
+                  "description_kind": "plain"
+                }
               }
             },
             "description": "Settings resource",
