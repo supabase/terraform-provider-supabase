@@ -33,8 +33,8 @@ func (m secretDigestsPlanModifier) Description(_ context.Context) string {
 	return "Computes SHA-256 digests from secret values during plan to make digests known before apply."
 }
 
-func (m secretDigestsPlanModifier) MarkdownDescription(_ context.Context) string {
-	return "Computes SHA-256 digests from secret values during plan to make digests known before apply."
+func (m secretDigestsPlanModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
 }
 
 func (m secretDigestsPlanModifier) PlanModifyMap(ctx context.Context, req planmodifier.MapRequest, resp *planmodifier.MapResponse) {
@@ -66,20 +66,12 @@ func (m secretDigestsPlanModifier) PlanModifyMap(ctx context.Context, req planmo
 
 	// Compute digests for all secrets
 	digestElements := make(map[string]attr.Value)
-	for _, secret := range secretModels {
-		// Skip if secret value is unknown
-		if secret.Value.IsUnknown() {
-			// If any value is unknown, we can't compute all digests
-			// Return without setting PlanValue to keep it unknown
-			return
-		}
-
-		// Skip SUPABASE_ prefixed secrets
-		if strings.HasPrefix(secret.Name.ValueString(), "SUPABASE_") {
+	for _, secretModel := range secretModels {
+		if secretModel.Value.IsUnknown() || strings.HasPrefix(secretModel.Name.ValueString(), "SUPABASE_") {
 			continue
 		}
 
-		digestElements[secret.Name.ValueString()] = types.StringValue(computeSecretDigest(secret.Value.ValueString()))
+		digestElements[secretModel.Name.ValueString()] = types.StringValue(computeSecretDigest(secretModel.Value.ValueString()))
 	}
 
 	// Build the digest map
@@ -161,22 +153,9 @@ func (r *EdgeFunctionSecretsResource) Schema(ctx context.Context, req resource.S
 }
 
 func (r *EdgeFunctionSecretsResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client, ok := extractClient(req.ProviderData, &resp.Diagnostics); ok {
+		r.client = client
 	}
-
-	client, ok := req.ProviderData.(*api.ClientWithResponses)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *api.ClientWithResponses, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *EdgeFunctionSecretsResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -188,7 +167,7 @@ func (r *EdgeFunctionSecretsResource) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	resp.Diagnostics.Append(createEdgeFunctionSecrets(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(createOrUpdateEdgeFunctionSecrets(ctx, &data, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -202,6 +181,7 @@ func (r *EdgeFunctionSecretsResource) Create(ctx context.Context, req resource.C
 func (r *EdgeFunctionSecretsResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data EdgeFunctionSecretsResourceModel
 
+	// Read Terraform state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -221,31 +201,35 @@ func (r *EdgeFunctionSecretsResource) Read(ctx context.Context, req resource.Rea
 
 	tflog.Trace(ctx, "read edge function secrets")
 
+	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *EdgeFunctionSecretsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data EdgeFunctionSecretsResourceModel
 
+	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Create/update secrets using the bulk create endpoint which handles upserts
-	resp.Diagnostics.Append(createEdgeFunctionSecrets(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(createOrUpdateEdgeFunctionSecrets(ctx, &data, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	tflog.Trace(ctx, "updated edge function secrets")
 
+	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *EdgeFunctionSecretsResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data EdgeFunctionSecretsResourceModel
 
+	// Read Terraform state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -260,7 +244,6 @@ func (r *EdgeFunctionSecretsResource) Delete(ctx context.Context, req resource.D
 }
 
 func (r *EdgeFunctionSecretsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Import format: project_ref
 	projectRef := req.ID
 
 	var data EdgeFunctionSecretsResourceModel
@@ -280,6 +263,7 @@ func (r *EdgeFunctionSecretsResource) ImportState(ctx context.Context, req resou
 		return
 	}
 
+	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -289,7 +273,7 @@ func computeSecretDigest(value string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func createEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	projectRef := data.ProjectRef.ValueString()
 
 	// Parse secrets from the model
@@ -300,26 +284,26 @@ func createEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsRes
 	}
 
 	// Build the API request body
-	var secretBody api.CreateSecretBody
-	for _, secret := range secrets {
-		secretBody = append(secretBody, struct {
+	var createSecretBody api.CreateSecretBody
+	for _, secretModel := range secrets {
+		createSecretBody = append(createSecretBody, struct {
 			Name  string `json:"name"`
 			Value string `json:"value"`
 		}{
-			Name:  secret.Name.ValueString(),
-			Value: secret.Value.ValueString(),
+			Name:  secretModel.Name.ValueString(),
+			Value: secretModel.Value.ValueString(),
 		})
 	}
 
 	// Call the API
-	httpResp, err := client.V1BulkCreateSecretsWithResponse(ctx, projectRef, secretBody)
+	httpResp, err := client.V1BulkCreateSecretsWithResponse(ctx, projectRef, createSecretBody)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to create edge function secrets, got error: %s", err)
+		msg := fmt.Sprintf("Unable to create/update edge function secrets, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	if httpResp.StatusCode() != http.StatusOK && httpResp.StatusCode() != http.StatusCreated {
-		msg := fmt.Sprintf("Unable to create edge function secrets, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		msg := fmt.Sprintf("Unable to create/update edge function secrets, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("API Error", msg)}
 	}
 

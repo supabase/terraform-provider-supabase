@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -13,12 +12,6 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-// testDigest returns the hex-encoded SHA-256 digest for use in test assertions,
-// mirroring the computeSecretDigest function used by the resource.
-func testDigest(value string) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(value)))
-}
-
 func TestAccEdgeFunctionSecretsResource(t *testing.T) {
 	defer gock.OffAll()
 
@@ -26,8 +19,8 @@ func TestAccEdgeFunctionSecretsResource(t *testing.T) {
 	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
 
 	// Pre-compute SHA-256 digests matching what the API returns
-	apiKeyDigest := testDigest(apiKeyPlain)
-	dbUrlDigest := testDigest(dbUrlPlain)
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
+	dbUrlDigest := computeSecretDigest(dbUrlPlain)
 
 	testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
@@ -98,9 +91,9 @@ func TestAccEdgeFunctionSecretsResource_Update(t *testing.T) {
 	apiKeyV2 := "secret-v2"
 	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
 
-	digestV1 := testDigest(apiKeyV1)
-	digestV2 := testDigest(apiKeyV2)
-	dbUrlDigest := testDigest(dbUrlPlain)
+	digestV1 := computeSecretDigest(apiKeyV1)
+	digestV2 := computeSecretDigest(apiKeyV2)
+	dbUrlDigest := computeSecretDigest(dbUrlPlain)
 
 	config1 := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
@@ -202,8 +195,8 @@ func TestAccEdgeFunctionSecretsResource_Import(t *testing.T) {
 	apiKeyPlain := "secret-api-key-123"
 	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
 
-	apiKeyDigest := testDigest(apiKeyPlain)
-	dbUrlDigest := testDigest(dbUrlPlain)
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
+	dbUrlDigest := computeSecretDigest(dbUrlPlain)
 
 	secretsResponse := []api.SecretResponse{
 		{Name: "API_KEY", Value: apiKeyDigest},
@@ -303,10 +296,10 @@ func TestAccEdgeFunctionSecretsResource_ReadDrift(t *testing.T) {
 	defer gock.OffAll()
 
 	apiKeyPlain := "original-secret"
-	apiKeyDigest := testDigest(apiKeyPlain)
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
 
 	// The "drifted" digest simulates someone updating the secret out-of-band.
-	driftedDigest := testDigest("some-other-value-set-outside-terraform")
+	driftedDigest := computeSecretDigest("some-other-value-set-outside-terraform")
 
 	testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
@@ -503,7 +496,7 @@ func TestAccEdgeFunctionSecretsResource_ImportNotFound(t *testing.T) {
 	notFoundRef := "nonexistentprojectref"
 
 	apiKeyPlain := "secret-api-key"
-	apiKeyDigest := testDigest(apiKeyPlain)
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
 
 	testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
@@ -570,7 +563,7 @@ func TestAccEdgeFunctionSecretsResource_FilterSupabaseSecrets(t *testing.T) {
 	defer gock.OffAll()
 
 	apiKeyPlain := "secret-api-key-123"
-	apiKeyDigest := testDigest(apiKeyPlain)
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
 
 	testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
@@ -603,11 +596,11 @@ resource "supabase_edge_function_secrets" "test" {
 			},
 			{
 				Name:  "SUPABASE_URL",
-				Value: testDigest("https://example.supabase.co"),
+				Value: computeSecretDigest("https://example.supabase.co"),
 			},
 			{
 				Name:  "SUPABASE_ANON_KEY",
-				Value: testDigest("anon-key-value"),
+				Value: computeSecretDigest("anon-key-value"),
 			},
 		})
 
@@ -684,7 +677,7 @@ func TestAccEdgeFunctionSecretsResource_UpdateReservedPrefixFails(t *testing.T) 
 	defer gock.OffAll()
 
 	apiKeyPlain := "secret-api-key-123"
-	apiKeyDigest := testDigest(apiKeyPlain)
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
 
 	// Initial config with valid secrets only
 	config1 := fmt.Sprintf(`
@@ -777,10 +770,10 @@ func TestAccEdgeFunctionSecretsResource_IgnoresUnmanagedSecrets(t *testing.T) {
 	defer gock.OffAll()
 
 	apiKeyPlain := "test-api-key"
-	apiKeyDigest := testDigest(apiKeyPlain)
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
 
 	// Pre-existing secret that exists in the project but is NOT managed by Terraform
-	managementApiUrlDigest := testDigest("https://api.management.example.com")
+	managementApiUrlDigest := computeSecretDigest("https://api.management.example.com")
 
 	testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
@@ -862,8 +855,8 @@ func TestSecretDigestsPlanModifier(t *testing.T) {
 		apiKeyPlain := "test-api-key"
 		dbUrlPlain := "postgresql://localhost:5432/db"
 
-		apiKeyDigest := testDigest(apiKeyPlain)
-		dbUrlDigest := testDigest(dbUrlPlain)
+		apiKeyDigest := computeSecretDigest(apiKeyPlain)
+		dbUrlDigest := computeSecretDigest(dbUrlPlain)
 
 		testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
@@ -921,7 +914,7 @@ resource "supabase_edge_function_secrets" "test" {
 		defer gock.OffAll()
 
 		userKeyPlain := "user-key"
-		userKeyDigest := testDigest(userKeyPlain)
+		userKeyDigest := computeSecretDigest(userKeyPlain)
 
 		testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
