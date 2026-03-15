@@ -846,19 +846,18 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestSecretDigestsPlanModifier tests that the plan modifier correctly computes
-// digests from secret values during the plan phase.
-func TestSecretDigestsPlanModifier(t *testing.T) {
-	t.Run("computes digests from known secret values", func(t *testing.T) {
-		defer gock.OffAll()
+// TestSecretDigestsPlanModifier_ComputesDigests tests that the plan modifier
+// correctly computes digests from known secret values during the plan phase.
+func TestSecretDigestsPlanModifier_ComputesDigests(t *testing.T) {
+	defer gock.OffAll()
 
-		apiKeyPlain := "test-api-key"
-		dbUrlPlain := "postgresql://localhost:5432/db"
+	apiKeyPlain := "test-api-key"
+	dbUrlPlain := "postgresql://localhost:5432/db"
 
-		apiKeyDigest := computeSecretDigest(apiKeyPlain)
-		dbUrlDigest := computeSecretDigest(dbUrlPlain)
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
+	dbUrlDigest := computeSecretDigest(dbUrlPlain)
 
-		testConfig := fmt.Sprintf(`
+	testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
 	project_ref = "%s"
 	secrets = [
@@ -874,49 +873,51 @@ resource "supabase_edge_function_secrets" "test" {
 }
 `, testProjectRef, apiKeyPlain, dbUrlPlain)
 
-		// Mock create secrets
-		gock.New(defaultApiEndpoint).
-			Post(secretsApiPath).
-			Reply(http.StatusOK)
+	// Mock create secrets
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusOK)
 
-		// Mock read secrets - return digests
-		gock.New(defaultApiEndpoint).
-			Get(secretsApiPath).
-			Times(2).
-			Reply(http.StatusOK).
-			JSON([]api.SecretResponse{
-				{Name: "API_KEY", Value: apiKeyDigest},
-				{Name: "DATABASE_URL", Value: dbUrlDigest},
-			})
-
-		// Mock delete
-		gock.New(defaultApiEndpoint).
-			Delete(secretsApiPath).
-			Reply(http.StatusOK)
-
-		resource.Test(t, resource.TestCase{
-			PreCheck:                 func() { testAccPreCheck(t) },
-			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-			Steps: []resource.TestStep{
-				{
-					Config: testConfig,
-					Check: resource.ComposeAggregateTestCheckFunc(
-						resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
-						resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
-						resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
-					),
-				},
-			},
+	// Mock read secrets - return digests
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "API_KEY", Value: apiKeyDigest},
+			{Name: "DATABASE_URL", Value: dbUrlDigest},
 		})
+
+	// Mock delete
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
+				),
+			},
+		},
 	})
+}
 
-	t.Run("skips SUPABASE_ prefixed secrets", func(t *testing.T) {
-		defer gock.OffAll()
+// TestSecretDigestsPlanModifier_SkipsSupabaseSecrets tests that the plan
+// modifier skips SUPABASE_ prefixed secrets.
+func TestSecretDigestsPlanModifier_SkipsSupabaseSecrets(t *testing.T) {
+	defer gock.OffAll()
 
-		userKeyPlain := "user-key"
-		userKeyDigest := computeSecretDigest(userKeyPlain)
+	userKeyPlain := "user-key"
+	userKeyDigest := computeSecretDigest(userKeyPlain)
 
-		testConfig := fmt.Sprintf(`
+	testConfig := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
 	project_ref = "%s"
 	secrets = [
@@ -928,51 +929,50 @@ resource "supabase_edge_function_secrets" "test" {
 }
 `, testProjectRef, userKeyPlain)
 
-		// Mock create
-		gock.New(defaultApiEndpoint).
-			Post(secretsApiPath).
-			Reply(http.StatusOK)
+	// Mock create
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusOK)
 
-		// Mock read - only return user secret
-		gock.New(defaultApiEndpoint).
-			Get(secretsApiPath).
-			Times(2).
-			Reply(http.StatusOK).
-			JSON([]api.SecretResponse{
-				{Name: "USER_KEY", Value: userKeyDigest},
-			})
-
-		// Mock delete
-		gock.New(defaultApiEndpoint).
-			Delete(secretsApiPath).
-			Reply(http.StatusOK)
-
-		resource.Test(t, resource.TestCase{
-			PreCheck:                 func() { testAccPreCheck(t) },
-			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-			Steps: []resource.TestStep{
-				{
-					Config: testConfig,
-					Check: resource.ComposeAggregateTestCheckFunc(
-						resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
-						resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.USER_KEY", userKeyDigest),
-						// Verify SUPABASE_ secrets are not in digests map
-						func(s *terraform.State) error {
-							rs, ok := s.RootModule().Resources["supabase_edge_function_secrets.test"]
-							if !ok {
-								return fmt.Errorf("resource not found")
-							}
-							for k := range rs.Primary.Attributes {
-								if regexp.MustCompile(`secret_digests\.SUPABASE_`).MatchString(k) {
-									return fmt.Errorf("SUPABASE_ prefixed secret found in digests: %s", k)
-								}
-							}
-							return nil
-						},
-					),
-				},
-			},
+	// Mock read - only return user secret
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "USER_KEY", Value: userKeyDigest},
 		})
+
+	// Mock delete
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.USER_KEY", userKeyDigest),
+					// Verify SUPABASE_ secrets are not in digests map
+					func(s *terraform.State) error {
+						rs, ok := s.RootModule().Resources["supabase_edge_function_secrets.test"]
+						if !ok {
+							return fmt.Errorf("resource not found")
+						}
+						for k := range rs.Primary.Attributes {
+							if regexp.MustCompile(`secret_digests\.SUPABASE_`).MatchString(k) {
+								return fmt.Errorf("SUPABASE_ prefixed secret found in digests: %s", k)
+							}
+						}
+						return nil
+					},
+				),
+			},
+		},
 	})
 }
 
