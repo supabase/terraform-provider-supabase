@@ -4,7 +4,6 @@
 package provider
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -14,8 +13,6 @@ import (
 	"github.com/supabase/terraform-provider-supabase/examples"
 	"gopkg.in/h2non/gock.v1"
 )
-
-var poolerApiPath = fmt.Sprintf("/v1/projects/%s/config/database/pooler", testProjectRef)
 
 func TestAccPoolerDataSource(t *testing.T) {
 	poolerUrl := "postgres://user:pass@db.supabase.co:5432/postgres"

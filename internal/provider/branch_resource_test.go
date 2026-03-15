@@ -4,7 +4,6 @@
 package provider
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -15,15 +14,13 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-var (
-	testBranchUUID              = uuid.New()
-	branchApiPath               = fmt.Sprintf("/v1/branches/%s", testBranchUUID.String())
-	testAccBranchResourceConfig = fmt.Sprintf(`
+const (
+	testAccBranchResourceConfig = `
 resource "supabase_branch" "new" {
-  parent_project_ref = "%s"
+  parent_project_ref = "` + testProjectRef + `"
   git_branch         = "develop"
 }
-`, testProjectRef)
+`
 )
 
 func TestAccBranchResource(t *testing.T) {
@@ -45,7 +42,7 @@ func TestAccBranchResource(t *testing.T) {
 		Post(branchesApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.BranchResponse{
-			Id:               testBranchUUID,
+			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("main"),
 		})
@@ -76,7 +73,7 @@ func TestAccBranchResource(t *testing.T) {
 		Patch(branchApiPath).
 		Reply(http.StatusOK).
 		JSON(api.BranchResponse{
-			Id:               testBranchUUID,
+			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("develop"),
 		})
@@ -97,7 +94,7 @@ func TestAccBranchResource(t *testing.T) {
 			{
 				Config: examples.BranchResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_branch.new", "id", testBranchUUID.String()),
+					resource.TestCheckResourceAttr("supabase_branch.new", "id", testBranchUUID),
 				),
 			},
 			// ImportState testing

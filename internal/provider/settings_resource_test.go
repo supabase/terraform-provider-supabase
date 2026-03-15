@@ -34,14 +34,6 @@ var allServicesHealthy = []api.V1ServiceHealthResponse{
 	{Name: api.V1ServiceHealthResponseNameStorage, Status: api.ACTIVEHEALTHY, Healthy: true},
 }
 
-var (
-	dbConfigApiPath            = fmt.Sprintf("%s/config/database/postgres", projectApiPath)
-	networkRestrictionsApiPath = fmt.Sprintf("%s/network-restrictions", projectApiPath)
-	postgrestApiPath           = fmt.Sprintf("%s/postgrest", projectApiPath)
-	authConfigApiPath          = fmt.Sprintf("%s/config/auth", projectApiPath)
-	storageConfigApiPath       = fmt.Sprintf("%s/config/storage", projectApiPath)
-)
-
 func TestAccSettingsResource(t *testing.T) {
 	defer gock.OffAll()
 	projectStatusResponse := api.V1ProjectWithDatabaseResponse{

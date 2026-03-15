@@ -16,11 +16,12 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-var (
-	apiKeysApiPath = fmt.Sprintf("%s/api-keys", projectApiPath)
-	testApiKeyUUID = uuid.New()
-	apiKeyApiPath  = fmt.Sprintf("%s/%s", apiKeysApiPath, testApiKeyUUID.String())
-)
+const testAccApikeyResourceConfig = `
+resource "supabase_apikey" "new" {
+  project_ref = "` + testProjectRef + `"
+  name        = "test"
+}
+`
 
 func TestAccApiKeyResource(t *testing.T) {
 	// Setup mock api
@@ -54,7 +55,7 @@ func TestAccApiKeyResource(t *testing.T) {
 		Post(apiKeysApiPath).
 		Reply(http.StatusCreated).
 		JSON(api.ApiKeyResponse{
-			Id:     nullable.NewNullableWithValue(testApiKeyUUID.String()),
+			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
 			Name:   "test",
 			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
 			ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
@@ -64,7 +65,7 @@ func TestAccApiKeyResource(t *testing.T) {
 		Persist().
 		Reply(http.StatusOK).
 		JSON(api.ApiKeyResponse{
-			Id:     nullable.NewNullableWithValue(testApiKeyUUID.String()),
+			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
 			Name:   "test",
 			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
 			ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
@@ -85,7 +86,7 @@ func TestAccApiKeyResource(t *testing.T) {
 			{
 				Config: examples.ApiKeyResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_apikey.new", "id", testApiKeyUUID.String()),
+					resource.TestCheckResourceAttr("supabase_apikey.new", "id", testApiKeyUUID),
 				),
 			},
 			// ImportState testing
@@ -94,7 +95,7 @@ func TestAccApiKeyResource(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"name", "project_ref"},
-				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, testApiKeyUUID.String()),
+				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, testApiKeyUUID),
 			},
 			// Update and Read testing
 			{
@@ -108,10 +109,3 @@ func TestAccApiKeyResource(t *testing.T) {
 		},
 	})
 }
-
-const testAccApikeyResourceConfig = `
-resource "supabase_apikey" "new" {
-  project_ref = "` + testProjectRef + `"
-  name        = "test"
-}
-`

@@ -16,12 +16,6 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-var (
-	functionSlug          = "foo"
-	deployFunctionApiPath = fmt.Sprintf("/v1/projects/%s/functions/deploy", testProjectRef)
-	functionApiPath       = fmt.Sprintf("/v1/projects/%s/functions/%s", testProjectRef, functionSlug)
-)
-
 func TestAccEdgeFunctionResource(t *testing.T) {
 	defer gock.OffAll()
 

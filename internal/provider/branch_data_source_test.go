@@ -4,7 +4,6 @@
 package provider
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -15,7 +14,6 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-var branchesApiPath = fmt.Sprintf("/v1/projects/%s/branches", testProjectRef)
 
 func TestAccBranchDataSource(t *testing.T) {
 	// Setup mock api

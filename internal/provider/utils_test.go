@@ -4,20 +4,12 @@
 package provider
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 	"testing/synctest"
 
 	"github.com/supabase/cli/pkg/api"
 	"gopkg.in/h2non/gock.v1"
-)
-
-const projectsApiPath = "/v1/projects"
-
-var (
-	projectApiPath = fmt.Sprintf("%s/%s", projectsApiPath, testProjectRef)
-	healthApiPath  = fmt.Sprintf("%s/health", projectApiPath)
 )
 
 func TestWaitForProjectActive_TerminalState(t *testing.T) {

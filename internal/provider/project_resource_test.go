@@ -15,15 +15,6 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-var (
-	legacyApiKeysApiPath = fmt.Sprintf("%s/legacy", apiKeysApiPath)
-	billingApiPath       = fmt.Sprintf("%s/billing/addons", projectApiPath)
-	dbPasswordApiPath    = fmt.Sprintf("%s/database/password", projectApiPath)
-)
-
-// testApiKeyUUID = uuid.New()
-// apiKeyApiPath  = fmt.Sprintf("%s/%s", apiKeysApiPath, testApiKeyUUID.String())
-
 func TestAccProjectResource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()

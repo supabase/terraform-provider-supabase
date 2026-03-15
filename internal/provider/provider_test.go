@@ -15,7 +15,6 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-const testProjectRef = "mayuaycdtijbctgqbycg"
 
 // testAccProtoV6ProviderFactories are used to instantiate a provider during
 // acceptance testing. The factory function will be invoked for every Terraform
