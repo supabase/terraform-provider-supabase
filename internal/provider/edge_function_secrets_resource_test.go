@@ -90,7 +90,7 @@ resource "supabase_edge_function_secrets" "test" {
 }
 
 // TestAccEdgeFunctionSecretsResource_Update verifies that changing secret values
-// triggers a delete-then-recreate cycle and updates digests in state.
+// updates the secrets on the server without requiring deletion.
 func TestAccEdgeFunctionSecretsResource_Update(t *testing.T) {
 	defer gock.OffAll()
 
@@ -149,11 +149,7 @@ resource "supabase_edge_function_secrets" "test" {
 			{Name: "DATABASE_URL", Value: dbUrlDigest},
 		})
 
-	// Step 2: update – delete existing then recreate
-	gock.New(defaultApiEndpoint).
-		Delete(secretsApiPath).
-		Reply(http.StatusOK)
-
+	// Step 2: update – create/upsert secrets
 	gock.New(defaultApiEndpoint).
 		Post(secretsApiPath).
 		Reply(http.StatusOK)

@@ -232,13 +232,7 @@ func (r *EdgeFunctionSecretsResource) Update(ctx context.Context, req resource.U
 		return
 	}
 
-	// For simplicity, we delete all existing secrets and recreate them
-	// This ensures the state matches the desired configuration
-	resp.Diagnostics.Append(deleteEdgeFunctionSecrets(ctx, &data, r.client)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
+	// Create/update secrets using the bulk create endpoint which handles upserts
 	resp.Diagnostics.Append(createEdgeFunctionSecrets(ctx, &data, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
