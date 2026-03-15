@@ -179,7 +179,7 @@ func (r *EdgeFunctionSecretsResource) Read(ctx context.Context, req resource.Rea
 		return
 	}
 
-	found, diags := readEdgeFunctionSecrets(ctx, &data, r.client)
+	found, diags := readEdgeFunctionSecrets(ctx, &data, r.client, false)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -241,7 +241,7 @@ func (r *EdgeFunctionSecretsResource) ImportState(ctx context.Context, req resou
 	var data EdgeFunctionSecretsResourceModel
 	data.ProjectRef = types.StringValue(projectRef)
 
-	found, diags := readEdgeFunctionSecrets(ctx, &data, r.client)
+	found, diags := readEdgeFunctionSecrets(ctx, &data, r.client, true)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -318,7 +318,7 @@ func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSe
 }
 
 // Returns (true, nil) if secrets are found, (false, nil) if not found, or (false, diags) on error.
-func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
+func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses, isImport bool) (bool, diag.Diagnostics) {
 	projectRef := data.ProjectRef.ValueString()
 
 	httpResp, err := client.V1ListAllSecretsWithResponse(ctx, projectRef)
@@ -364,9 +364,6 @@ func readEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResou
 	for _, apiSecret := range *httpResp.JSON200 {
 		apiSecretsMap[apiSecret.Name] = apiSecret.Value
 	}
-
-	// Determine if this is an import operation (no existing secrets in state)
-	isImport := len(existingSecrets) == 0
 
 	secretModels := make([]SecretModel, 0)
 	newDigestElements := make(map[string]attr.Value)

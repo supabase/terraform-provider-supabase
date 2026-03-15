@@ -975,3 +975,53 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 	})
 }
+
+// TestAccEdgeFunctionSecretsResource_EmptySecretsNotTreatedAsImport verifies that
+// when a user explicitly configures secrets = [], the Read operation does NOT
+// import remote secrets into the state (i.e., it doesn't conflate an explicit
+// empty list with an import operation).
+func TestAccEdgeFunctionSecretsResource_EmptySecretsNotTreatedAsImport(t *testing.T) {
+	defer gock.OffAll()
+
+	apiKeyDigest := computeSecretDigest("remote-secret-value")
+
+	testConfig := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets     = []
+}
+`, testProjectRef)
+
+	// Create call with empty secrets
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusOK)
+
+	// Read operations: API returns remote secrets that were created out-of-band.
+	// With the bug, these would be imported into state even though user said secrets = [].
+	// After the fix, these should NOT be imported.
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "API_KEY", Value: apiKeyDigest},
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+					// The user explicitly set secrets = [], so the state should remain empty
+					// even if remote secrets exist (they were created out-of-band)
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "0"),
+				),
+			},
+		},
+	})
+}
