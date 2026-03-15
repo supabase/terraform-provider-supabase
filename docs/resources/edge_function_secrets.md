@@ -41,13 +41,43 @@ resource "supabase_edge_function_secrets" "example" {
 - `project_ref` (String) Project reference ID
 - `secrets` (Attributes Set) Set of secrets for edge functions (see [below for nested schema](#nestedatt--secrets))
 
+### Read-Only
+
+- `secret_digests` (Map of String) Map of secret name to the SHA-256 hex digest of the secret value. Computed by the provider at plan time (when plaintext values are known) and updated after each apply. Used to detect drift when a secret has been changed outside of Terraform: if the digest returned by the API no longer matches the locally computed digest, the provider marks the affected secret value as unknown so Terraform will plan an update.
+
 <a id="nestedatt--secrets"></a>
 ### Nested Schema for `secrets`
 
 Required:
 
-- `name` (String) Name of the secret (must not start with SUPABASE_ prefix)
-- `value` (String, Sensitive) The secret value
+- `name` (String) Name of the secret. Must not start with the `SUPABASE_` prefix — such names are reserved internally by Supabase, cannot be created, updated, or deleted via the API, and are automatically filtered out from reads and imports.
+- `value` (String, Sensitive) The plaintext secret value. Stored in Terraform state when managed by Terraform. After an import this field will be `null` because the Supabase API only returns SHA-256 digests — see the Import section below.
+
+## Behavioral Notes
+
+### Secret values in state
+
+Plaintext `secrets[*].value` is stored in Terraform state only when the secret is managed (created or updated) directly by Terraform. Always use a [remote state backend with encryption](https://developer.hashicorp.com/terraform/language/backend) to protect sensitive values.
+
+### Plan-time digest computation
+
+The provider computes `secret_digests` during the plan phase (before apply) when plaintext values are available. This means the planned value of `secret_digests` is visible in `terraform plan` output and is used to detect drift on the next refresh.
+
+### Drift detection
+
+On each `terraform refresh` / `terraform plan`, the provider fetches the current SHA-256 digests from the API and compares them to locally stored digests. If a digest differs (i.e. a secret was changed out-of-band), the affected `value` is set to `null` in state so Terraform shows a diff and prompts you to re-supply the value.
+
+### Reserved `SUPABASE_` prefix
+
+Secret names starting with `SUPABASE_` are reserved by Supabase and cannot be created, updated, or deleted via the management API. The provider filters them out during reads and imports — they will never appear in Terraform state. Attempting to declare a secret with a `SUPABASE_` prefix will result in an API error at apply time.
+
+### One resource per project
+
+Only a single `supabase_edge_function_secrets` resource should be declared per `project_ref`. The provider uses a bulk-upsert API endpoint: each apply replaces the full set of managed secrets for that project. If two separate resource blocks target the same `project_ref`, each apply will overwrite the secrets written by the other, causing secrets to be deleted unexpectedly. Consolidate all secrets for a project into one resource block.
+
+### Empty `secrets` set
+
+Declaring `secrets = []` means the provider tracks no secrets. It will not absorb any existing remote secrets into state, and it will not issue delete calls unless secret names are already present in state. This is intentional and prevents accidental removal of out-of-band secrets.
 
 ## Import
 
@@ -61,7 +91,16 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 # - project_ref: Found in the Supabase dashboard under Project Settings -> General,
 #   or in the project's URL: https://supabase.com/dashboard/project/<project_ref>
 #
-# Note: Secret values are sensitive and will be stored in Terraform state.
-# Ensure your state file is properly secured.
+# IMPORTANT: The Supabase management API does not return plaintext secret values —
+# it only returns SHA-256 digests. As a result, after importing:
+#   - `secret_digests` is populated with the digests returned by the API.
+#   - `secrets[*].value` is set to null for every imported secret.
+#   - Secrets with a SUPABASE_ prefix are not imported (they are reserved).
+#
+# After import, run `terraform plan` and supply the plaintext secret values in
+# your configuration. Terraform will show a plan to update the secrets and
+# reconcile state with your configuration.
+#
+# Note: Terraform will emit a warning on import reminding you of this behavior.
 terraform import supabase_edge_function_secrets.example mayuaycdtijbctgqbycg
 ```
