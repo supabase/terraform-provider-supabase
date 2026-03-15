@@ -640,3 +640,131 @@ resource "supabase_edge_function_secrets" "test" {
 		},
 	})
 }
+
+// TestAccEdgeFunctionSecretsResource_CreateReservedPrefixFails verifies that
+// attempting to create secrets with names starting with SUPABASE_ returns an
+// error from the API, which the provider surfaces to the user.
+func TestAccEdgeFunctionSecretsResource_CreateReservedPrefixFails(t *testing.T) {
+	defer gock.OffAll()
+
+	testConfig := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "API_KEY"
+			value = "valid-secret"
+		},
+		{
+			name  = "SUPABASE_URL"
+			value = "https://example.supabase.co"
+		}
+	]
+}
+`, testProjectRef)
+
+	// Mock create secrets - API rejects request containing SUPABASE_ prefix
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusBadRequest).
+		BodyString(`{"message":"Secret names starting with SUPABASE_ are reserved"}`)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testConfig,
+				ExpectError: regexp.MustCompile("SUPABASE_"),
+			},
+		},
+	})
+}
+
+// TestAccEdgeFunctionSecretsResource_UpdateReservedPrefixFails verifies that
+// attempting to update (add or modify) secrets with names starting with SUPABASE_
+// returns an error from the API, which the provider surfaces to the user.
+func TestAccEdgeFunctionSecretsResource_UpdateReservedPrefixFails(t *testing.T) {
+	defer gock.OffAll()
+
+	apiKeyPlain := "secret-api-key-123"
+	apiKeyDigest := testDigest(apiKeyPlain)
+
+	// Initial config with valid secrets only
+	config1 := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "API_KEY"
+			value = "%s"
+		}
+	]
+}
+`, testProjectRef, apiKeyPlain)
+
+	// Updated config attempting to add a SUPABASE_ prefixed secret
+	config2 := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "API_KEY"
+			value = "%s"
+		},
+		{
+			name  = "SUPABASE_ANON_KEY"
+			value = "anon-key-value"
+		}
+	]
+}
+`, testProjectRef, apiKeyPlain)
+
+	// Step 1: create initial valid secrets
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusOK)
+
+	// Step 1: read after create and refresh
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "API_KEY", Value: apiKeyDigest},
+		})
+
+	// Step 2: attempt to update with reserved prefix - API rejects
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
+		Reply(http.StatusOK)
+
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusBadRequest).
+		BodyString(`{"message":"Secret names starting with SUPABASE_ are reserved"}`)
+
+	// Final cleanup: delete resources (since first step succeeded, state exists)
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config1,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+				),
+			},
+			{
+				Config:      config2,
+				ExpectError: regexp.MustCompile("SUPABASE_"),
+			},
+		},
+	})
+}
