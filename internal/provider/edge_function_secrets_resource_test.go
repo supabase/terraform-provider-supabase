@@ -19,13 +19,6 @@ func testDigest(value string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(value)))
 }
 
-const (
-	apiEndpoint = "https://api.supabase.com"
-	projectRef  = "mayuaycdtijbctgqbycg"
-)
-
-var apiPath = fmt.Sprintf("/v1/projects/%s/secrets", projectRef)
-
 func TestAccEdgeFunctionSecretsResource(t *testing.T) {
 	defer gock.OffAll()
 
@@ -50,16 +43,16 @@ resource "supabase_edge_function_secrets" "test" {
 		}
 	]
 }
-`, projectRef, apiKeyPlain, dbUrlPlain)
+`, testProjectRef, apiKeyPlain, dbUrlPlain)
 
 	// Mock create secrets
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
 	// Mock read secrets after create and refresh – API returns SHA-256 digests, not plaintext
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -74,8 +67,8 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Mock delete secrets
-	gock.New(apiEndpoint).
-		Delete(apiPath).
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -85,7 +78,7 @@ resource "supabase_edge_function_secrets" "test" {
 			{
 				Config: testConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", projectRef),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
@@ -123,7 +116,7 @@ resource "supabase_edge_function_secrets" "test" {
 		}
 	]
 }
-`, projectRef, apiKeyV1, dbUrlPlain)
+`, testProjectRef, apiKeyV1, dbUrlPlain)
 
 	config2 := fmt.Sprintf(`
 resource "supabase_edge_function_secrets" "test" {
@@ -139,16 +132,16 @@ resource "supabase_edge_function_secrets" "test" {
 		}
 	]
 }
-`, projectRef, apiKeyV2, dbUrlPlain)
+`, testProjectRef, apiKeyV2, dbUrlPlain)
 
 	// Step 1: create
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
 	// Step 1: read after create and refresh
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -157,17 +150,17 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Step 2: update – delete existing then recreate
-	gock.New(apiEndpoint).
-		Delete(apiPath).
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
 	// Step 2: read after update and refresh
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -176,8 +169,8 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Teardown: delete
-	gock.New(apiEndpoint).
-		Delete(apiPath).
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -235,23 +228,23 @@ resource "supabase_edge_function_secrets" "test" {
 		}
 	]
 }
-`, projectRef, apiKeyPlain, dbUrlPlain)
+`, testProjectRef, apiKeyPlain, dbUrlPlain)
 
 	// Step 1: create
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
 	// Step 1: read after create, refresh, import and import verification
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Times(4).
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
 
 	// Teardown: delete
-	gock.New(apiEndpoint).
-		Delete(apiPath).
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -261,7 +254,7 @@ resource "supabase_edge_function_secrets" "test" {
 			{
 				Config: testConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", projectRef),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
 				),
@@ -274,7 +267,7 @@ resource "supabase_edge_function_secrets" "test" {
 				// project_ref as the identifier for verification.
 				ResourceName:                         "supabase_edge_function_secrets.test",
 				ImportState:                          true,
-				ImportStateId:                        projectRef,
+				ImportStateId:                        testProjectRef,
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "project_ref",
 				ImportStateVerifyIgnore: []string{
@@ -287,8 +280,8 @@ resource "supabase_edge_function_secrets" "test" {
 						return fmt.Errorf("expected 1 instance state, got %d", len(s))
 					}
 					state := s[0]
-					if state.Attributes["project_ref"] != projectRef {
-						return fmt.Errorf("expected project_ref %q, got %q", projectRef, state.Attributes["project_ref"])
+					if state.Attributes["project_ref"] != testProjectRef {
+						return fmt.Errorf("expected project_ref %q, got %q", testProjectRef, state.Attributes["project_ref"])
 					}
 					if state.Attributes["secret_digests.%"] != "2" {
 						return fmt.Errorf("expected 2 secret_digests, got %s", state.Attributes["secret_digests.%"])
@@ -329,16 +322,16 @@ resource "supabase_edge_function_secrets" "test" {
 		}
 	]
 }
-`, projectRef, apiKeyPlain)
+`, testProjectRef, apiKeyPlain)
 
 	// Step 1: create
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
 	// Step 1: read after create and refresh - return original digest
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -346,8 +339,8 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Step 2: all subsequent reads return drifted digest
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -355,8 +348,8 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Teardown: delete
-	gock.New(apiEndpoint).
-		Delete(apiPath).
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -391,16 +384,16 @@ resource "supabase_edge_function_secrets" "test" {
 	project_ref = "%s"
 	secrets     = []
 }
-`, projectRef)
+`, testProjectRef)
 
 	// Create call: empty body – still expected to succeed
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
 	// All reads return an empty list (post-create read, refresh read
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Times(3).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{})
@@ -414,7 +407,7 @@ resource "supabase_edge_function_secrets" "test" {
 			{
 				Config: testConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", projectRef),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "0"),
 				),
@@ -438,10 +431,10 @@ resource "supabase_edge_function_secrets" "test" {
 		}
 	]
 }
-`, projectRef)
+`, testProjectRef)
 
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusInternalServerError).
 		BodyString(`{"message":"internal server error"}`)
 
@@ -473,24 +466,24 @@ resource "supabase_edge_function_secrets" "test" {
 		}
 	]
 }
-`, projectRef)
+`, testProjectRef)
 
 	// Create succeeds...
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
 	// ...but the subsequent read fails with 500
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Reply(http.StatusInternalServerError).
 		BodyString(`{"message":"internal server error"}`)
 
 	// If the provider committed partial state before the error, the framework
 	// will attempt a destroy. No state should be committed on a failed Create,
 	// but register a mock as a safety net to prevent a spurious teardown error.
-	gock.New(apiEndpoint).
-		Delete(apiPath).
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -526,15 +519,15 @@ resource "supabase_edge_function_secrets" "test" {
 		}
 	]
 }
-`, projectRef, apiKeyPlain)
+`, testProjectRef, apiKeyPlain)
 
 	// Step 1: create and read the real resource
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -542,13 +535,13 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Step 2: import a different project_ref that returns 404
-	gock.New(apiEndpoint).
+	gock.New(defaultApiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", notFoundRef)).
 		Reply(http.StatusNotFound)
 
 	// Teardown: delete the real resource
-	gock.New(apiEndpoint).
-		Delete(apiPath).
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -559,7 +552,7 @@ resource "supabase_edge_function_secrets" "test" {
 			{
 				Config: testConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", projectRef),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
 				),
 			},
 			// Step 2: attempt to import a non-existent project – should error
@@ -593,18 +586,18 @@ resource "supabase_edge_function_secrets" "test" {
 		}
 	]
 }
-`, projectRef, apiKeyPlain)
+`, testProjectRef, apiKeyPlain)
 
 	// Mock create secrets
-	gock.New(apiEndpoint).
-		Post(apiPath).
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
 	// Mock read secrets after create – API returns both user secrets and SUPABASE_ prefixed secrets
 	// The SUPABASE_ secrets should be filtered out and not appear in state
 	// Also the second read is for refresh
-	gock.New(apiEndpoint).
-		Get(apiPath).
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
@@ -623,8 +616,8 @@ resource "supabase_edge_function_secrets" "test" {
 		})
 
 	// Mock delete secrets
-	gock.New(apiEndpoint).
-		Delete(apiPath).
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -634,7 +627,7 @@ resource "supabase_edge_function_secrets" "test" {
 			{
 				Config: testConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", projectRef),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
 					// Verify only 1 secret digest (API_KEY) – SUPABASE_ secrets should be filtered
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
