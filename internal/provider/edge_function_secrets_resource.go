@@ -236,6 +236,12 @@ func (r *EdgeFunctionSecretsResource) Delete(ctx context.Context, req resource.D
 }
 
 func (r *EdgeFunctionSecretsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resp.Diagnostics.AddWarning(
+		"Secret Values Not Returned",
+		"The Supabase management API only returns SHA-256 hashes of secret values. "+
+			"After import, Terraform will show a plan to update these secrets "+
+			"to match the values defined in your configuration.",
+	)
 	projectRef := req.ID
 
 	var data EdgeFunctionSecretsResourceModel
@@ -319,6 +325,11 @@ func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSe
 	// Build the API request body
 	var createSecretBody api.CreateSecretBody
 	for _, secret := range secretModels {
+		if secret.Value.IsNull() || secret.Value.IsUnknown() {
+			// Skip secrets where we don't have a plaintext value (imported-only digests).
+			continue
+		}
+
 		createSecretBody = append(createSecretBody, struct {
 			Name  string `json:"name"`
 			Value string `json:"value"`
@@ -326,6 +337,11 @@ func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSe
 			Name:  secret.Name.ValueString(),
 			Value: secret.Value.ValueString(),
 		})
+	}
+
+	// If there are no secrets to create/update, return early
+	if len(createSecretBody) == 0 {
+		return nil
 	}
 
 	// Call the API
