@@ -10,8 +10,10 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/supabase/cli/pkg/api"
@@ -22,6 +24,74 @@ var (
 	_ resource.Resource                = &EdgeFunctionSecretsResource{}
 	_ resource.ResourceWithImportState = &EdgeFunctionSecretsResource{}
 )
+
+// secretDigestsPlanModifier computes SHA-256 digests from secret values during plan phase
+// to make secret_digests known before apply.
+type secretDigestsPlanModifier struct{}
+
+func (m secretDigestsPlanModifier) Description(_ context.Context) string {
+	return "Computes SHA-256 digests from secret values during plan to make digests known before apply."
+}
+
+func (m secretDigestsPlanModifier) MarkdownDescription(_ context.Context) string {
+	return "Computes SHA-256 digests from secret values during plan to make digests known before apply."
+}
+
+func (m secretDigestsPlanModifier) PlanModifyMap(ctx context.Context, req planmodifier.MapRequest, resp *planmodifier.MapResponse) {
+	// If the entire plan is null (resource being destroyed), nothing to do
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	// Get the planned secrets attribute
+	var secrets types.Set
+	diags := req.Plan.GetAttribute(ctx, path.Root("secrets"), &secrets)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// If secrets is unknown or null, we can't compute digests yet
+	if secrets.IsUnknown() || secrets.IsNull() {
+		return
+	}
+
+	// Parse secrets from the plan
+	var secretModels []SecretModel
+	diags = secrets.ElementsAs(ctx, &secretModels, false)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Compute digests for all secrets
+	digestElements := make(map[string]attr.Value)
+	for _, secret := range secretModels {
+		// Skip if secret value is unknown
+		if secret.Value.IsUnknown() {
+			// If any value is unknown, we can't compute all digests
+			// Return without setting PlanValue to keep it unknown
+			return
+		}
+
+		// Skip SUPABASE_ prefixed secrets
+		if strings.HasPrefix(secret.Name.ValueString(), "SUPABASE_") {
+			continue
+		}
+
+		digestElements[secret.Name.ValueString()] = types.StringValue(computeSecretDigest(secret.Value.ValueString()))
+	}
+
+	// Build the digest map
+	digestMap, mapDiags := types.MapValue(types.StringType, digestElements)
+	resp.Diagnostics.Append(mapDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Set the planned value for secret_digests
+	resp.PlanValue = digestMap
+}
 
 func NewEdgeFunctionSecretsResource() resource.Resource {
 	return &EdgeFunctionSecretsResource{}
@@ -82,6 +152,9 @@ func (r *EdgeFunctionSecretsResource) Schema(ctx context.Context, req resource.S
 				ElementType:         types.StringType,
 				Computed:            true,
 				MarkdownDescription: "Map of secret name to SHA-256 digest of the secret value. Used to detect if a secret has been changed outside of Terraform management.",
+				PlanModifiers: []planmodifier.Map{
+					secretDigestsPlanModifier{},
+				},
 			},
 		},
 	}
