@@ -24,8 +24,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &ProjectResource{}
-var _ resource.ResourceWithImportState = &ProjectResource{}
+var (
+	_ resource.Resource                = &ProjectResource{}
+	_ resource.ResourceWithImportState = &ProjectResource{}
+)
 
 func NewProjectResource() resource.Resource {
 	return &ProjectResource{}
@@ -129,21 +131,9 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 }
 
 func (r *ProjectResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client, ok := extractClient(req.ProviderData, &resp.Diagnostics); ok {
+		r.client = client
 	}
-
-	client, ok := req.ProviderData.(*api.ClientWithResponses)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-		return
-	}
-
-	r.client = client
 }
 
 func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
