@@ -14,7 +14,6 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-
 func TestAccBranchDataSource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
