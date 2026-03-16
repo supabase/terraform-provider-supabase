@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/supabase/cli/pkg/api"
@@ -114,6 +115,9 @@ func (r *EdgeFunctionSecretsResource) Schema(ctx context.Context, req resource.S
 			"project_ref": schema.StringAttribute{
 				MarkdownDescription: "Project reference ID",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"secrets": schema.SetNestedAttribute{
 				MarkdownDescription: "Set of secrets for edge functions",

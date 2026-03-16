@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -72,18 +72,18 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
 				),
 			},
 		},
@@ -170,22 +170,22 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: config1,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", digestV1),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", digestV1),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
 				),
 			},
 			{
 				Config: config2,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", digestV2),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", digestV2),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
 				),
 			},
 		},
@@ -298,26 +298,26 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: config1,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_A", keyADigest),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_B", keyBDigest),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_A", keyADigest),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_B", keyBDigest),
 				),
 			},
 			{
 				Config: config2,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_B", keyBDigest),
-					resource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_A"),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_B", keyBDigest),
+					testresource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_A"),
 					func(s *terraform.State) error {
 						if !deleteCalled {
 							return fmt.Errorf("DELETE API was not called to remove KEY_A")
@@ -359,10 +359,10 @@ func TestAccEdgeFunctionSecretsResource_Import(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				// Import by project_ref. The imported state uses API digests in
 				// the value field (no plaintext available on import).
@@ -445,16 +445,16 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
 				),
 			},
 			{
@@ -564,15 +564,15 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			// Step 1: create with original value – verify matching digests in state
 			{
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
 				),
 			},
 			// Step 2: same config, but API now returns drifted digest.
@@ -586,8 +586,8 @@ resource "supabase_edge_function_secrets" "test" {
 			// After applying, the plan should be empty (no more drift).
 			{
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
 				),
 			},
 		},
@@ -620,16 +620,16 @@ resource "supabase_edge_function_secrets" "test" {
 
 	// Teardown: delete is a no-op (no secret names to send), so no HTTP call expected.
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "0"),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "0"),
 				),
 			},
 		},
@@ -658,10 +658,10 @@ resource "supabase_edge_function_secrets" "test" {
 		Reply(http.StatusInternalServerError).
 		BodyString(`{"message":"internal server error"}`)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config:      testConfig,
 				ExpectError: regexp.MustCompile("API Error"),
@@ -706,10 +706,10 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config:      testConfig,
 				ExpectError: regexp.MustCompile("API Error"),
@@ -764,15 +764,15 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			// Step 1: create a real resource to provide config context
 			{
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
 				),
 			},
 			// Step 2: attempt to import a non-existent project – should error
@@ -840,21 +840,21 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
 					// Verify only 1 secret digest (API_KEY) – SUPABASE_ secrets should be filtered
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
 					// Verify SUPABASE_ secrets are NOT in state
-					resource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.SUPABASE_URL"),
-					resource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.SUPABASE_ANON_KEY"),
+					testresource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.SUPABASE_URL"),
+					testresource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.SUPABASE_ANON_KEY"),
 				),
 			},
 		},
@@ -889,10 +889,10 @@ resource "supabase_edge_function_secrets" "test" {
 		Reply(http.StatusBadRequest).
 		BodyString(`{"message":"Secret names starting with SUPABASE_ are reserved"}`)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config:      testConfig,
 				ExpectError: regexp.MustCompile(supabasePrefix),
@@ -969,16 +969,16 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: config1,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
 				),
 			},
 			{
@@ -1045,22 +1045,22 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
 					// CRITICAL: only 1 secret should be in state (API_KEY), not 2
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
 					// CRITICAL: only 1 digest should be tracked
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
 					// Verify API_KEY is present
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
 					// Verify MANAGEMENT_API_URL is NOT in state
-					resource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.MANAGEMENT_API_URL"),
+					testresource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.MANAGEMENT_API_URL"),
 				),
 			},
 			// Step 2: second plan should be empty (no updates needed)
@@ -1120,15 +1120,15 @@ resource "supabase_edge_function_secrets" "test" {
 		Delete(secretsApiPath).
 		Reply(http.StatusOK)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: testConfig,
 				// ConfigPlanChecks verify the PLAN before apply/read
 				// This proves digests are computed during plan, not read from API
-				ConfigPlanChecks: resource.ConfigPlanChecks{
+				ConfigPlanChecks: testresource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectKnownValue(
 							"supabase_edge_function_secrets.test",
@@ -1142,10 +1142,10 @@ resource "supabase_edge_function_secrets" "test" {
 						),
 					},
 				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
 				),
 			},
 		},
@@ -1184,18 +1184,18 @@ resource "supabase_edge_function_secrets" "test" {
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
 					// The user explicitly set secrets = [], so the state should remain empty
 					// even if remote secrets exist (they were created out-of-band)
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "0"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "0"),
 				),
 			},
 		},
@@ -1244,10 +1244,10 @@ resource "supabase_edge_function_secrets" "test" {
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
 
-	resource.Test(t, resource.TestCase{
+	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
+		Steps: []testresource.TestStep{
 			{
 				// Import secrets - values become null (no plaintext available)
 				Config:        testConfig,
@@ -1294,10 +1294,108 @@ resource "supabase_edge_function_secrets" "test" {
 				// Refresh step with same config - triggers another Read cycle
 				// Verifies that null values remain null across refreshes
 				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
 					// After refresh with empty config, Terraform reconciles and secrets should be removed
-					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccEdgeFunctionSecretsResource_ProjectRef_RequiresReplace(t *testing.T) {
+	// Verify that changing project_ref triggers resource replacement (destroy + create).
+	// Without RequiresReplace, changing project_ref would run Update and upsert secrets
+	// into the new project while leaving the old project's managed secrets behind.
+	defer gock.OffAll()
+
+	projectRefA := "project-ref-a"
+	projectRefB := "project-ref-b"
+
+	apiKeyPlain := "secret-api-key-123"
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
+
+	config1 := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "API_KEY"
+			value = "%s"
+		}
+	]
+}
+`, projectRefA, apiKeyPlain)
+
+	config2 := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "API_KEY"
+			value = "%s"
+		}
+	]
+}
+`, projectRefB, apiKeyPlain)
+
+	// Step 1: Create secrets for project A
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRefA)).
+		Reply(http.StatusOK)
+
+	// Step 1: Read after create and refresh for project A
+	gock.New(defaultApiEndpoint).
+		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRefA)).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "API_KEY", Value: apiKeyDigest},
+		})
+
+	// Step 1: Delete from project A (when replacing)
+	gock.New(defaultApiEndpoint).
+		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRefA)).
+		Reply(http.StatusOK)
+
+	// Step 2: Create secrets for project B (after destroy of project A resource)
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/secrets", projectRefB)).
+		Reply(http.StatusOK)
+
+	// Step 2: Read after create and refresh for project B
+	gock.New(defaultApiEndpoint).
+		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRefB)).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "API_KEY", Value: apiKeyDigest},
+		})
+
+	// Teardown: Delete from project B
+	gock.New(defaultApiEndpoint).
+		Delete(fmt.Sprintf("/v1/projects/%s/secrets", projectRefB)).
+		Reply(http.StatusOK)
+
+	testresource.Test(t, testresource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []testresource.TestStep{
+			{
+				Config: config1,
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", projectRefA),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+				),
+			},
+			{
+				Config: config2,
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", projectRefB),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
 				),
 			},
 		},
