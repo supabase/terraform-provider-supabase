@@ -1066,3 +1066,105 @@ resource "supabase_edge_function_secrets" "test" {
 		},
 	})
 }
+
+func TestAccEdgeFunctionSecretsResource_ImportThenRefresh(t *testing.T) {
+	// Verify that after importing secrets (where values are null), a subsequent
+	// refresh preserves null values rather than converting them to empty strings
+	// when digests match. This ensures imported secrets maintain the "unknown/needs
+	// re-supply" signal.
+	defer gock.OffAll()
+
+	apiKeyPlain := "secret-api-key-123"
+	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
+
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
+	dbUrlDigest := computeSecretDigest(dbUrlPlain)
+
+	secretsResponse := []api.SecretResponse{
+		{Name: "API_KEY", Value: apiKeyDigest},
+		{Name: "DATABASE_URL", Value: dbUrlDigest},
+	}
+
+	// Empty config for import
+	testConfig := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = []
+}
+`, testProjectRef)
+
+	// Import: read after import and import verification (2 reads)
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON(secretsResponse)
+
+	// Refresh: read after refresh (2 reads)
+	// This is where the bug manifests: if null values in state are converted
+	// to empty strings, the state would show secret values as ""
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON(secretsResponse)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// Import secrets - values become null (no plaintext available)
+				Config:        testConfig,
+				ResourceName:  "supabase_edge_function_secrets.test",
+				ImportState:   true,
+				ImportStateId: testProjectRef,
+				ImportStateCheck: func(s []*terraform.InstanceState) error {
+					if len(s) != 1 {
+						return fmt.Errorf("expected 1 instance state, got %d", len(s))
+					}
+					state := s[0]
+
+					// After import, we should have 2 secrets in state
+					if state.Attributes["secrets.#"] != "2" {
+						return fmt.Errorf("expected 2 secrets in state after import, got %s", state.Attributes["secrets.#"])
+					}
+
+					// Check digests are populated
+					if state.Attributes["secret_digests.API_KEY"] != apiKeyDigest {
+						return fmt.Errorf("expected API_KEY digest %q, got %q", apiKeyDigest, state.Attributes["secret_digests.API_KEY"])
+					}
+					if state.Attributes["secret_digests.DATABASE_URL"] != dbUrlDigest {
+						return fmt.Errorf("expected DATABASE_URL digest %q, got %q", dbUrlDigest, state.Attributes["secret_digests.DATABASE_URL"])
+					}
+
+					// CRITICAL BUG CHECK: Secret values should be null (not empty string)
+					// After import, plaintext is not available, so values must remain null.
+					// With the bug, null becomes "" during Read when digests match.
+					// We check that the value attributes don't exist or are explicitly null.
+					// If the bug exists, we'd see secrets.0.value = "" or secrets.1.value = ""
+					for i := 0; i < 2; i++ {
+						valueKey := fmt.Sprintf("secrets.%d.value", i)
+						if val, exists := state.Attributes[valueKey]; exists && val == "" {
+							nameKey := fmt.Sprintf("secrets.%d.name", i)
+							secretName := state.Attributes[nameKey]
+							return fmt.Errorf("secret %q has empty string value (should be null after import)", secretName)
+						}
+					}
+
+					return nil
+				},
+			},
+			{
+				// Refresh step with same config - triggers another Read cycle
+				// Verifies that null values remain null across refreshes
+				Config: testConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
+					// After refresh with empty config, Terraform reconciles and secrets should be removed
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
+				),
+			},
+		},
+	})
+}

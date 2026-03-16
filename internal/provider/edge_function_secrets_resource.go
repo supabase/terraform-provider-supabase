@@ -477,7 +477,11 @@ func readEdgeFunctionSecretsForRead(ctx context.Context, data *EdgeFunctionSecre
 		}
 		if localDigest == apiDigest {
 			// Digest matches – preserve the actual plaintext value from state
-			secretValue = types.StringValue(existingValue)
+			// BUT: only if we actually have plaintext (not null/unknown after import/drift)
+			if !existingSecret.Value.IsNull() && !existingSecret.Value.IsUnknown() {
+				secretValue = types.StringValue(existingValue)
+			}
+			// Otherwise, secretValue remains null even though digest matches
 		}
 		// If no match, secretValue remains null to signal drift
 
