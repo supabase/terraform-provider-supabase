@@ -198,16 +198,55 @@ func (r *EdgeFunctionSecretsResource) Read(ctx context.Context, req resource.Rea
 }
 
 func (r *EdgeFunctionSecretsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data EdgeFunctionSecretsResourceModel
+	var plan EdgeFunctionSecretsResourceModel
+	var state EdgeFunctionSecretsResourceModel
 
 	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Read Terraform prior state to determine what needs to be deleted
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Get secret names from plan and state
+	var planSecrets []SecretModel
+	var stateSecrets []SecretModel
+	resp.Diagnostics.Append(plan.Secrets.ElementsAs(ctx, &planSecrets, false)...)
+	resp.Diagnostics.Append(state.Secrets.ElementsAs(ctx, &stateSecrets, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Build a set of secret names that will be in the new configuration
+	planSecretNames := make(map[string]bool)
+	for _, secret := range planSecrets {
+		planSecretNames[secret.Name.ValueString()] = true
+	}
+
+	// Determine which secrets need to be deleted (in state but not in plan)
+	var secretsToDelete []string
+	for _, secret := range stateSecrets {
+		secretName := secret.Name.ValueString()
+		if !planSecretNames[secretName] {
+			secretsToDelete = append(secretsToDelete, secretName)
+		}
+	}
+
+	projectRef := state.ProjectRef.ValueString()
+
+	// Delete secrets that were removed from configuration
+	resp.Diagnostics.Append(deleteEdgeFunctionSecrets(ctx, projectRef, secretsToDelete, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Create/update secrets using the bulk create endpoint which handles upserts
-	resp.Diagnostics.Append(createOrUpdateEdgeFunctionSecrets(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(createOrUpdateEdgeFunctionSecrets(ctx, &plan, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -215,7 +254,7 @@ func (r *EdgeFunctionSecretsResource) Update(ctx context.Context, req resource.U
 	tflog.Trace(ctx, "updated edge function secrets")
 
 	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *EdgeFunctionSecretsResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -227,7 +266,22 @@ func (r *EdgeFunctionSecretsResource) Delete(ctx context.Context, req resource.D
 		return
 	}
 
-	resp.Diagnostics.Append(deleteEdgeFunctionSecrets(ctx, &data, r.client)...)
+	projectRef := data.ProjectRef.ValueString()
+
+	// Get all current secrets to delete
+	var secrets []SecretModel
+	diags := data.Secrets.ElementsAs(ctx, &secrets, false)
+	if diags.HasError() {
+		return
+	}
+
+	// Build list of secret names to delete
+	var secretsToDelete []string
+	for _, secret := range secrets {
+		secretsToDelete = append(secretsToDelete, secret.Name.ValueString())
+	}
+
+	resp.Diagnostics.Append(deleteEdgeFunctionSecrets(ctx, projectRef, secretsToDelete, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -504,29 +558,14 @@ func readEdgeFunctionSecretsForRead(ctx context.Context, data *EdgeFunctionSecre
 	return true, nil
 }
 
-func deleteEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	projectRef := data.ProjectRef.ValueString()
-
-	// Get all current secrets to delete
-	var secrets []SecretModel
-	diags := data.Secrets.ElementsAs(ctx, &secrets, false)
-	if diags.HasError() {
-		return diags
-	}
-
-	// Build list of secret names to delete
-	var secretNames []string
-	for _, secret := range secrets {
-		secretNames = append(secretNames, secret.Name.ValueString())
-	}
-
-	if len(secretNames) == 0 {
+func deleteEdgeFunctionSecrets(ctx context.Context, projectRef string, secretToDelete []string, client *api.ClientWithResponses) diag.Diagnostics {
+	if len(secretToDelete) == 0 {
 		// Nothing to delete
 		return nil
 	}
 
 	// Call the API to delete secrets
-	httpResp, err := client.V1BulkDeleteSecretsWithResponse(ctx, projectRef, secretNames)
+	httpResp, err := client.V1BulkDeleteSecretsWithResponse(ctx, projectRef, secretToDelete)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to delete edge function secrets, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}

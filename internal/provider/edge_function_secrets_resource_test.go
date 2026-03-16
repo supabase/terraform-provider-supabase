@@ -1,7 +1,10 @@
 package provider
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"testing"
@@ -189,6 +192,144 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
+func TestAccEdgeFunctionSecretsResource_DeleteOneSecret(t *testing.T) {
+	// Verify that when a secret is removed from Terraform config,
+	// only that secret is deleted from the server and the other remains.
+	defer gock.OffAll()
+
+	keyAPlain := "secret-key-a"
+	keyBPlain := "secret-key-b"
+
+	keyADigest := computeSecretDigest(keyAPlain)
+	keyBDigest := computeSecretDigest(keyBPlain)
+
+	// Config with 2 secrets
+	config1 := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "KEY_A"
+			value = "%s"
+		},
+		{
+			name  = "KEY_B"
+			value = "%s"
+		}
+	]
+}
+`, testProjectRef, keyAPlain, keyBPlain)
+
+	// Config with only 1 secret (KEY_B remains, KEY_A removed)
+	config2 := fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{
+			name  = "KEY_B"
+			value = "%s"
+		}
+	]
+}
+`, testProjectRef, keyBPlain)
+
+	// Step 1: Create both secrets
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusOK)
+
+	// Step 1: Read after create and refresh
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "KEY_A", Value: keyADigest},
+			{Name: "KEY_B", Value: keyBDigest},
+		})
+
+	// Step 2: Delete the removed secret (KEY_A)
+	deleteCalled := false
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
+		AddMatcher(func(req *http.Request, greq *gock.Request) (bool, error) {
+			// Read and verify that only KEY_A is sent in the delete request body
+			bodyBytes, err := io.ReadAll(req.Body)
+			if err != nil {
+				return false, fmt.Errorf("failed to read delete request body: %w", err)
+			}
+			req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+			
+			// Decode the JSON array
+			var secretNames []string
+			if err := json.Unmarshal(bodyBytes, &secretNames); err != nil {
+				return false, fmt.Errorf("failed to decode JSON body: %w", err)
+			}
+			
+			// Check that exactly one secret is being deleted and it's KEY_A
+			if len(secretNames) != 1 {
+				return false, fmt.Errorf("expected 1 secret to delete, got %d: %v", len(secretNames), secretNames)
+			}
+			if secretNames[0] != "KEY_A" {
+				return false, fmt.Errorf("expected KEY_A to be deleted, got %s", secretNames[0])
+			}
+			
+			deleteCalled = true
+			return true, nil
+		}).
+		Reply(http.StatusOK)
+
+	// Step 2: Update remaining secret (bulk upsert KEY_B)
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusOK)
+
+	// Step 2: Read after update and refresh
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "KEY_B", Value: keyBDigest},
+		})
+
+	// Teardown: Delete remaining secrets
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config1,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_A", keyADigest),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_B", keyBDigest),
+				),
+			},
+			{
+				Config: config2,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_B", keyBDigest),
+					resource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_A"),
+					func(s *terraform.State) error {
+						if !deleteCalled {
+							return fmt.Errorf("DELETE API was not called to remove KEY_A")
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
 func TestAccEdgeFunctionSecretsResource_Import(t *testing.T) {
 	// Verify that importing resources succeeds
 	defer gock.OffAll()
@@ -256,14 +397,8 @@ func TestAccEdgeFunctionSecretsResource_Import(t *testing.T) {
 }
 
 func TestAccEdgeFunctionSecretsResource_CreateImport(t *testing.T) {
-	// Verify that importing the same resources as created
+	// Verify that importing the same resources as already created
 	// successfully imports them
-
-	// Verify that a resource can be imported by project_ref and that the
-	// resulting state contains the correct secret_digests. Because the
-	// API never returns plaintext values, the imported state holds API
-	// digests as the secret values; ImportStateVerifyIgnore is used
-	// for the secret values themselves.
 	defer gock.OffAll()
 
 	apiKeyPlain := "secret-api-key-123"
