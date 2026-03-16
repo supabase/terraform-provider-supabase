@@ -74,7 +74,7 @@ Secret names starting with `SUPABASE_` are reserved by Supabase and cannot be cr
 
 ### One resource per project
 
-Only a single `supabase_edge_function_secrets` resource should be declared per `project_ref`. The provider uses a bulk-upsert API endpoint: each apply replaces the full set of managed secrets for that project. If two separate resource blocks target the same `project_ref`, each apply will overwrite the secrets written by the other, causing secrets to be deleted unexpectedly. Consolidate all secrets for a project into one resource block.
+For a given `project_ref`, multiple `supabase_edge_function_secrets` resources can technically coexist, each managing its own subset of secret names. On apply, the provider first deletes any remote secrets that are currently tracked in that resource's state but no longer present in its `secrets` configuration, then upserts the remaining planned secrets via a bulk-upsert API call. This means two resources targeting the same `project_ref` will not delete each other's secrets as long as they manage disjoint secret names. However, if two resources declare the same secret `name`, the last apply wins for that secret and can cause unexpected churn or drift between resources. To avoid conflicts and simplify management, it is strongly recommended to consolidate all secrets for a project into a single `supabase_edge_function_secrets` resource, or at least ensure that secret names are cleanly partitioned across resources.
 
 ### Empty `secrets` set
 
