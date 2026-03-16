@@ -43,6 +43,7 @@ resource "supabase_edge_function_secrets" "example" {
 
 ### Read-Only
 
+- `id` (String) Project identifier
 - `secret_digests` (Map of String) Map of secret name to the SHA-256 hex digest of the secret value. Computed by the provider at plan time (when plaintext values are known) and updated after each apply. Used to detect drift when a secret has been changed outside of Terraform: if the digest returned by the API no longer matches the locally computed digest, the provider marks the affected secret value as null so Terraform will plan an update.
 
 <a id="nestedatt--secrets"></a>

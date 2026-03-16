@@ -102,6 +102,7 @@ type EdgeFunctionSecretsResourceModel struct {
 	ProjectRef    types.String `tfsdk:"project_ref"`
 	Secrets       types.Set    `tfsdk:"secrets"`
 	SecretDigests types.Map    `tfsdk:"secret_digests"`
+	Id            types.String `tfsdk:"id"`
 }
 
 func (r *EdgeFunctionSecretsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -144,6 +145,13 @@ func (r *EdgeFunctionSecretsResource) Schema(ctx context.Context, req resource.S
 					secretDigestsPlanModifier{},
 				},
 			},
+			"id": schema.StringAttribute{
+				MarkdownDescription: "Project identifier",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 		},
 	}
 }
@@ -167,6 +175,8 @@ func (r *EdgeFunctionSecretsResource) Create(ctx context.Context, req resource.C
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	data.Id = data.ProjectRef
 
 	tflog.Trace(ctx, "created edge function secrets")
 
@@ -194,6 +204,8 @@ func (r *EdgeFunctionSecretsResource) Read(ctx context.Context, req resource.Rea
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
+	data.ProjectRef = data.Id
 
 	tflog.Trace(ctx, "read edge function secrets")
 
@@ -304,6 +316,7 @@ func (r *EdgeFunctionSecretsResource) ImportState(ctx context.Context, req resou
 
 	var data EdgeFunctionSecretsResourceModel
 	data.ProjectRef = types.StringValue(projectRef)
+	data.Id = types.StringValue(projectRef)
 
 	found, diags := readEdgeFunctionSecretsForImport(ctx, &data, r.client)
 	resp.Diagnostics.Append(diags...)
