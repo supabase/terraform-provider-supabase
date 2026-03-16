@@ -264,14 +264,15 @@ func (r *EdgeFunctionSecretsResource) Update(ctx context.Context, req resource.U
 
 	projectRef := state.ProjectRef.ValueString()
 
-	// Delete secrets that were removed from configuration
-	resp.Diagnostics.Append(deleteEdgeFunctionSecrets(ctx, projectRef, secretsToDelete, r.client)...)
+	// Create/update secrets first using the bulk create endpoint which handles upserts
+	// This must happen before deletion to avoid data loss if the upsert fails
+	resp.Diagnostics.Append(createOrUpdateEdgeFunctionSecrets(ctx, &plan, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Create/update secrets using the bulk create endpoint which handles upserts
-	resp.Diagnostics.Append(createOrUpdateEdgeFunctionSecrets(ctx, &plan, r.client)...)
+	// Only after successful upsert, delete secrets that were removed from configuration
+	resp.Diagnostics.Append(deleteEdgeFunctionSecrets(ctx, projectRef, secretsToDelete, r.client)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
