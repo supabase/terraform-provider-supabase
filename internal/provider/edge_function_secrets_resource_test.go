@@ -82,9 +82,9 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_Update verifies that changing secret values
-// updates the secrets on the server without requiring deletion.
 func TestAccEdgeFunctionSecretsResource_Update(t *testing.T) {
+	// Verify that changing secret values updates the secrets
+	// on the server without requiring deletion.
 	defer gock.OffAll()
 
 	apiKeyV1 := "secret-v1"
@@ -184,12 +184,12 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_Import verifies that a resource can be
-// imported by project_ref and that the resulting state contains the correct
-// secret_digests. Because the API never returns plaintext values, the imported
-// state holds API digests as the secret values; ImportStateVerifyIgnore is used
-// for the secret values themselves.
 func TestAccEdgeFunctionSecretsResource_Import(t *testing.T) {
+	// Verify that a resource can be imported by project_ref and that the
+	// resulting state contains the correct secret_digests. Because the
+	// API never returns plaintext values, the imported state holds API
+	// digests as the secret values; ImportStateVerifyIgnore is used
+	// for the secret values themselves.
 	defer gock.OffAll()
 
 	apiKeyPlain := "secret-api-key-123"
@@ -288,11 +288,11 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_ReadDrift verifies the drift-detection
-// behaviour: when the API returns a digest that does not match the locally
-// stored digest, the resource stores the API digest in the value field so that
-// Terraform detects the drift and plans an update on the next apply.
 func TestAccEdgeFunctionSecretsResource_ReadDrift(t *testing.T) {
+	// Verify the drift-detection behaviour: when the API returns a digest that
+	// does not match the locally stored digest, the resource stores the API
+	// digest in the value field so that Terraform detects the drift and plans
+	// an update on the next apply.
 	defer gock.OffAll()
 
 	apiKeyPlain := "original-secret"
@@ -363,9 +363,9 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_EmptySecrets verifies that configuring an
-// empty secrets set is safe and does not trigger any API delete calls.
 func TestAccEdgeFunctionSecretsResource_EmptySecrets(t *testing.T) {
+	// Verify that configuring an empty secrets set is safe
+	// and does not trigger any API delete calls.
 	defer gock.OffAll()
 
 	testConfig := fmt.Sprintf(`
@@ -405,9 +405,9 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_CreateAPIError verifies that a non-2xx
-// response from the create endpoint surfaces a useful error diagnostic.
 func TestAccEdgeFunctionSecretsResource_CreateAPIError(t *testing.T) {
+	// Verify that a non-2xx response from the create endpoint
+	// surfaces a useful error diagnostic.
 	defer gock.OffAll()
 
 	testConfig := fmt.Sprintf(`
@@ -439,10 +439,10 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_ReadAPIError verifies that when the list
-// secrets endpoint returns an unexpected error status the provider surfaces an
-// error diagnostic rather than silently storing empty state.
 func TestAccEdgeFunctionSecretsResource_ReadAPIError(t *testing.T) {
+	// Verify that when the list secrets endpoint returns an unexpected
+	// error status the provider surfaces an error diagnostic rather than
+	// silently storing empty state.
 	defer gock.OffAll()
 
 	testConfig := fmt.Sprintf(`
@@ -487,10 +487,10 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_ImportNotFound verifies that importing a
-// project_ref that 404s results in a clear "Resource Not Found" error.
-// A real first step is needed to provide a config context for the import step.
 func TestAccEdgeFunctionSecretsResource_ImportNotFound(t *testing.T) {
+	// Verify that importing a project_ref that 404s results in a clear
+	// "Resource Not Found" error. A real first step is needed to provide
+	// a config context for the import step.
 	defer gock.OffAll()
 
 	notFoundRef := "nonexistentprojectref"
@@ -556,10 +556,10 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_FilterSupabaseSecrets verifies that secrets
-// with names starting with SUPABASE_ are filtered out from the read operation,
-// as the API does not allow create/update/delete operations on these secrets.
 func TestAccEdgeFunctionSecretsResource_FilterSupabaseSecrets(t *testing.T) {
+	// Verify that secrets with names starting with SUPABASE_ are filtered out
+	// from the read operation, as the API does not allow create/update/delete
+	// operations on these secrets.
 	defer gock.OffAll()
 
 	apiKeyPlain := "secret-api-key-123"
@@ -630,10 +630,10 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_CreateReservedPrefixFails verifies that
-// attempting to create secrets with names starting with SUPABASE_ returns an
-// error from the API, which the provider surfaces to the user.
 func TestAccEdgeFunctionSecretsResource_CreateReservedPrefixFails(t *testing.T) {
+	// Verify that attempting to create secrets with names starting with
+	// SUPABASE_ returns an error from the API, which the provider surfaces
+	// to the user.
 	defer gock.OffAll()
 
 	testConfig := fmt.Sprintf(`
@@ -670,10 +670,10 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_UpdateReservedPrefixFails verifies that
-// attempting to update (add or modify) secrets with names starting with SUPABASE_
-// returns an error from the API, which the provider surfaces to the user.
 func TestAccEdgeFunctionSecretsResource_UpdateReservedPrefixFails(t *testing.T) {
+	// Verify that attempting to update (add or modify) secrets with names
+	// starting with SUPABASE_ returns an error from the API, which the
+	// provider surfaces to the user.
 	defer gock.OffAll()
 
 	apiKeyPlain := "secret-api-key-123"
@@ -758,15 +758,11 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_IgnoresUnmanagedSecrets verifies that when
-// the API returns secrets that are not declared in the Terraform configuration,
-// those unmanaged secrets are NOT added to the state. This prevents Terraform
-// from planning unnecessary updates when pre-existing secrets exist in the project.
-//
-// Reproduces bug: User creates API_KEY via Terraform, but MANAGEMENT_API_URL
-// already exists. On refresh, the provider should only track API_KEY in state,
-// not absorb MANAGEMENT_API_URL.
 func TestAccEdgeFunctionSecretsResource_IgnoresUnmanagedSecrets(t *testing.T) {
+	// Verify that when the API returns secrets that are not declared in the
+	// Terraform configuration, those unmanaged secrets are NOT added to the
+	// state. This prevents Terraform from planning unnecessary updates when
+	// pre-existing secrets exist in the project.
 	defer gock.OffAll()
 
 	apiKeyPlain := "test-api-key"
@@ -846,9 +842,9 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestSecretDigestsPlanModifier_ComputesDigests tests that the plan modifier
-// correctly computes digests from known secret values during the plan phase.
 func TestSecretDigestsPlanModifier_ComputesDigests(t *testing.T) {
+	// Vefity that the plan modifier correctly computes digests from
+	// known secret values during the plan phase.
 	defer gock.OffAll()
 
 	apiKeyPlain := "test-api-key"
@@ -909,9 +905,8 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestSecretDigestsPlanModifier_SkipsSupabaseSecrets tests that the plan
-// modifier skips SUPABASE_ prefixed secrets.
 func TestSecretDigestsPlanModifier_SkipsSupabaseSecrets(t *testing.T) {
+	// Verify that the plan modifier skips SUPABASE_ prefixed secrets.
 	defer gock.OffAll()
 
 	userKeyPlain := "user-key"
@@ -976,11 +971,11 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-// TestAccEdgeFunctionSecretsResource_EmptySecretsNotTreatedAsImport verifies that
-// when a user explicitly configures secrets = [], the Read operation does NOT
-// import remote secrets into the state (i.e., it doesn't conflate an explicit
-// empty list with an import operation).
 func TestAccEdgeFunctionSecretsResource_EmptySecretsNotTreatedAsImport(t *testing.T) {
+	// Verify that when a user explicitly configures secrets = [],
+	// the Read operation does NOT import remote secrets into the state
+	// (i.e., it doesn't conflate an explicit empty list with an import
+	// operation).
 	defer gock.OffAll()
 
 	apiKeyDigest := computeSecretDigest("remote-secret-value")
