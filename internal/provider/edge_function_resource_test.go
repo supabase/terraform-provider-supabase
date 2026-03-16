@@ -410,7 +410,7 @@ func TestAccEdgeFunctionResource_ImportWithDownload(t *testing.T) {
 
 	testFunctionID := uuid.New().String()
 	functionSlug := "hello-world"
-	functionApiPath := functionsApiPath + "/" + functionSlug
+	helloWorldFunctionApiPath := functionsApiPath + "/" + functionSlug
 	entrypointContent := `Deno.serve((req) => new Response("Hello from import"));`
 
 	// chdir to temp directory so downloaded files don't pollute the repo
@@ -451,7 +451,7 @@ resource "supabase_edge_function" "test" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(helloWorldFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:             testFunctionID,
@@ -465,7 +465,7 @@ resource "supabase_edge_function" "test" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(helloWorldFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:             testFunctionID,
@@ -479,7 +479,7 @@ resource "supabase_edge_function" "test" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(helloWorldFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:             testFunctionID,
@@ -497,7 +497,7 @@ resource "supabase_edge_function" "test" {
 	})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(helloWorldFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:             testFunctionID,
@@ -511,7 +511,7 @@ resource "supabase_edge_function" "test" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Delete(functionApiPath).
+		Delete(helloWorldFunctionApiPath).
 		Reply(http.StatusOK)
 
 	expectedEntrypoint := filepath.Join(".", "supabase", "functions", functionSlug, "index.ts")
@@ -557,7 +557,8 @@ func TestAccEdgeFunctionResource_ImportFallback(t *testing.T) {
 
 	testFunctionID := uuid.New().String()
 	functionSlug := "fallback-func"
-	functionApiPath := functionsApiPath + "/" + functionSlug
+	fallbackFuncFunctionApiPath := functionsApiPath + "/" + functionSlug
+	fallbackFuncBodyApiPath := fallbackFuncFunctionApiPath + "/body"
 
 	tmpDir := t.TempDir()
 	t.Chdir(tmpDir)
@@ -595,7 +596,7 @@ resource "supabase_edge_function" "fallback" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(fallbackFuncFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -608,7 +609,7 @@ resource "supabase_edge_function" "fallback" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(fallbackFuncFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -621,7 +622,7 @@ resource "supabase_edge_function" "fallback" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(fallbackFuncFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -634,12 +635,12 @@ resource "supabase_edge_function" "fallback" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s/functions/%s/body", testProjectRef, functionSlug)).
+		Get(fallbackFuncBodyApiPath).
 		Reply(http.StatusInternalServerError).
 		BodyString("Internal Server Error")
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(fallbackFuncFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -652,7 +653,7 @@ resource "supabase_edge_function" "fallback" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Delete(functionApiPath).
+		Delete(fallbackFuncFunctionApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -681,7 +682,7 @@ func TestAccEdgeFunctionResource_ImportWithExistingFiles(t *testing.T) {
 
 	testFunctionID := uuid.New().String()
 	functionSlug := "collision-func"
-	functionApiPath := functionsApiPath + "/" + functionSlug
+	collisionFunctionApiPath := functionsApiPath + "/" + functionSlug
 	originalContent := "// original content - must not be overwritten"
 	downloadedContent := `Deno.serve((req) => new Response("Downloaded"));`
 
@@ -731,7 +732,7 @@ resource "supabase_edge_function" "collision" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(collisionFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:             testFunctionID,
@@ -745,7 +746,7 @@ resource "supabase_edge_function" "collision" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(collisionFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:             testFunctionID,
@@ -759,7 +760,7 @@ resource "supabase_edge_function" "collision" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(collisionFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:             testFunctionID,
@@ -777,7 +778,7 @@ resource "supabase_edge_function" "collision" {
 	})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(collisionFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:             testFunctionID,
@@ -791,7 +792,7 @@ resource "supabase_edge_function" "collision" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Delete(functionApiPath).
+		Delete(collisionFunctionApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
@@ -896,7 +897,7 @@ func TestAccEdgeFunctionResource_ImportDotDotEntrypoint(t *testing.T) {
 
 	testFunctionID := uuid.New().String()
 	functionSlug := "dotdot-ep"
-	functionApiPath := functionsApiPath + "/" + functionSlug
+	dotDotEpFunctionApiPath := functionsApiPath + "/" + functionSlug
 
 	tmpDir := t.TempDir()
 	t.Chdir(tmpDir)
@@ -934,7 +935,7 @@ resource "supabase_edge_function" "dotdot" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(dotDotEpFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -947,7 +948,7 @@ resource "supabase_edge_function" "dotdot" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(dotDotEpFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -960,7 +961,7 @@ resource "supabase_edge_function" "dotdot" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(dotDotEpFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -977,7 +978,7 @@ resource "supabase_edge_function" "dotdot" {
 	})
 
 	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
+		Get(dotDotEpFunctionApiPath).
 		Reply(http.StatusOK).
 		JSON(api.FunctionSlugResponse{
 			Id:        testFunctionID,
@@ -990,7 +991,7 @@ resource "supabase_edge_function" "dotdot" {
 		})
 
 	gock.New(defaultApiEndpoint).
-		Delete(functionApiPath).
+		Delete(dotDotEpFunctionApiPath).
 		Reply(http.StatusOK)
 
 	resource.Test(t, resource.TestCase{
