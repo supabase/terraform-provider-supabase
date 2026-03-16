@@ -499,7 +499,7 @@ func readEdgeFunctionSecretsForImport(ctx context.Context, data *EdgeFunctionSec
 	return true, nil
 }
 
-// readEdgeFunctionSecretsForRead reconciles only the secrets declared in the Terraform configuration.
+// readEdgeFunctionSecretsForRead reconciles only the secrets already present in Terraform state (from prior reads/applies).
 // This prevents absorbing unmanaged secrets into state.
 // Returns (true, nil) if secrets are found, (false, nil) if not found, or (false, diags) on error.
 func readEdgeFunctionSecretsForRead(ctx context.Context, data *EdgeFunctionSecretsResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
