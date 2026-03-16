@@ -361,9 +361,9 @@ resource "supabase_edge_function_secrets" "test" {
 
 func TestAccEdgeFunctionSecretsResource_ReadDrift(t *testing.T) {
 	// Verify the drift-detection behaviour: when the API returns a digest that
-	// does not match the locally stored digest, the resource stores the API
-	// digest in the value field so that Terraform detects the drift and plans
-	// an update on the next apply.
+	// does not match the locally stored digest, the resource stores null in the
+	// value field so that Terraform detects the drift and plans an update on
+	// the next apply.
 	defer gock.OffAll()
 
 	apiKeyPlain := "original-secret"
@@ -398,13 +398,27 @@ resource "supabase_edge_function_secrets" "test" {
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
-	// Step 2: all subsequent reads return drifted digest
+	// Step 2: reads for drift detection - return drifted digest
 	gock.New(defaultApiEndpoint).
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
 		JSON([]api.SecretResponse{
 			{Name: "API_KEY", Value: driftedDigest},
+		})
+
+	// Step 3: apply to fix drift - update back to original
+	gock.New(defaultApiEndpoint).
+		Post(secretsApiPath).
+		Reply(http.StatusOK)
+
+	// Step 3: reads after apply and refresh - return original digest
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.SecretResponse{
+			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
 	// Teardown: delete
@@ -429,6 +443,14 @@ resource "supabase_edge_function_secrets" "test" {
 			{
 				Config:             testConfig,
 				ExpectNonEmptyPlan: true,
+			},
+			// Step 3: apply the original value back to fix the drift.
+			// After applying, the plan should be empty (no more drift).
+			{
+				Config: testConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+				),
 			},
 		},
 	})
