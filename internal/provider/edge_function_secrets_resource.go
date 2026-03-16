@@ -135,7 +135,7 @@ func (r *EdgeFunctionSecretsResource) Schema(ctx context.Context, req resource.S
 			"secret_digests": schema.MapAttribute{
 				ElementType:         types.StringType,
 				Computed:            true,
-				MarkdownDescription: "Map of secret name to the SHA-256 hex digest of the secret value. Computed by the provider at plan time (when plaintext values are known) and updated after each apply. Used to detect drift when a secret has been changed outside of Terraform: if the digest returned by the API no longer matches the locally computed digest, the provider marks the affected secret value as unknown so Terraform will plan an update.",
+				MarkdownDescription: "Map of secret name to the SHA-256 hex digest of the secret value. Computed by the provider at plan time (when plaintext values are known) and updated after each apply. Used to detect drift when a secret has been changed outside of Terraform: if the digest returned by the API no longer matches the locally computed digest, the provider marks the affected secret value as null so Terraform will plan an update.",
 				PlanModifiers: []planmodifier.Map{
 					secretDigestsPlanModifier{},
 				},
@@ -467,7 +467,7 @@ func readEdgeFunctionSecretsForRead(ctx context.Context, data *EdgeFunctionSecre
 		}
 
 		// Secret exists in both state and API
-		var secretValue = types.StringNull() // Default: use nil to signal drift to Terraform
+		secretValue := types.StringNull() // Default: use nil to signal drift to Terraform
 
 		existingValue := existingSecret.Value.ValueString()
 		// Prefer the stored digest for comparison; fall back to computing sha256(value)
