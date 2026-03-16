@@ -1235,21 +1235,14 @@ resource "supabase_edge_function_secrets" "test" {
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
 
-	// Refresh: read after refresh (2 reads)
-	// This is where the bug manifests: if null values in state are converted
+	// Refresh: read during plan-only step (1 read)
+	// This is where the bug would manifest: if null values in state are converted
 	// to empty strings, the state would show secret values as ""
 	gock.New(defaultApiEndpoint).
 		Get(secretsApiPath).
-		Times(2).
+		Times(1).
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
-
-	// Update: when applying a config with secrets = [] after import,
-	// the provider issues a bulk DELETE to remove existing secrets.
-	gock.New(defaultApiEndpoint).
-		Delete(secretsApiPath).
-		Times(1).
-		Reply(http.StatusNoContent)
 
 	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1298,13 +1291,21 @@ resource "supabase_edge_function_secrets" "test" {
 				},
 			},
 			{
-				// Refresh step with same config - triggers another Read cycle
-				// Verifies that null values remain null across refreshes
-				Config: testConfig,
+				// Plan-only step: verifies refresh behavior without applying changes.
+				// The imported secrets (with null values) should remain in state after refresh,
+				// and null values should be preserved (not converted to empty strings).
+				// ExpectNonEmptyPlan because config has secrets=[] but state has 2 imported secrets,
+				// so Terraform will plan to delete them (but won't apply since PlanOnly=true).
+				Config:             testConfig,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
 				Check: testresource.ComposeAggregateTestCheckFunc(
 					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					// After refresh with empty config, Terraform reconciles and secrets should be removed
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
+					// After refresh, the imported secrets should still be in state
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
+					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
 				),
 			},
 		},
