@@ -13,6 +13,8 @@ import (
 )
 
 func TestAccEdgeFunctionSecretsResource(t *testing.T) {
+	// Verify that new secret values creates the secrets
+	// on the server.
 	defer gock.OffAll()
 
 	apiKeyPlain := "secret-api-key-123"
@@ -84,7 +86,7 @@ resource "supabase_edge_function_secrets" "test" {
 
 func TestAccEdgeFunctionSecretsResource_Update(t *testing.T) {
 	// Verify that changing secret values updates the secrets
-	// on the server without requiring deletion.
+	// on the server.
 	defer gock.OffAll()
 
 	apiKeyV1 := "secret-v1"
@@ -185,6 +187,75 @@ resource "supabase_edge_function_secrets" "test" {
 }
 
 func TestAccEdgeFunctionSecretsResource_Import(t *testing.T) {
+	// Verify that importing resources succeeds
+	defer gock.OffAll()
+
+	apiKeyPlain := "secret-api-key-123"
+	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
+
+	apiKeyDigest := computeSecretDigest(apiKeyPlain)
+	dbUrlDigest := computeSecretDigest(dbUrlPlain)
+
+	secretsResponse := []api.SecretResponse{
+		{Name: "API_KEY", Value: apiKeyDigest},
+		{Name: "DATABASE_URL", Value: dbUrlDigest},
+	}
+
+	testConfig := fmt.Sprintf(`
+	resource "supabase_edge_function_secrets" "test" {
+		project_ref = "%s"
+		secrets = []
+	}
+	`, testProjectRef)
+
+	// Read after refresh, import and import verification
+	gock.New(defaultApiEndpoint).
+		Get(secretsApiPath).
+		Times(3).
+		Reply(http.StatusOK).
+		JSON(secretsResponse)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// Import by project_ref. The imported state uses API digests in
+				// the value field (no plaintext available on import).
+				// We use ImportStateCheck to verify the imported state rather than
+				// ImportStateVerify because we're importing without creating first.
+				Config:        testConfig,
+				ResourceName:  "supabase_edge_function_secrets.test",
+				ImportState:   true,
+				ImportStateId: testProjectRef,
+				ImportStateCheck: func(s []*terraform.InstanceState) error {
+					if len(s) != 1 {
+						return fmt.Errorf("expected 1 instance state, got %d", len(s))
+					}
+					state := s[0]
+					if state.Attributes["project_ref"] != testProjectRef {
+						return fmt.Errorf("expected project_ref %q, got %q", testProjectRef, state.Attributes["project_ref"])
+					}
+					if state.Attributes["secret_digests.%"] != "2" {
+						return fmt.Errorf("expected 2 secret_digests, got %s", state.Attributes["secret_digests.%"])
+					}
+					if state.Attributes["secret_digests.API_KEY"] != apiKeyDigest {
+						return fmt.Errorf("expected API_KEY digest %q, got %q", apiKeyDigest, state.Attributes["secret_digests.API_KEY"])
+					}
+					if state.Attributes["secret_digests.DATABASE_URL"] != dbUrlDigest {
+						return fmt.Errorf("expected DATABASE_URL digest %q, got %q", dbUrlDigest, state.Attributes["secret_digests.DATABASE_URL"])
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
+func TestAccEdgeFunctionSecretsResource_CreateImport(t *testing.T) {
+	// Verify that importing the same resources as created
+	// successfully imports them
+
 	// Verify that a resource can be imported by project_ref and that the
 	// resulting state contains the correct secret_digests. Because the
 	// API never returns plaintext values, the imported state holds API
