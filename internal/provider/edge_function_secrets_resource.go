@@ -287,6 +287,7 @@ func (r *EdgeFunctionSecretsResource) Delete(ctx context.Context, req resource.D
 	// Get all current secrets to delete
 	var secrets []SecretModel
 	diags := data.Secrets.ElementsAs(ctx, &secrets, false)
+	resp.Diagnostics.Append(diags...)
 	if diags.HasError() {
 		return
 	}
