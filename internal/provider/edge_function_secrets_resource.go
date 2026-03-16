@@ -333,7 +333,13 @@ func computeSecretDigestsMap(secretModels []SecretModel) (types.Map, diag.Diagno
 	// Compute and store SHA-256 digests for all secrets
 	digestElements := make(map[string]attr.Value, len(secretModels))
 	for _, secret := range secretModels {
-		if secret.Value.IsUnknown() {
+		// Skip secrets with unknown or null names to avoid using an empty string as a key.
+		if secret.Name.IsUnknown() || secret.Name.IsNull() {
+			continue
+		}
+
+		// Skip secrets with unknown or null values to avoid computing a digest of the empty string.
+		if secret.Value.IsUnknown() || secret.Value.IsNull() {
 			continue
 		}
 
