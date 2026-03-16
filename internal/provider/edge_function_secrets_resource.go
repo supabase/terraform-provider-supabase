@@ -497,13 +497,19 @@ func readEdgeFunctionSecretsForRead(ctx context.Context, data *EdgeFunctionSecre
 	// Parse the secrets from state to get the values (API returns SHA-256 digest of secret values)
 	var existingSecrets []SecretModel
 	if !data.Secrets.IsNull() && !data.Secrets.IsUnknown() {
-		_ = data.Secrets.ElementsAs(ctx, &existingSecrets, false)
+		elementsDiags := data.Secrets.ElementsAs(ctx, &existingSecrets, false)
+		if elementsDiags.HasError() {
+			return false, elementsDiags
+		}
 	}
 
 	// Build a map of existing digests from state (may be null on first use or import)
 	existingDigests := make(map[string]string)
 	if !data.SecretDigests.IsNull() && !data.SecretDigests.IsUnknown() {
-		_ = data.SecretDigests.ElementsAs(ctx, &existingDigests, false)
+		elementsDiags := data.SecretDigests.ElementsAs(ctx, &existingDigests, false)
+		if elementsDiags.HasError() {
+			return false, elementsDiags
+		}
 	}
 
 	// Build a map of API secrets for quick lookup
