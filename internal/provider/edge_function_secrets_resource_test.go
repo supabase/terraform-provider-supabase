@@ -259,13 +259,13 @@ resource "supabase_edge_function_secrets" "test" {
 				return false, fmt.Errorf("failed to read delete request body: %w", err)
 			}
 			req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-			
+
 			// Decode the JSON array
 			var secretNames []string
 			if err := json.Unmarshal(bodyBytes, &secretNames); err != nil {
 				return false, fmt.Errorf("failed to decode JSON body: %w", err)
 			}
-			
+
 			// Check that exactly one secret is being deleted and it's KEY_A
 			if len(secretNames) != 1 {
 				return false, fmt.Errorf("expected 1 secret to delete, got %d: %v", len(secretNames), secretNames)
@@ -273,7 +273,7 @@ resource "supabase_edge_function_secrets" "test" {
 			if secretNames[0] != "KEY_A" {
 				return false, fmt.Errorf("expected KEY_A to be deleted, got %s", secretNames[0])
 			}
-			
+
 			deleteCalled = true
 			return true, nil
 		}).
