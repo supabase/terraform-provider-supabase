@@ -274,6 +274,12 @@
           "version": 0,
           "block": {
             "attributes": {
+              "id": {
+                "type": "string",
+                "description": "Project identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
               "project_ref": {
                 "type": "string",
                 "description": "Project reference ID",
