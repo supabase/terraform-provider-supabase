@@ -7,7 +7,10 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/supabase/cli/pkg/api"
 	"gopkg.in/h2non/gock.v1"
 )
@@ -473,7 +476,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
-	// All reads return an empty list (post-create read, refresh read
+	// All reads return an empty list (post-create read and refresh read)
 	gock.New(defaultApiEndpoint).
 		Get(secretsApiPath).
 		Times(3).
@@ -936,8 +939,8 @@ resource "supabase_edge_function_secrets" "test" {
 }
 
 func TestSecretDigestsPlanModifier_ComputesDigests(t *testing.T) {
-	// Vefity that the plan modifier correctly computes digests from
-	// known secret values during the plan phase.
+	// Verify that the plan modifier correctly computes digests from
+	// known secret values during the plan phase, WITHOUT reading from the API.
 	defer gock.OffAll()
 
 	apiKeyPlain := "test-api-key"
@@ -988,6 +991,22 @@ resource "supabase_edge_function_secrets" "test" {
 		Steps: []resource.TestStep{
 			{
 				Config: testConfig,
+				// ConfigPlanChecks verify the PLAN before apply/read
+				// This proves digests are computed during plan, not read from API
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectKnownValue(
+							"supabase_edge_function_secrets.test",
+							tfjsonpath.New("secret_digests").AtMapKey("API_KEY"),
+							knownvalue.StringExact(apiKeyDigest),
+						),
+						plancheck.ExpectKnownValue(
+							"supabase_edge_function_secrets.test",
+							tfjsonpath.New("secret_digests").AtMapKey("DATABASE_URL"),
+							knownvalue.StringExact(dbUrlDigest),
+						),
+					},
+				},
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
 					resource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
