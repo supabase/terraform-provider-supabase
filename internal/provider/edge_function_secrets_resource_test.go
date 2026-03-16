@@ -1244,6 +1244,13 @@ resource "supabase_edge_function_secrets" "test" {
 		Reply(http.StatusOK).
 		JSON(secretsResponse)
 
+	// Update: when applying a config with secrets = [] after import,
+	// the provider issues a bulk DELETE to remove existing secrets.
+	gock.New(defaultApiEndpoint).
+		Delete(secretsApiPath).
+		Times(1).
+		Reply(http.StatusNoContent)
+
 	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
