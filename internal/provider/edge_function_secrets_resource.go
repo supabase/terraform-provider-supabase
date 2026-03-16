@@ -67,6 +67,15 @@ func (m secretDigestsPlanModifier) PlanModifyMap(ctx context.Context, req planmo
 		return
 	}
 
+	// If any individual secret name or value is unknown or null, we cannot
+	// safely compute a complete digests map. Leave secret_digests unchanged
+	// (unknown or from prior state) to avoid a known-but-incomplete value.
+	for _, secret := range secretModels {
+		if secret.Name.IsUnknown() || secret.Name.IsNull() || secret.Value.IsUnknown() || secret.Value.IsNull() {
+			return
+		}
+	}
+
 	secretDigests, mapDiags := computeSecretDigestsMap(secretModels)
 
 	resp.Diagnostics.Append(mapDiags...)
@@ -347,16 +356,6 @@ func computeSecretDigestsMap(secretModels []SecretModel) (types.Map, diag.Diagno
 	// Compute and store SHA-256 digests for all secrets
 	digestElements := make(map[string]attr.Value, len(secretModels))
 	for _, secret := range secretModels {
-		// Skip secrets with unknown or null names to avoid using an empty string as a key.
-		if secret.Name.IsUnknown() || secret.Name.IsNull() {
-			continue
-		}
-
-		// Skip secrets with unknown or null values to avoid computing a digest of the empty string.
-		if secret.Value.IsUnknown() || secret.Value.IsNull() {
-			continue
-		}
-
 		digestElements[secret.Name.ValueString()] = types.StringValue(computeSecretDigest(secret.Value.ValueString()))
 	}
 
