@@ -363,7 +363,7 @@ func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSe
 // Returns (secrets, found, diagnostics) where:
 // - secrets is the list from the API (nil if error or not found)
 // - found is false only when 404 is returned
-// - diagnostics contains any errors encountered
+// - diagnostics contains any errors encountered.
 func fetchEdgeFunctionSecrets(ctx context.Context, projectRef string, client *api.ClientWithResponses) (*[]api.SecretResponse, diag.Diagnostics) {
 	httpResp, err := client.V1ListAllSecretsWithResponse(ctx, projectRef)
 	if err != nil {
@@ -467,7 +467,7 @@ func readEdgeFunctionSecretsForRead(ctx context.Context, data *EdgeFunctionSecre
 		}
 
 		// Secret exists in both state and API
-		var secretValue types.String = types.StringNull() // Default: use nil to signal drift to Terraform
+		var secretValue = types.StringNull() // Default: use nil to signal drift to Terraform
 
 		existingValue := existingSecret.Value.ValueString()
 		// Prefer the stored digest for comparison; fall back to computing sha256(value)
