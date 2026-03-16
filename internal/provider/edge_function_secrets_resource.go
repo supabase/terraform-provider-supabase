@@ -275,7 +275,7 @@ func computeSecretDigestsMap(secretModels []SecretModel) (types.Map, diag.Diagno
 	// Compute and store SHA-256 digests for all secrets
 	digestElements := make(map[string]attr.Value, len(secretModels))
 	for _, secret := range secretModels {
-		if secret.Value.IsUnknown() || strings.HasPrefix(secret.Name.ValueString(), supabasePrefix) {
+		if secret.Value.IsUnknown() {
 			continue
 		}
 
