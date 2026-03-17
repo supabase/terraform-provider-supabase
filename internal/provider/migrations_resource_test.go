@@ -36,7 +36,6 @@ resource "supabase_migrations" "test" {
 `, testProjectRef, tmpDir)
 
 	// Mock project status check
-	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
 		AddMatcher(exactPathMatcher(projectApiPath)).
@@ -49,12 +48,12 @@ resource "supabase_migrations" "test" {
 
 	// Mock apply migration
 	gock.New(defaultApiEndpoint).
-		Post(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
+		Post(migrationsApiPath).
 		Reply(http.StatusOK)
 
 	// Mock migration history read used by resource Read
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
+		Get(migrationsApiPath).
 		Reply(http.StatusOK).
 		AddHeader("Content-Type", "application/json").
 		BodyString(`[{"name":"001_initial.sql","version":"001"}]`)
@@ -102,7 +101,6 @@ resource "supabase_migrations" "test" {
 `, testProjectRef, tmpDir)
 
 	// Mock project status checks
-	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
 		AddMatcher(exactPathMatcher(projectApiPath)).
@@ -115,21 +113,21 @@ resource "supabase_migrations" "test" {
 
 	// Mock apply migrations
 	gock.New(defaultApiEndpoint).
-		Post(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
+		Post(migrationsApiPath).
 		Persist().
 		Reply(http.StatusOK)
 
 	// Mock migration history reads:
 	// first reads return the initial single migration, subsequent reads return both migrations.
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
+		Get(migrationsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
 		AddHeader("Content-Type", "application/json").
 		BodyString(`[{"name":"001_initial.sql","version":"001"}]`)
 
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
+		Get(migrationsApiPath).
 		Persist().
 		Reply(http.StatusOK).
 		AddHeader("Content-Type", "application/json").
@@ -184,7 +182,6 @@ resource "supabase_migrations" "test" {
 `, testProjectRef, tmpDir)
 
 	// Mock project status
-	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
 		AddMatcher(exactPathMatcher(projectApiPath)).
@@ -197,13 +194,13 @@ resource "supabase_migrations" "test" {
 
 	// Mock apply migration
 	gock.New(defaultApiEndpoint).
-		Post(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
+		Post(migrationsApiPath).
 		Persist().
 		Reply(http.StatusOK)
 
 	// Mock migration history read used by resource Read
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
+		Get(migrationsApiPath).
 		Persist().
 		Reply(http.StatusOK).
 		AddHeader("Content-Type", "application/json").
@@ -256,7 +253,6 @@ resource "supabase_migrations" "test" {
 `, testProjectRef, tmpDir)
 
 	// Mock project status - called multiple times during create, import, and refresh
-	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
 		AddMatcher(exactPathMatcher(projectApiPath)).
@@ -269,12 +265,12 @@ resource "supabase_migrations" "test" {
 
 	// Mock apply migration
 	gock.New(defaultApiEndpoint).
-		Post(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
+		Post(migrationsApiPath).
 		Reply(http.StatusOK)
 
 	// Mock migration history reads used by Read and ImportState
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
+		Get(migrationsApiPath).
 		Persist().
 		Reply(http.StatusOK).
 		AddHeader("Content-Type", "application/json").
