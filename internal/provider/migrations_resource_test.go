@@ -15,12 +15,6 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
-func exactPathMatcher(expectedPath string) gock.MatchFunc {
-	return func(req *http.Request, _ *gock.Request) (bool, error) {
-		return req.URL.Path == expectedPath, nil
-	}
-}
-
 func TestAccMigrationsResource(t *testing.T) {
 	// Test basic creation of migrations resource
 	defer gock.OffAll()
@@ -42,9 +36,13 @@ resource "supabase_migrations" "test" {
 `, testProjectRef, tmpDir)
 
 	// Mock project status check
+	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
+	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
+		return req.URL.Path == projectApiPath, nil
+	}
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s", testProjectRef)).
-		AddMatcher(exactPathMatcher(fmt.Sprintf("/v1/projects/%s", testProjectRef))).
+		Get(projectApiPath).
+		AddMatcher(exactPathMatcher).
 		Times(3). // Called during wait, create, and read
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
@@ -60,11 +58,9 @@ resource "supabase_migrations" "test" {
 	// Mock migration history read used by resource Read
 	gock.New(defaultApiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
-		AddMatcher(exactPathMatcher(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef))).
 		Reply(http.StatusOK).
-		JSON([]map[string]string{
-			{"name": "001_initial.sql", "version": "001"},
-		})
+		AddHeader("Content-Type", "application/json").
+		BodyString(`[{"name":"001_initial.sql","version":"001"}]`)
 
 	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -109,9 +105,13 @@ resource "supabase_migrations" "test" {
 `, testProjectRef, tmpDir)
 
 	// Mock project status checks
+	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
+	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
+		return req.URL.Path == projectApiPath, nil
+	}
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s", testProjectRef)).
-		AddMatcher(exactPathMatcher(fmt.Sprintf("/v1/projects/%s", testProjectRef))).
+		Get(projectApiPath).
+		AddMatcher(exactPathMatcher).
 		Persist().
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
@@ -129,22 +129,17 @@ resource "supabase_migrations" "test" {
 	// first reads return the initial single migration, subsequent reads return both migrations.
 	gock.New(defaultApiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
-		AddMatcher(exactPathMatcher(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef))).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]map[string]string{
-			{"name": "001_initial.sql", "version": "001"},
-		})
+		AddHeader("Content-Type", "application/json").
+		BodyString(`[{"name":"001_initial.sql","version":"001"}]`)
 
 	gock.New(defaultApiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
-		AddMatcher(exactPathMatcher(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef))).
 		Persist().
 		Reply(http.StatusOK).
-		JSON([]map[string]string{
-			{"name": "001_initial.sql", "version": "001"},
-			{"name": "002_add_column.sql", "version": "002"},
-		})
+		AddHeader("Content-Type", "application/json").
+		BodyString(`[{"name":"001_initial.sql","version":"001"},{"name":"002_add_column.sql","version":"002"}]`)
 
 	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -195,9 +190,13 @@ resource "supabase_migrations" "test" {
 `, testProjectRef, tmpDir)
 
 	// Mock project status
+	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
+	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
+		return req.URL.Path == projectApiPath, nil
+	}
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s", testProjectRef)).
-		AddMatcher(exactPathMatcher(fmt.Sprintf("/v1/projects/%s", testProjectRef))).
+		Get(projectApiPath).
+		AddMatcher(exactPathMatcher).
 		Persist().
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
@@ -214,12 +213,10 @@ resource "supabase_migrations" "test" {
 	// Mock migration history read used by resource Read
 	gock.New(defaultApiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
-		AddMatcher(exactPathMatcher(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef))).
 		Persist().
 		Reply(http.StatusOK).
-		JSON([]map[string]string{
-			{"name": "001_test.sql", "version": "001"},
-		})
+		AddHeader("Content-Type", "application/json").
+		BodyString(`[{"name":"001_test.sql","version":"001"}]`)
 
 	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -268,9 +265,13 @@ resource "supabase_migrations" "test" {
 `, testProjectRef, tmpDir)
 
 	// Mock project status - called multiple times during create, import, and refresh
+	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
+	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
+		return req.URL.Path == projectApiPath, nil
+	}
 	gock.New(defaultApiEndpoint).
-		Get(fmt.Sprintf("/v1/projects/%s", testProjectRef)).
-		AddMatcher(exactPathMatcher(fmt.Sprintf("/v1/projects/%s", testProjectRef))).
+		Get(projectApiPath).
+		AddMatcher(exactPathMatcher).
 		Persist().
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
@@ -286,12 +287,10 @@ resource "supabase_migrations" "test" {
 	// Mock migration history reads used by Read and ImportState
 	gock.New(defaultApiEndpoint).
 		Get(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef)).
-		AddMatcher(exactPathMatcher(fmt.Sprintf("/v1/projects/%s/database/migrations", testProjectRef))).
 		Persist().
 		Reply(http.StatusOK).
-		JSON([]map[string]string{
-			{"name": "001_initial.sql", "version": "001"},
-		})
+		AddHeader("Content-Type", "application/json").
+		BodyString(`[{"name":"001_initial.sql","version":"001"}]`)
 
 	testresource.Test(t, testresource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
