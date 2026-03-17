@@ -16,6 +16,7 @@ const (
 	postgrestApiPath           = projectApiPath + "/postgrest"
 	authConfigApiPath          = projectApiPath + "/config/auth"
 	storageConfigApiPath       = projectApiPath + "/config/storage"
+	secretsApiPath             = projectApiPath + "/secrets"
 
 	functionSlug          = "foo"
 	testApiKeyUUID        = "d9bece6b-52cc-4d67-a948-2349d46676f5" //nolint:gosec
