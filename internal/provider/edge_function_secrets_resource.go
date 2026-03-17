@@ -2,8 +2,6 @@ package provider
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -347,17 +345,11 @@ func (r *EdgeFunctionSecretsResource) ImportState(ctx context.Context, req resou
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// computeSecretDigest returns the hex-encoded SHA-256 digest of the given string value.
-func computeSecretDigest(value string) string {
-	hash := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(hash[:])
-}
-
 func computeSecretDigestsMap(secretModels []SecretModel) (types.Map, diag.Diagnostics) {
 	// Compute and store SHA-256 digests for all secrets
 	digestElements := make(map[string]attr.Value, len(secretModels))
 	for _, secret := range secretModels {
-		digestElements[secret.Name.ValueString()] = types.StringValue(computeSecretDigest(secret.Value.ValueString()))
+		digestElements[secret.Name.ValueString()] = types.StringValue(sha256Hex(secret.Value.ValueString()))
 	}
 
 	// Build the digest map
@@ -556,7 +548,7 @@ func readEdgeFunctionSecretsForRead(ctx context.Context, data *EdgeFunctionSecre
 		// Prefer the stored digest for comparison; fall back to computing sha256(value)
 		localDigest, hasStoredDigest := existingDigests[secretName]
 		if !hasStoredDigest {
-			localDigest = computeSecretDigest(existingValue)
+			localDigest = sha256Hex(existingValue)
 		}
 		if localDigest == apiDigest {
 			// Digest matches – preserve the actual plaintext value from state

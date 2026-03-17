@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -200,4 +202,15 @@ func errorFromServiceErrorDescription(service api.V1ServiceHealthResponseName, d
 	}
 
 	return fmt.Errorf("unhealthy service %s: %s", service, v.Error)
+}
+
+// sha256Hex returns the hex-encoded SHA-256 digest of the given string value.
+func sha256Hex(value string) string {
+	return sha256HexByteSlice([]byte(value))
+}
+
+// sha256HexByteSlice returns the hex-encoded SHA-256 digest of the given string value.
+func sha256HexByteSlice(value []byte) string {
+	hash := sha256.Sum256(value)
+	return hex.EncodeToString(hash[:])
 }

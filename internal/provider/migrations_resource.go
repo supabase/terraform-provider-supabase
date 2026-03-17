@@ -2,8 +2,6 @@ package provider
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -106,14 +104,6 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 		}
 	}
 
-	if len(migrationFiles) == 0 {
-		resp.Diagnostics.AddError(
-			"No migration files found",
-			fmt.Sprintf("No .sql files were found in migrations directory '%s'.", dirPath),
-		)
-		return
-	}
-
 	sort.Strings(migrationFiles)
 
 	var planMigrationModels []MigrationModel
@@ -131,6 +121,7 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 		// preserve the state values instead of recomputing
 		// This prevents sensitive attribute inconsistency errors
 		if i < len(stateMigrationModels) {
+			// This is an existing migration
 			stateMigration := stateMigrationModels[i]
 			// If state migration has computed fields populated, preserve them
 			if !stateMigration.Content.IsNull() && !stateMigration.Digest.IsNull() {
@@ -147,8 +138,7 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 					}
 
 					// Check if content has changed
-					hash := sha256.Sum256(content)
-					newDigest := hex.EncodeToString(hash[:])
+					newDigest := sha256HexByteSlice(content)
 					stateDigest := stateMigration.Digest.ValueString()
 
 					if newDigest != stateDigest {
@@ -169,39 +159,36 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 					planMigration.Name = stateMigration.Name
 				}
 				updated = append(updated, planMigration)
-				continue
 			}
+		} else {
+			// This is a new migration or doesn't have computed state yet
+			filePath := planMigration.FilePath.ValueString()
+
+			// Read file and compute digest at plan time
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Failed to read migration file",
+					fmt.Sprintf("Could not read migration file '%s': %s", filePath, err.Error()),
+				)
+				return
+			}
+
+			// Store plaintext content (marked sensitive)
+			planMigration.Content = types.StringValue(string(content))
+
+			// Compute SHA-256 digest
+			digest := sha256HexByteSlice(content)
+			planMigration.Digest = types.StringValue(digest)
+
+			// Extract name from file path (base name without extension)
+			name := filepath.Base(filePath)
+			if planMigration.Name.IsNull() || planMigration.Name.ValueString() == "" {
+				planMigration.Name = types.StringValue(name)
+			}
+
+			updated = append(updated, planMigration)
 		}
-
-		// This is a new migration or doesn't have computed state yet
-
-		filePath := planMigration.FilePath.ValueString()
-
-		// Read file and compute digest at plan time
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to read migration file",
-				fmt.Sprintf("Could not read migration file '%s': %s", filePath, err.Error()),
-			)
-			return
-		}
-
-		// Store plaintext content (marked sensitive)
-		planMigration.Content = types.StringValue(string(content))
-
-		// Compute SHA-256 digest
-		hash := sha256.Sum256(content)
-		digest := hex.EncodeToString(hash[:])
-		planMigration.Digest = types.StringValue(digest)
-
-		// Extract name from file path (base name without extension)
-		name := filepath.Base(filePath)
-		if planMigration.Name.IsNull() || planMigration.Name.ValueString() == "" {
-			planMigration.Name = types.StringValue(name)
-		}
-
-		updated = append(updated, planMigration)
 	}
 
 	// Build the updated list value
