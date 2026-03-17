@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -19,7 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/supabase/cli/pkg/api"
 )
 
@@ -567,48 +565,33 @@ func (r *MigrationsResource) ImportState(ctx context.Context, req resource.Impor
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-// applyMigration applies a single migration with retry logic
+// applyMigration applies a single migration
 func (r *MigrationsResource) applyMigration(ctx context.Context, projectRef string, migration MigrationModel) (MigrationModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	content := migration.Content.ValueString()
 	name := migration.Name.ValueString()
 
-	// Apply migration with retry logic
-	var httpResp *api.V1ApplyAMigrationResponse
-	var err error
+	// Build migration request body
+	body := api.V1ApplyAMigrationJSONRequestBody{
+		Name:  Ptr(name),
+		Query: content,
+	}
 
-	retryErr := retry.RetryContext(ctx, 2*time.Minute, func() *retry.RetryError {
-		// Build migration request body
-		body := api.V1ApplyAMigrationJSONRequestBody{
-			Name:  Ptr(name),
-			Query: content,
-		}
-
-		// Call the Supabase API to apply the migration
-		httpResp, err = r.client.V1ApplyAMigrationWithResponse(ctx, projectRef, nil, body)
-		if err != nil {
-			return retry.RetryableError(err)
-		}
-
-		// Retry on server errors (5xx)
-		if httpResp.StatusCode() >= 500 {
-			return retry.RetryableError(fmt.Errorf("server error: %d - %s", httpResp.StatusCode(), string(httpResp.Body)))
-		}
-
-		// Don't retry on client errors (4xx)
-		if httpResp.StatusCode() >= 400 {
-			return retry.NonRetryableError(fmt.Errorf("client error: %d - %s", httpResp.StatusCode(), string(httpResp.Body)))
-		}
-
-		// Success (2xx)
-		return nil
-	})
-
-	if retryErr != nil {
+	// Call the Supabase API to apply the migration
+	httpResp, err := r.client.V1ApplyAMigrationWithResponse(ctx, projectRef, nil, body)
+	if err != nil {
 		diags.AddError(
 			"Failed to Apply Migration",
-			fmt.Sprintf("Could not apply migration '%s': %s", name, retryErr.Error()),
+			fmt.Sprintf("Could not apply migration '%s': %s", name, err.Error()),
+		)
+		return migration, diags
+	}
+
+	if httpResp.StatusCode() >= 400 {
+		diags.AddError(
+			"Failed to Apply Migration",
+			fmt.Sprintf("Could not apply migration '%s': status %d - %s", name, httpResp.StatusCode(), string(httpResp.Body)),
 		)
 		return migration, diags
 	}
