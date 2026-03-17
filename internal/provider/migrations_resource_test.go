@@ -37,12 +37,9 @@ resource "supabase_migrations" "test" {
 
 	// Mock project status check
 	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
-	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
-		return req.URL.Path == projectApiPath, nil
-	}
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
-		AddMatcher(exactPathMatcher).
+		AddMatcher(exactPathMatcher(projectApiPath)).
 		Times(3). // Called during wait, create, and read
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
@@ -106,12 +103,9 @@ resource "supabase_migrations" "test" {
 
 	// Mock project status checks
 	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
-	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
-		return req.URL.Path == projectApiPath, nil
-	}
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
-		AddMatcher(exactPathMatcher).
+		AddMatcher(exactPathMatcher(projectApiPath)).
 		Persist().
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
@@ -191,12 +185,9 @@ resource "supabase_migrations" "test" {
 
 	// Mock project status
 	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
-	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
-		return req.URL.Path == projectApiPath, nil
-	}
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
-		AddMatcher(exactPathMatcher).
+		AddMatcher(exactPathMatcher(projectApiPath)).
 		Persist().
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{
@@ -266,12 +257,9 @@ resource "supabase_migrations" "test" {
 
 	// Mock project status - called multiple times during create, import, and refresh
 	projectApiPath := fmt.Sprintf("/v1/projects/%s", testProjectRef)
-	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
-		return req.URL.Path == projectApiPath, nil
-	}
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
-		AddMatcher(exactPathMatcher).
+		AddMatcher(exactPathMatcher(projectApiPath)).
 		Persist().
 		Reply(http.StatusOK).
 		JSON(api.V1ProjectWithDatabaseResponse{

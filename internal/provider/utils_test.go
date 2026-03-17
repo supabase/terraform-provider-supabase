@@ -12,6 +12,15 @@ import (
 	"gopkg.in/h2non/gock.v1"
 )
 
+// exactPathMatcher returns a gock matcher function that checks if the request URL path
+// exactly matches the given path. This is useful for disambiguating mock endpoints that
+// have overlapping patterns.
+func exactPathMatcher(expectedPath string) func(*http.Request, *gock.Request) (bool, error) {
+	return func(req *http.Request, _ *gock.Request) (bool, error) {
+		return req.URL.Path == expectedPath, nil
+	}
+}
+
 func TestWaitForProjectActive_TerminalState(t *testing.T) {
 	defer gock.OffAll()
 	gock.InterceptClient(http.DefaultClient)

@@ -43,17 +43,14 @@ func TestAccSettingsResource(t *testing.T) {
 		Region:         "us-east-1",
 		Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 	}
-	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
-		return req.URL.Path == projectApiPath, nil
-	}
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
-		AddMatcher(exactPathMatcher).
+		AddMatcher(exactPathMatcher(projectApiPath)).
 		Reply(http.StatusOK).
 		JSON(projectStatusResponse)
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
-		AddMatcher(exactPathMatcher).
+		AddMatcher(exactPathMatcher(projectApiPath)).
 		Reply(http.StatusOK).
 		JSON(projectStatusResponse)
 	gock.New(defaultApiEndpoint).
