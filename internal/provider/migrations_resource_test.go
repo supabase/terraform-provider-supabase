@@ -31,13 +31,9 @@ func TestAccMigrationsResource(t *testing.T) {
 	testConfig := fmt.Sprintf(`
 resource "supabase_migrations" "test" {
 	project_ref = "%s"
-	migrations = [
-		{
-			file_path = "%s"
-		}
-	]
+	migrations_dir = "%s"
 }
-`, testProjectRef, migration1Path)
+`, testProjectRef, tmpDir)
 
 	// Mock project status check
 	gock.New(defaultApiEndpoint).
@@ -89,35 +85,13 @@ func TestAccMigrationsResource_AppendUpdate(t *testing.T) {
 	// Second migration
 	migration2Path := filepath.Join(tmpDir, "002_add_column.sql")
 	migration2Content := "ALTER TABLE users ADD COLUMN email TEXT;"
-	err = os.WriteFile(migration2Path, []byte(migration2Content), 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	config1 := fmt.Sprintf(`
+	config := fmt.Sprintf(`
 resource "supabase_migrations" "test" {
 	project_ref = "%s"
-	migrations = [
-		{
-			file_path = "%s"
-		}
-	]
+	migrations_dir = "%s"
 }
-`, testProjectRef, migration1Path)
-
-	config2 := fmt.Sprintf(`
-resource "supabase_migrations" "test" {
-	project_ref = "%s"
-	migrations = [
-		{
-			file_path = "%s"
-		},
-		{
-			file_path = "%s"
-		}
-	]
-}
-`, testProjectRef, migration1Path, migration2Path)
+`, testProjectRef, tmpDir)
 
 	// Mock project status checks
 	gock.New(defaultApiEndpoint).
@@ -140,13 +114,19 @@ resource "supabase_migrations" "test" {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []testresource.TestStep{
 			{
-				Config: config1,
+				Config: config,
 				Check: testresource.ComposeAggregateTestCheckFunc(
 					testresource.TestCheckResourceAttr("supabase_migrations.test", "migrations.#", "1"),
 				),
 			},
 			{
-				Config: config2,
+				PreConfig: func() {
+					err := os.WriteFile(migration2Path, []byte(migration2Content), 0o644)
+					if err != nil {
+						t.Fatal(err)
+					}
+				},
+				Config: config,
 				Check: testresource.ComposeAggregateTestCheckFunc(
 					testresource.TestCheckResourceAttr("supabase_migrations.test", "migrations.#", "2"),
 					testresource.TestCheckResourceAttr("supabase_migrations.test", "migrations.1.name", "002_add_column.sql"),
@@ -173,13 +153,9 @@ func TestAccMigrationsResource_ModifyExisting(t *testing.T) {
 	config1 := fmt.Sprintf(`
 resource "supabase_migrations" "test" {
 	project_ref = "%s"
-	migrations = [
-		{
-			file_path = "%s"
-		}
-	]
+	migrations_dir = "%s"
 }
-`, testProjectRef, migrationPath)
+`, testProjectRef, tmpDir)
 
 	// Mock project status
 	gock.New(defaultApiEndpoint).
@@ -239,13 +215,9 @@ func TestAccMigrationsResource_Import(t *testing.T) {
 	testConfig := fmt.Sprintf(`
 resource "supabase_migrations" "test" {
 	project_ref = "%s"
-	migrations = [
-		{
-			file_path = "%s"
-		}
-	]
+	migrations_dir = "%s"
 }
-`, testProjectRef, migration1Path)
+`, testProjectRef, tmpDir)
 
 	// Mock project status - called multiple times during create, import, and refresh
 	gock.New(defaultApiEndpoint).
@@ -280,7 +252,7 @@ resource "supabase_migrations" "test" {
 				ImportState:             true,
 				ImportStateId:           testProjectRef,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"migrations"},
+				ImportStateVerifyIgnore: []string{"migrations", "migrations_dir"},
 			},
 		},
 	})

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -47,16 +49,23 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 		return
 	}
 
-	// Get the planned planMigrations attribute
-	var planMigrations types.List
-	diags := req.Plan.GetAttribute(ctx, path.Root("migrations"), &planMigrations)
+	var migrationsDir types.String
+	diags := req.Plan.GetAttribute(ctx, path.Root("migrations_dir"), &migrationsDir)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// If migrations is unknown or null, we can't compute digests yet
-	if planMigrations.IsUnknown() || planMigrations.IsNull() {
+	if migrationsDir.IsUnknown() || migrationsDir.IsNull() {
+		return
+	}
+
+	dirPath := migrationsDir.ValueString()
+	if strings.TrimSpace(dirPath) == "" {
+		resp.Diagnostics.AddError(
+			"Invalid migrations directory",
+			"`migrations_dir` must be a non-empty path to a directory containing .sql files.",
+		)
 		return
 	}
 
@@ -77,12 +86,42 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 		}
 	}
 
-	// Parse migrations from the plan
-	var planMigrationModels []MigrationModel
-	diags = planMigrations.ElementsAs(ctx, &planMigrationModels, false)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to read migrations directory",
+			fmt.Sprintf("Could not read migrations directory '%s': %s", dirPath, err.Error()),
+		)
 		return
+	}
+
+	var migrationFiles []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		if strings.EqualFold(filepath.Ext(entry.Name()), ".sql") {
+			migrationFiles = append(migrationFiles, entry.Name())
+		}
+	}
+
+	if len(migrationFiles) == 0 {
+		resp.Diagnostics.AddError(
+			"No migration files found",
+			fmt.Sprintf("No .sql files were found in migrations directory '%s'.", dirPath),
+		)
+		return
+	}
+
+	sort.Strings(migrationFiles)
+
+	var planMigrationModels []MigrationModel
+	for _, migrationFile := range migrationFiles {
+		planMigrationModels = append(planMigrationModels, MigrationModel{
+			FilePath: types.StringValue(filepath.Join(dirPath, migrationFile)),
+			Name:     types.StringValue(migrationFile),
+		})
 	}
 
 	// Compute digests and update the plan
@@ -135,10 +174,6 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 		}
 
 		// This is a new migration or doesn't have computed state yet
-		// Skip if file_path is unknown or null
-		if planMigration.FilePath.IsUnknown() || planMigration.FilePath.IsNull() {
-			return
-		}
 
 		filePath := planMigration.FilePath.ValueString()
 
@@ -215,9 +250,10 @@ type MigrationsResource struct {
 }
 
 type MigrationsResourceModel struct {
-	ProjectRef types.String `tfsdk:"project_ref"`
-	Migrations types.List   `tfsdk:"migrations"` // List of MigrationModel
-	Id         types.String `tfsdk:"id"`
+	ProjectRef    types.String `tfsdk:"project_ref"`
+	MigrationsDir types.String `tfsdk:"migrations_dir"`
+	Migrations    types.List   `tfsdk:"migrations"` // Computed list of MigrationModel
+	Id            types.String `tfsdk:"id"`
 }
 
 type MigrationModel struct {
@@ -253,14 +289,21 @@ func (r *MigrationsResource) Schema(ctx context.Context, req resource.SchemaRequ
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"migrations": schema.ListNestedAttribute{
-				MarkdownDescription: "Ordered list of migration files to apply. New migrations can be appended, but existing entries cannot be modified or reordered.",
+			"migrations_dir": schema.StringAttribute{
+				MarkdownDescription: "Path to a directory containing ordered migration SQL files (.sql). Files are sorted lexicographically and applied in that order.",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"migrations": schema.ListNestedAttribute{
+				MarkdownDescription: "Computed ordered list of migration files discovered in `migrations_dir`. Existing applied migrations are immutable.",
+				Computed:            true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"file_path": schema.StringAttribute{
-							MarkdownDescription: "Path to the migration SQL file (relative to Terraform working directory).",
-							Required:            true,
+							MarkdownDescription: "Path to the migration SQL file (under `migrations_dir`).",
+							Computed:            true,
 						},
 						"name": schema.StringAttribute{
 							MarkdownDescription: "Name of the migration (same as file name).",
@@ -272,6 +315,7 @@ func (r *MigrationsResource) Schema(ctx context.Context, req resource.SchemaRequ
 						"content": schema.StringAttribute{
 							MarkdownDescription: "SQL content of the migration file computed at plan time.",
 							Computed:            true,
+							Sensitive:           true,
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.UseStateForUnknown(),
 							},
@@ -342,7 +386,7 @@ func (r *MigrationsResource) Create(ctx context.Context, req resource.CreateRequ
 		if resp.Diagnostics.HasError() {
 			// On error, preserve state for successfully applied migrations
 			if len(appliedMigrations) > 0 {
-				plan.Migrations = r.buildMigrationsList(ctx, appliedMigrations, &resp.Diagnostics)
+				plan.Migrations = r.buildMigrationsList(appliedMigrations, &resp.Diagnostics)
 				resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 			}
 			return
@@ -352,7 +396,7 @@ func (r *MigrationsResource) Create(ctx context.Context, req resource.CreateRequ
 	}
 
 	// Update plan with applied migrations
-	plan.Migrations = r.buildMigrationsList(ctx, appliedMigrations, &resp.Diagnostics)
+	plan.Migrations = r.buildMigrationsList(appliedMigrations, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -527,8 +571,9 @@ func (r *MigrationsResource) ImportState(ctx context.Context, req resource.Impor
 
 	// Set basic attributes
 	state := MigrationsResourceModel{
-		Id:         types.StringValue(projectRef),
-		ProjectRef: types.StringValue(projectRef),
+		Id:            types.StringValue(projectRef),
+		ProjectRef:    types.StringValue(projectRef),
+		MigrationsDir: types.StringNull(),
 	}
 
 	// TODO: If API provides endpoint to list applied migrations, fetch them here
@@ -546,7 +591,7 @@ func (r *MigrationsResource) ImportState(ctx context.Context, req resource.Impor
 		"Import Limitation",
 		"Imported migrations resource with empty migration list. "+
 			"The Supabase API does not currently expose a list of applied migrations. "+
-			"You must manually add migration entries to match what has been applied, or apply new migrations.",
+			"Set `migrations_dir` in configuration to a directory that matches already applied migrations, then apply.",
 	)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
@@ -611,7 +656,7 @@ func (r *MigrationsResource) applyMigration(ctx context.Context, projectRef stri
 }
 
 // buildMigrationsList constructs a types.List from a slice of MigrationModel
-func (r *MigrationsResource) buildMigrationsList(ctx context.Context, migrations []MigrationModel, diags *diag.Diagnostics) types.List {
+func (r *MigrationsResource) buildMigrationsList(migrations []MigrationModel, diags *diag.Diagnostics) types.List {
 	migrationElemType := types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"file_path": types.StringType,
