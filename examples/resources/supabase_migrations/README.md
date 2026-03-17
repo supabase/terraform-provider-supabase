@@ -45,7 +45,7 @@ terraform plan
 ```
 
 This will:
-- Read all migration files at plan time
+- Discover all `.sql` files under `migrations_dir` at plan time
 - Compute SHA-256 digests for each migration
 - Show what migrations will be applied
 
@@ -62,26 +62,14 @@ This will apply migrations sequentially in the order specified.
 To add new migrations:
 
 1. Create a new SQL file (e.g., `004_add_comments_table.sql`)
-2. Add it to the `migrations` list in `resource.tf`:
+2. Place it in the `migrations/` directory.
+
+The resource configuration stays simple:
 
 ```hcl
 resource "supabase_migrations" "example" {
   project_ref = "your-project-ref"
-
-  migrations = [
-    {
-      file_path = "./migrations/001_initial_schema.sql"
-    },
-    {
-      file_path = "./migrations/002_add_users_table.sql"
-    },
-    {
-      file_path = "./migrations/003_add_posts_table.sql"
-    },
-    {
-      file_path = "./migrations/004_add_comments_table.sql"  # New migration
-    }
-  ]
+  migrations_dir = "./migrations"
 }
 ```
 

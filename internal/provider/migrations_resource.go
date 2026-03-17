@@ -109,8 +109,7 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 	var planMigrationModels []MigrationModel
 	for _, migrationFile := range migrationFiles {
 		planMigrationModels = append(planMigrationModels, MigrationModel{
-			FilePath: types.StringValue(filepath.Join(dirPath, migrationFile)),
-			Name:     types.StringValue(migrationFile),
+			Name: types.StringValue(migrationFile),
 		})
 	}
 
@@ -126,8 +125,8 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 			// If state migration has computed fields populated, preserve them
 			if !stateMigration.Content.IsNull() && !stateMigration.Digest.IsNull() {
 				// Still verify that file hasn't changed by recomputing digest
-				filePath := planMigration.FilePath.ValueString()
-				if !planMigration.FilePath.IsUnknown() && !planMigration.FilePath.IsNull() {
+				if !planMigration.Name.IsUnknown() && !planMigration.Name.IsNull() {
+					filePath := filepath.Join(dirPath, planMigration.Name.ValueString())
 					content, err := os.ReadFile(filePath)
 					if err != nil {
 						resp.Diagnostics.AddError(
@@ -162,7 +161,7 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 			}
 		} else {
 			// This is a new migration or doesn't have computed state yet
-			filePath := planMigration.FilePath.ValueString()
+			filePath := filepath.Join(dirPath, planMigration.Name.ValueString())
 
 			// Read file and compute digest at plan time
 			content, err := os.ReadFile(filePath)
@@ -181,12 +180,6 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 			digest := sha256HexByteSlice(content)
 			planMigration.Digest = types.StringValue(digest)
 
-			// Extract name from file path (base name without extension)
-			name := filepath.Base(filePath)
-			if planMigration.Name.IsNull() || planMigration.Name.ValueString() == "" {
-				planMigration.Name = types.StringValue(name)
-			}
-
 			updated = append(updated, planMigration)
 		}
 	}
@@ -194,10 +187,9 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 	// Build the updated list value
 	migrationElemType := types.ObjectType{
 		AttrTypes: map[string]attr.Type{
-			"file_path": types.StringType,
-			"name":      types.StringType,
-			"content":   types.StringType,
-			"digest":    types.StringType,
+			"name":    types.StringType,
+			"content": types.StringType,
+			"digest":  types.StringType,
 		},
 	}
 
@@ -206,10 +198,9 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 		obj, objDiags := types.ObjectValue(
 			migrationElemType.AttrTypes,
 			map[string]attr.Value{
-				"file_path": mig.FilePath,
-				"name":      mig.Name,
-				"content":   mig.Content,
-				"digest":    mig.Digest,
+				"name":    mig.Name,
+				"content": mig.Content,
+				"digest":  mig.Digest,
 			},
 		)
 		resp.Diagnostics.Append(objDiags...)
@@ -244,10 +235,9 @@ type MigrationsResourceModel struct {
 }
 
 type MigrationModel struct {
-	FilePath types.String `tfsdk:"file_path"` // Required: path to migration file
-	Name     types.String `tfsdk:"name"`      // Computed: migration name (from file or API)
-	Content  types.String `tfsdk:"content"`   // Computed: plaintext SQL (sensitive)
-	Digest   types.String `tfsdk:"digest"`    // Computed: SHA-256 of content
+	Name    types.String `tfsdk:"name"`    // Computed: migration name (from file or API)
+	Content types.String `tfsdk:"content"` // Computed: plaintext SQL (sensitive)
+	Digest  types.String `tfsdk:"digest"`  // Computed: SHA-256 of content
 }
 
 func (r *MigrationsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -288,10 +278,6 @@ func (r *MigrationsResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Computed:            true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"file_path": schema.StringAttribute{
-							MarkdownDescription: "Path to the migration SQL file (under `migrations_dir`).",
-							Computed:            true,
-						},
 						"name": schema.StringAttribute{
 							MarkdownDescription: "Name of the migration (same as file name).",
 							Computed:            true,
@@ -363,7 +349,6 @@ func (r *MigrationsResource) Create(ctx context.Context, req resource.CreateRequ
 		tflog.Debug(ctx, "Applying migration", map[string]interface{}{
 			"index": i,
 			"name":  migration.Name.ValueString(),
-			"path":  migration.FilePath.ValueString(),
 		})
 
 		// Apply the migration
@@ -499,7 +484,6 @@ func (r *MigrationsResource) Update(ctx context.Context, req resource.UpdateRequ
 		tflog.Debug(ctx, "Applying new migration", map[string]interface{}{
 			"index": i,
 			"name":  migration.Name.ValueString(),
-			"path":  migration.FilePath.ValueString(),
 		})
 
 		// Apply the migration
@@ -567,10 +551,9 @@ func (r *MigrationsResource) ImportState(ctx context.Context, req resource.Impor
 	// For now, import creates an empty migrations list with a warning
 	state.Migrations = types.ListNull(types.ObjectType{
 		AttrTypes: map[string]attr.Type{
-			"file_path": types.StringType,
-			"name":      types.StringType,
-			"content":   types.StringType,
-			"digest":    types.StringType,
+			"name":    types.StringType,
+			"content": types.StringType,
+			"digest":  types.StringType,
 		},
 	})
 
@@ -646,10 +629,9 @@ func (r *MigrationsResource) applyMigration(ctx context.Context, projectRef stri
 func (r *MigrationsResource) buildMigrationsList(migrations []MigrationModel, diags *diag.Diagnostics) types.List {
 	migrationElemType := types.ObjectType{
 		AttrTypes: map[string]attr.Type{
-			"file_path": types.StringType,
-			"name":      types.StringType,
-			"content":   types.StringType,
-			"digest":    types.StringType,
+			"name":    types.StringType,
+			"content": types.StringType,
+			"digest":  types.StringType,
 		},
 	}
 
@@ -658,10 +640,9 @@ func (r *MigrationsResource) buildMigrationsList(migrations []MigrationModel, di
 		obj, objDiags := types.ObjectValue(
 			migrationElemType.AttrTypes,
 			map[string]attr.Value{
-				"file_path": mig.FilePath,
-				"name":      mig.Name,
-				"content":   mig.Content,
-				"digest":    mig.Digest,
+				"name":    mig.Name,
+				"content": mig.Content,
+				"digest":  mig.Digest,
 			},
 		)
 		diags.Append(objDiags...)

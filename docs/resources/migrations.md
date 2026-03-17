@@ -14,19 +14,8 @@ Applies a list of imperative SQL migration files to a Supabase project database.
 
 ```terraform
 resource "supabase_migrations" "example" {
-  project_ref = "mayuaycdtijbctgqbycg"
-
-  migrations = [
-    {
-      file_path = "./migrations/001_initial_schema.sql"
-    },
-    {
-      file_path = "./migrations/002_add_users_table.sql"
-    },
-    {
-      file_path = "./migrations/003_add_posts_table.sql"
-    }
-  ]
+  project_ref    = "mayuaycdtijbctgqbycg"
+  migrations_dir = "./migrations"
 }
 ```
 
@@ -35,27 +24,22 @@ resource "supabase_migrations" "example" {
 
 ### Required
 
-- `migrations` (Attributes List) Ordered list of migration files to apply. New migrations can be appended, but existing entries cannot be modified or reordered. (see [below for nested schema](#nestedatt--migrations))
+- `migrations_dir` (String) Path to a directory containing ordered migration SQL files (.sql). Files are sorted lexicographically and applied in that order.
 - `project_ref` (String) Project ref identifier for the Supabase project.
 
 ### Read-Only
 
 - `id` (String) Internal identifier for this resource (same as project_ref).
+- `migrations` (Attributes List) Computed ordered list of migration files discovered in `migrations_dir`. Existing applied migrations are immutable. (see [below for nested schema](#nestedatt--migrations))
 
 <a id="nestedatt--migrations"></a>
 ### Nested Schema for `migrations`
 
-Required:
-
-- `file_path` (String) Path to the migration SQL file (relative to Terraform working directory).
-
 Read-Only:
 
-- `applied_at` (String) Timestamp when the migration was applied (RFC3339 format).
-- `content` (String, Sensitive) SQL content of the migration file (computed at plan time, sensitive).
-- `digest` (String) SHA-256 digest of the migration content (computed at plan time).
-- `name` (String) Name of the migration (computed from file name or API response).
-- `version` (String) Migration version or ID returned by the Supabase API.
+- `content` (String, Sensitive) SQL content of the migration file computed at plan time.
+- `digest` (String) SHA-256 digest of the migration content computed at plan time.
+- `name` (String) Name of the migration (same as file name).
 
 ## Import
 
