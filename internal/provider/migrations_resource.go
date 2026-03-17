@@ -47,16 +47,16 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 		return
 	}
 
-	// Get the planned migrations attribute
-	var migrations types.List
-	diags := req.Plan.GetAttribute(ctx, path.Root("migrations"), &migrations)
+	// Get the planned planMigrations attribute
+	var planMigrations types.List
+	diags := req.Plan.GetAttribute(ctx, path.Root("migrations"), &planMigrations)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// If migrations is unknown or null, we can't compute digests yet
-	if migrations.IsUnknown() || migrations.IsNull() {
+	if planMigrations.IsUnknown() || planMigrations.IsNull() {
 		return
 	}
 
@@ -78,8 +78,8 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 	}
 
 	// Parse migrations from the plan
-	var migrationModels []MigrationModel
-	diags = migrations.ElementsAs(ctx, &migrationModels, false)
+	var planMigrationModels []MigrationModel
+	diags = planMigrations.ElementsAs(ctx, &planMigrationModels, false)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -87,17 +87,17 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 
 	// Compute digests and update the plan
 	var updated []MigrationModel
-	for i, mig := range migrationModels {
+	for i, planMigration := range planMigrationModels {
 		// For migrations that already exist in state (same index with computed fields),
 		// preserve the state values instead of recomputing
 		// This prevents sensitive attribute inconsistency errors
 		if i < len(stateMigrationModels) {
-			stateMig := stateMigrationModels[i]
+			stateMigration := stateMigrationModels[i]
 			// If state migration has computed fields populated, preserve them
-			if !stateMig.Content.IsNull() && !stateMig.Digest.IsNull() {
+			if !stateMigration.Content.IsNull() && !stateMigration.Digest.IsNull() {
 				// Still verify that file hasn't changed by recomputing digest
-				filePath := mig.FilePath.ValueString()
-				if !mig.FilePath.IsUnknown() && !mig.FilePath.IsNull() {
+				filePath := planMigration.FilePath.ValueString()
+				if !planMigration.FilePath.IsUnknown() && !planMigration.FilePath.IsNull() {
 					content, err := os.ReadFile(filePath)
 					if err != nil {
 						resp.Diagnostics.AddError(
@@ -110,41 +110,37 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 					// Check if content has changed
 					hash := sha256.Sum256(content)
 					newDigest := hex.EncodeToString(hash[:])
-					stateDigest := stateMig.Digest.ValueString()
+					stateDigest := stateMigration.Digest.ValueString()
 
 					if newDigest != stateDigest {
 						// File changed - this will be caught by Update validation
 						// Compute new values for comparison
-						mig.Content = types.StringValue(string(content))
-						mig.Digest = types.StringValue(newDigest)
+						planMigration.Content = types.StringValue(string(content))
+						planMigration.Digest = types.StringValue(newDigest)
 					} else {
 						// File hasn't changed - preserve state values
-						mig.Content = stateMig.Content
-						mig.Digest = stateMig.Digest
-						mig.Name = stateMig.Name
-						mig.AppliedAt = stateMig.AppliedAt
-						mig.Version = stateMig.Version
+						planMigration.Content = stateMigration.Content
+						planMigration.Digest = stateMigration.Digest
+						planMigration.Name = stateMigration.Name
 					}
 				} else {
 					// Can't read file, preserve state
-					mig.Content = stateMig.Content
-					mig.Digest = stateMig.Digest
-					mig.Name = stateMig.Name
-					mig.AppliedAt = stateMig.AppliedAt
-					mig.Version = stateMig.Version
+					planMigration.Content = stateMigration.Content
+					planMigration.Digest = stateMigration.Digest
+					planMigration.Name = stateMigration.Name
 				}
-				updated = append(updated, mig)
+				updated = append(updated, planMigration)
 				continue
 			}
 		}
 
 		// This is a new migration or doesn't have computed state yet
 		// Skip if file_path is unknown or null
-		if mig.FilePath.IsUnknown() || mig.FilePath.IsNull() {
+		if planMigration.FilePath.IsUnknown() || planMigration.FilePath.IsNull() {
 			return
 		}
 
-		filePath := mig.FilePath.ValueString()
+		filePath := planMigration.FilePath.ValueString()
 
 		// Read file and compute digest at plan time
 		content, err := os.ReadFile(filePath)
@@ -157,40 +153,29 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 		}
 
 		// Store plaintext content (marked sensitive)
-		mig.Content = types.StringValue(string(content))
+		planMigration.Content = types.StringValue(string(content))
 
 		// Compute SHA-256 digest
 		hash := sha256.Sum256(content)
 		digest := hex.EncodeToString(hash[:])
-		mig.Digest = types.StringValue(digest)
+		planMigration.Digest = types.StringValue(digest)
 
 		// Extract name from file path (base name without extension)
 		name := filepath.Base(filePath)
-		if mig.Name.IsNull() || mig.Name.ValueString() == "" {
-			mig.Name = types.StringValue(name)
+		if planMigration.Name.IsNull() || planMigration.Name.ValueString() == "" {
+			planMigration.Name = types.StringValue(name)
 		}
 
-		// For new migrations, set computed fields as unknown so they can be populated during apply
-		// This prevents "was null, but now has value" errors
-		if mig.AppliedAt.IsNull() {
-			mig.AppliedAt = types.StringUnknown()
-		}
-		if mig.Version.IsNull() {
-			mig.Version = types.StringUnknown()
-		}
-
-		updated = append(updated, mig)
+		updated = append(updated, planMigration)
 	}
 
 	// Build the updated list value
 	migrationElemType := types.ObjectType{
 		AttrTypes: map[string]attr.Type{
-			"file_path":  types.StringType,
-			"name":       types.StringType,
-			"content":    types.StringType,
-			"digest":     types.StringType,
-			"applied_at": types.StringType,
-			"version":    types.StringType,
+			"file_path": types.StringType,
+			"name":      types.StringType,
+			"content":   types.StringType,
+			"digest":    types.StringType,
 		},
 	}
 
@@ -199,12 +184,10 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 		obj, objDiags := types.ObjectValue(
 			migrationElemType.AttrTypes,
 			map[string]attr.Value{
-				"file_path":  mig.FilePath,
-				"name":       mig.Name,
-				"content":    mig.Content,
-				"digest":     mig.Digest,
-				"applied_at": mig.AppliedAt,
-				"version":    mig.Version,
+				"file_path": mig.FilePath,
+				"name":      mig.Name,
+				"content":   mig.Content,
+				"digest":    mig.Digest,
 			},
 		)
 		resp.Diagnostics.Append(objDiags...)
@@ -238,12 +221,10 @@ type MigrationsResourceModel struct {
 }
 
 type MigrationModel struct {
-	FilePath  types.String `tfsdk:"file_path"`  // Required: path to migration file
-	Name      types.String `tfsdk:"name"`       // Computed: migration name (from file or API)
-	Content   types.String `tfsdk:"content"`    // Computed: plaintext SQL (sensitive)
-	Digest    types.String `tfsdk:"digest"`     // Computed: SHA-256 of content
-	AppliedAt types.String `tfsdk:"applied_at"` // Computed: timestamp when applied
-	Version   types.String `tfsdk:"version"`    // Computed: migration version/ID from API
+	FilePath types.String `tfsdk:"file_path"` // Required: path to migration file
+	Name     types.String `tfsdk:"name"`      // Computed: migration name (from file or API)
+	Content  types.String `tfsdk:"content"`   // Computed: plaintext SQL (sensitive)
+	Digest   types.String `tfsdk:"digest"`    // Computed: SHA-256 of content
 }
 
 func (r *MigrationsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -282,36 +263,21 @@ func (r *MigrationsResource) Schema(ctx context.Context, req resource.SchemaRequ
 							Required:            true,
 						},
 						"name": schema.StringAttribute{
-							MarkdownDescription: "Name of the migration (computed from file name or API response).",
+							MarkdownDescription: "Name of the migration (same as file name).",
 							Computed:            true,
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.UseStateForUnknown(),
 							},
 						},
 						"content": schema.StringAttribute{
-							MarkdownDescription: "SQL content of the migration file (computed at plan time, sensitive).",
+							MarkdownDescription: "SQL content of the migration file computed at plan time.",
 							Computed:            true,
-							Sensitive:           true,
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.UseStateForUnknown(),
 							},
 						},
 						"digest": schema.StringAttribute{
-							MarkdownDescription: "SHA-256 digest of the migration content (computed at plan time).",
-							Computed:            true,
-							PlanModifiers: []planmodifier.String{
-								stringplanmodifier.UseStateForUnknown(),
-							},
-						},
-						"applied_at": schema.StringAttribute{
-							MarkdownDescription: "Timestamp when the migration was applied (RFC3339 format).",
-							Computed:            true,
-							PlanModifiers: []planmodifier.String{
-								stringplanmodifier.UseStateForUnknown(),
-							},
-						},
-						"version": schema.StringAttribute{
-							MarkdownDescription: "Migration version or ID returned by the Supabase API.",
+							MarkdownDescription: "SHA-256 digest of the migration content computed at plan time.",
 							Computed:            true,
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.UseStateForUnknown(),
@@ -329,17 +295,9 @@ func (r *MigrationsResource) Schema(ctx context.Context, req resource.SchemaRequ
 }
 
 func (r *MigrationsResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client, ok := extractClient(req.ProviderData, &resp.Diagnostics); ok {
+		r.client = client
 	}
-
-	client, ok := extractClient(req.ProviderData, &resp.Diagnostics)
-	if !ok {
-		return
-	}
-
-	r.client = client
 }
 
 func (r *MigrationsResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -525,8 +483,6 @@ func (r *MigrationsResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	// Save plan directly to state - the plan already has all the correct values
 	// from the plan modifier (including content, digest, etc.)
-	// The only difference is that applied_at and version were unknown in plan
-	// but are now known after apply - however, Terraform handles this automatically
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
@@ -579,12 +535,10 @@ func (r *MigrationsResource) ImportState(ctx context.Context, req resource.Impor
 	// For now, import creates an empty migrations list with a warning
 	state.Migrations = types.ListNull(types.ObjectType{
 		AttrTypes: map[string]attr.Type{
-			"file_path":  types.StringType,
-			"name":       types.StringType,
-			"content":    types.StringType,
-			"digest":     types.StringType,
-			"applied_at": types.StringType,
-			"version":    types.StringType,
+			"file_path": types.StringType,
+			"name":      types.StringType,
+			"content":   types.StringType,
+			"digest":    types.StringType,
 		},
 	})
 
@@ -646,18 +600,11 @@ func (r *MigrationsResource) applyMigration(ctx context.Context, projectRef stri
 
 	// Update migration with response data
 	result := migration
-	result.AppliedAt = types.StringValue(time.Now().UTC().Format(time.RFC3339))
-
-	// Always set version to ensure it's known after apply
-	// For new migrations, version is unknown (computed field)
-	// We use the migration name as the version identifier
-	result.Version = types.StringValue(name)
 
 	tflog.Info(ctx, "Successfully applied migration", map[string]interface{}{
-		"name":       name,
-		"project":    projectRef,
-		"applied_at": result.AppliedAt.ValueString(),
-		"status":     httpResp.StatusCode(),
+		"name":    name,
+		"project": projectRef,
+		"status":  httpResp.StatusCode(),
 	})
 
 	return result, diags
@@ -667,12 +614,10 @@ func (r *MigrationsResource) applyMigration(ctx context.Context, projectRef stri
 func (r *MigrationsResource) buildMigrationsList(ctx context.Context, migrations []MigrationModel, diags *diag.Diagnostics) types.List {
 	migrationElemType := types.ObjectType{
 		AttrTypes: map[string]attr.Type{
-			"file_path":  types.StringType,
-			"name":       types.StringType,
-			"content":    types.StringType,
-			"digest":     types.StringType,
-			"applied_at": types.StringType,
-			"version":    types.StringType,
+			"file_path": types.StringType,
+			"name":      types.StringType,
+			"content":   types.StringType,
+			"digest":    types.StringType,
 		},
 	}
 
@@ -681,12 +626,10 @@ func (r *MigrationsResource) buildMigrationsList(ctx context.Context, migrations
 		obj, objDiags := types.ObjectValue(
 			migrationElemType.AttrTypes,
 			map[string]attr.Value{
-				"file_path":  mig.FilePath,
-				"name":       mig.Name,
-				"content":    mig.Content,
-				"digest":     mig.Digest,
-				"applied_at": mig.AppliedAt,
-				"version":    mig.Version,
+				"file_path": mig.FilePath,
+				"name":      mig.Name,
+				"content":   mig.Content,
+				"digest":    mig.Digest,
 			},
 		)
 		diags.Append(objDiags...)

@@ -66,7 +66,6 @@ resource "supabase_migrations" "test" {
 					testresource.TestCheckResourceAttr("supabase_migrations.test", "migrations.0.file_path", migration1Path),
 					testresource.TestCheckResourceAttr("supabase_migrations.test", "migrations.0.name", "001_initial.sql"),
 					testresource.TestCheckResourceAttrSet("supabase_migrations.test", "migrations.0.digest"),
-					testresource.TestCheckResourceAttrSet("supabase_migrations.test", "migrations.0.applied_at"),
 				),
 			},
 		},
