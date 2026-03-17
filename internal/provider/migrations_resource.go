@@ -384,33 +384,51 @@ func (r *MigrationsResource) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 
-	// Check if project still exists
-	projectResp, err := r.client.V1GetProjectWithResponse(ctx, state.ProjectRef.ValueString())
+	// Fetch applied migrations from API and reconcile state.
+	historyResp, err := r.client.V1ListMigrationHistoryWithResponse(ctx, state.ProjectRef.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read project, got error: %s", err),
+			fmt.Sprintf("Unable to read migration history, got error: %s", err),
 		)
 		return
 	}
 
-	if projectResp.StatusCode() == 404 {
+	if historyResp.StatusCode() == 404 {
 		// Project no longer exists, remove from state
 		resp.State.RemoveResource(ctx)
 		return
 	}
 
-	if projectResp.JSON200 == nil {
+	if historyResp.StatusCode() != 200 || historyResp.JSON200 == nil {
 		resp.Diagnostics.AddError(
 			"Unexpected API Response",
-			fmt.Sprintf("Expected JSON200 response, got status %d: %s", projectResp.StatusCode(), string(projectResp.Body)),
+			fmt.Sprintf("Expected 200 migration history response, got status %d: %s", historyResp.StatusCode(), string(historyResp.Body)),
 		)
 		return
 	}
 
-	// TODO: If API provides a way to list applied migrations, fetch and reconcile state here
-	// For now, we trust the state as the source of truth for applied migrations
-	// This is acceptable because migrations are append-only and immutable once applied
+	// Preserve existing computed fields for known migrations while reconciling names from API.
+	var stateMigrations []MigrationModel
+	if !state.Migrations.IsNull() && !state.Migrations.IsUnknown() {
+		resp.Diagnostics.Append(state.Migrations.ElementsAs(ctx, &stateMigrations, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	stateByName := make(map[string]MigrationModel, len(stateMigrations))
+	for _, migration := range stateMigrations {
+		if !migration.Name.IsUnknown() && !migration.Name.IsNull() {
+			stateByName[migration.Name.ValueString()] = migration
+		}
+	}
+
+	reconciled := r.reconcileAppliedMigrations(*historyResp.JSON200, stateByName)
+	state.Migrations = r.buildMigrationsList(reconciled, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	tflog.Debug(ctx, "Read migrations resource", map[string]interface{}{
 		"project_ref": state.ProjectRef.ValueString(),
@@ -520,23 +538,33 @@ func (r *MigrationsResource) ImportState(ctx context.Context, req resource.Impor
 	// Import using project_ref as the ID
 	projectRef := req.ID
 
-	// Verify project exists
-	projectResp, err := r.client.V1GetProjectWithResponse(ctx, projectRef)
+	// Read applied migrations from API.
+	historyResp, err := r.client.V1ListMigrationHistoryWithResponse(ctx, projectRef)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read project during import: %s", err),
+			fmt.Sprintf("Unable to read migration history during import: %s", err),
 		)
 		return
 	}
 
-	if projectResp.JSON200 == nil {
+	if historyResp.StatusCode() == 404 {
 		resp.Diagnostics.AddError(
 			"Project Not Found",
-			fmt.Sprintf("Project with ref '%s' not found (status: %d)", projectRef, projectResp.StatusCode()),
+			fmt.Sprintf("Project with ref '%s' not found (status: %d)", projectRef, historyResp.StatusCode()),
 		)
 		return
 	}
+
+	if historyResp.StatusCode() != 200 || historyResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Unexpected API Response",
+			fmt.Sprintf("Expected 200 migration history response during import, got status %d: %s", historyResp.StatusCode(), string(historyResp.Body)),
+		)
+		return
+	}
+
+	appliedMigrations := r.reconcileAppliedMigrations(*historyResp.JSON200, nil)
 
 	// Set basic attributes
 	state := MigrationsResourceModel{
@@ -544,25 +572,38 @@ func (r *MigrationsResource) ImportState(ctx context.Context, req resource.Impor
 		ProjectRef:    types.StringValue(projectRef),
 		MigrationsDir: types.StringNull(),
 	}
-
-	// TODO: If API provides endpoint to list applied migrations, fetch them here
-	// For now, import creates an empty migrations list with a warning
-	state.Migrations = types.ListNull(types.ObjectType{
-		AttrTypes: map[string]attr.Type{
-			"name":    types.StringType,
-			"content": types.StringType,
-			"digest":  types.StringType,
-		},
-	})
-
-	resp.Diagnostics.AddWarning(
-		"Import Limitation",
-		"Imported migrations resource with empty migration list. "+
-			"The Supabase API does not currently expose a list of applied migrations. "+
-			"Set `migrations_dir` in configuration to a directory that matches already applied migrations, then apply.",
-	)
+	state.Migrations = r.buildMigrationsList(appliedMigrations, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+}
+
+func (r *MigrationsResource) reconcileAppliedMigrations(history api.V1ListMigrationsResponse, existing map[string]MigrationModel) []MigrationModel {
+	reconciled := make([]MigrationModel, 0, len(history))
+
+	for _, apiMigration := range history {
+		name := apiMigration.Version
+		if apiMigration.Name != nil && strings.TrimSpace(*apiMigration.Name) != "" {
+			name = *apiMigration.Name
+		}
+
+		if existing != nil {
+			if existingMigration, ok := existing[name]; ok {
+				reconciled = append(reconciled, existingMigration)
+				continue
+			}
+		}
+
+		reconciled = append(reconciled, MigrationModel{
+			Name:    types.StringValue(name),
+			Content: types.StringNull(),
+			Digest:  types.StringNull(),
+		})
+	}
+
+	return reconciled
 }
 
 // applyMigration applies a single migration
