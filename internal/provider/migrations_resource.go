@@ -143,17 +143,44 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 						// Compute new values for comparison
 						planMigration.Content = types.StringValue(string(content))
 						planMigration.Digest = types.StringValue(newDigest)
+						// Version should be preserved even if file changed (it refers to the existing migration)
+						planMigration.Version = stateMigration.Version
 					} else {
 						// File hasn't changed - preserve state values
 						planMigration.Content = stateMigration.Content
 						planMigration.Digest = stateMigration.Digest
 						planMigration.Name = stateMigration.Name
+						planMigration.Version = stateMigration.Version
 					}
 				} else {
 					// Can't read file, preserve state
 					planMigration.Content = stateMigration.Content
 					planMigration.Digest = stateMigration.Digest
 					planMigration.Name = stateMigration.Name
+					planMigration.Version = stateMigration.Version
+				}
+				updated = append(updated, planMigration)
+			} else {
+				// State migration exists but doesn't have Content/Digest (e.g., from import or API)
+				// Read file to compute content and digest
+				if !planMigration.Name.IsUnknown() && !planMigration.Name.IsNull() {
+					filePath := filepath.Join(dirPath, planMigration.Name.ValueString())
+					content, err := os.ReadFile(filePath)
+					if err != nil {
+						resp.Diagnostics.AddError(
+							"Failed to read migration file",
+							fmt.Sprintf("Could not read migration file '%s': %s", filePath, err.Error()),
+						)
+						return
+					}
+
+					// Compute new content and digest
+					planMigration.Content = types.StringValue(string(content))
+					planMigration.Digest = types.StringValue(sha256HexByteSlice(content))
+					// Preserve version from state if available
+					if !stateMigration.Version.IsNull() {
+						planMigration.Version = stateMigration.Version
+					}
 				}
 				updated = append(updated, planMigration)
 			}
@@ -186,6 +213,7 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 	migrationElemType := types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"name":    types.StringType,
+			"version": types.StringType,
 			"content": types.StringType,
 			"digest":  types.StringType,
 		},
@@ -197,6 +225,7 @@ func (m migrationDigestsPlanModifier) PlanModifyList(ctx context.Context, req pl
 			migrationElemType.AttrTypes,
 			map[string]attr.Value{
 				"name":    mig.Name,
+				"version": mig.Version,
 				"content": mig.Content,
 				"digest":  mig.Digest,
 			},
@@ -234,6 +263,7 @@ type MigrationsResourceModel struct {
 
 type MigrationModel struct {
 	Name    types.String `tfsdk:"name"`    // Computed: migration name (from file or API)
+	Version types.String `tfsdk:"version"` // Computed: server-assigned version identifier
 	Content types.String `tfsdk:"content"` // Computed: plaintext SQL (sensitive)
 	Digest  types.String `tfsdk:"digest"`  // Computed: SHA-256 of content
 }
@@ -278,6 +308,13 @@ func (r *MigrationsResource) Schema(ctx context.Context, req resource.SchemaRequ
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
 							MarkdownDescription: "Name of the migration (same as file name).",
+							Computed:            true,
+							PlanModifiers: []planmodifier.String{
+								stringplanmodifier.UseStateForUnknown(),
+							},
+						},
+						"version": schema.StringAttribute{
+							MarkdownDescription: "Server-assigned version identifier for the migration.",
 							Computed:            true,
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.UseStateForUnknown(),
@@ -342,7 +379,6 @@ func (r *MigrationsResource) Create(ctx context.Context, req resource.CreateRequ
 	}
 
 	// Apply migrations sequentially
-	var appliedMigrations []MigrationModel
 	for i, migration := range planMigrations {
 		tflog.Debug(ctx, "Applying migration", map[string]interface{}{
 			"index": i,
@@ -350,28 +386,23 @@ func (r *MigrationsResource) Create(ctx context.Context, req resource.CreateRequ
 		})
 
 		// Apply the migration
-		applied, applyDiags := r.applyMigration(ctx, plan.ProjectRef.ValueString(), migration)
+		_, applyDiags := r.applyMigration(ctx, plan.ProjectRef.ValueString(), migration)
 		resp.Diagnostics.Append(applyDiags...)
 
 		if resp.Diagnostics.HasError() {
-			// On error, preserve state for successfully applied migrations
-			if len(appliedMigrations) > 0 {
-				plan.Migrations = r.buildMigrationsList(appliedMigrations, &resp.Diagnostics)
+			// On error, preserve state for successfully applied migrations (indices 0 to i-1)
+			if i > 0 {
+				// Rebuild list with only successfully applied migrations
+				partialMigrations := planMigrations[:i]
+				plan.Migrations = r.buildMigrationsList(partialMigrations, &resp.Diagnostics)
 				resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 			}
 			return
 		}
-
-		appliedMigrations = append(appliedMigrations, applied)
 	}
 
-	// Update plan with applied migrations
-	plan.Migrations = r.buildMigrationsList(appliedMigrations, &resp.Diagnostics)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Save data into Terraform state
+	// Save plan to state - versions will be populated by automatic Read after apply
+	// Use plan.Migrations directly (already computed by plan modifier)
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
@@ -512,8 +543,8 @@ func (r *MigrationsResource) Update(ctx context.Context, req resource.UpdateRequ
 		}
 	}
 
-	// Save plan directly to state - the plan already has all the correct values
-	// from the plan modifier (including content, digest, etc.)
+	// Save plan to state - versions will be populated by automatic Read after apply
+	// The plan already has correct values from plan modifier for existing migrations
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
@@ -591,6 +622,8 @@ func (r *MigrationsResource) reconcileAppliedMigrations(history api.V1ListMigrat
 
 		if existing != nil {
 			if existingMigration, ok := existing[name]; ok {
+				// Preserve existing migration but update version from API if available
+				existingMigration.Version = types.StringValue(apiMigration.Version)
 				reconciled = append(reconciled, existingMigration)
 				continue
 			}
@@ -598,6 +631,7 @@ func (r *MigrationsResource) reconcileAppliedMigrations(history api.V1ListMigrat
 
 		reconciled = append(reconciled, MigrationModel{
 			Name:    types.StringValue(name),
+			Version: types.StringValue(apiMigration.Version),
 			Content: types.StringNull(),
 			Digest:  types.StringNull(),
 		})
@@ -640,6 +674,12 @@ func (r *MigrationsResource) applyMigration(ctx context.Context, projectRef stri
 	// Update migration with response data
 	result := migration
 
+	// Version will be populated by the next Read operation from migration history
+	// The apply endpoint may not return it directly
+	if result.Version.IsNull() {
+		result.Version = types.StringNull()
+	}
+
 	tflog.Info(ctx, "Successfully applied migration", map[string]interface{}{
 		"name":    name,
 		"project": projectRef,
@@ -654,6 +694,7 @@ func (r *MigrationsResource) buildMigrationsList(migrations []MigrationModel, di
 	migrationElemType := types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"name":    types.StringType,
+			"version": types.StringType,
 			"content": types.StringType,
 			"digest":  types.StringType,
 		},
@@ -665,6 +706,7 @@ func (r *MigrationsResource) buildMigrationsList(migrations []MigrationModel, di
 			migrationElemType.AttrTypes,
 			map[string]attr.Value{
 				"name":    mig.Name,
+				"version": mig.Version,
 				"content": mig.Content,
 				"digest":  mig.Digest,
 			},
