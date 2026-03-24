@@ -501,6 +501,16 @@ func (r *MigrationsResource) Update(ctx context.Context, req resource.UpdateRequ
 		stateDigest := stateMigrations[i].Digest.ValueString()
 		planDigest := planMigrations[i].Digest.ValueString()
 
+		// Skip validation if state digest is empty (can happen due to corrupted state from failed apply)
+		// In this case, allow the plan digest to be used to fix the state
+		if stateDigest == "" {
+			tflog.Warn(ctx, "State migration has empty digest, accepting plan digest", map[string]interface{}{
+				"index": i,
+				"name":  stateMigrations[i].Name.ValueString(),
+			})
+			continue
+		}
+
 		if stateDigest != planDigest {
 			resp.Diagnostics.AddError(
 				"Invalid Migration Update",
@@ -538,7 +548,14 @@ func (r *MigrationsResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.Append(applyDiags...)
 
 		if resp.Diagnostics.HasError() {
-			// On error, we would need to save partial state, but for now just return error
+			// On error, preserve state for successfully applied migrations
+			// This includes the original stateMigrations plus any newly applied ones (up to i-1)
+			if i > len(stateMigrations) {
+				// Some new migrations were successfully applied before the error
+				partialMigrations := planMigrations[:i]
+				plan.Migrations = r.buildMigrationsList(partialMigrations, &resp.Diagnostics)
+				resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+			}
 			return
 		}
 	}
