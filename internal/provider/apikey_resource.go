@@ -192,27 +192,151 @@ func (r *APIKeyResource) Update(ctx context.Context, req resource.UpdateRequest,
 }
 
 func (r *APIKeyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parts := strings.Split(req.ID, "/")
-	if len(parts) != 2 {
-		resp.Diagnostics.AddError(
-			"Unexpected Import Identifier",
-			`Expected import identifier in the format "project_ref/api_key_id".`,
-		)
+	projectRef, apiKeyID, diag := resolveAPIKeyImportID(ctx, r.client, req.ID)
+	if diag != nil {
+		resp.Diagnostics.Append(diag)
 		return
 	}
-
-	projectRef := strings.TrimSpace(parts[0])
-	apiKeyID := strings.TrimSpace(parts[1])
-	if projectRef == "" || apiKeyID == "" {
-		resp.Diagnostics.AddError(
-			"Unexpected Import Identifier",
-			"Both project_ref and api_key_id must be provided when importing. Example: myprojectref/3603c575-...",
-		)
-		return
-	}
-
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_ref"), types.StringValue(projectRef))...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(apiKeyID))...)
+}
+
+func resolveAPIKeyImportID(ctx context.Context, client *api.ClientWithResponses, importID string) (projectRef, apiKeyID string, _ diag.Diagnostic) {
+	parts := strings.Split(importID, "/")
+	switch len(parts) {
+	case 3:
+		projectRef, keyName, keyType := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2])
+		apiKeyID, diag := importAPIKeyByNameAndType(ctx, client, projectRef, keyName, keyType)
+		return projectRef, apiKeyID, diag
+	case 2:
+		projectRef, keyRef := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+		apiKeyID, diag := importAPIKeyByNameOrID(ctx, client, projectRef, keyRef)
+		return projectRef, apiKeyID, diag
+	default:
+		return "", "", diag.NewErrorDiagnostic(
+			"Unexpected Import Identifier",
+			`This resource supports multiple identifier formats.
+
+Provide a project reference and the name of the API key.
+Example: myprojectref/myprojectkey
+
+If multiple keys in the project use the same name, a type of key to import must also be provided.
+Example: myprojectref/myprojectkey/publishable or myprojectref/myprojectkey/secret
+
+Alternatively, a project reference and a UUID of the API key can be used.
+Example: myprojectref/00000000-0000-0000-0000-000000000000`,
+		)
+	}
+}
+
+func importAPIKeyByNameOrID(ctx context.Context, client *api.ClientWithResponses, projectRef, keyRef string) (string, diag.Diagnostic) {
+	if projectRef == "" || keyRef == "" {
+		return "", diag.NewErrorDiagnostic(
+			"Unexpected Import Identifier",
+			`Both project_ref and api_key_name must be provided when importing.
+Example: myprojectref/myprojectkey
+
+Alternatively, a project_ref and api_key_id can be specified.
+Example: myprojectref/00000000-0000-0000-0000-000000000000`,
+		)
+	}
+
+	if uuid.Validate(keyRef) == nil {
+		return keyRef, nil
+	}
+
+	httpResp, err := client.V1GetProjectApiKeysWithResponse(ctx, projectRef, &api.V1GetProjectApiKeysParams{})
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read api keys, got error: %s", err)
+		return "", diag.NewErrorDiagnostic("Client Error", msg)
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read api keys, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return "", diag.NewErrorDiagnostic("Client Error", msg)
+	}
+
+	foundKeyID := ""
+	keyRef = strings.ToLower(keyRef)
+	for _, val := range *httpResp.JSON200 {
+		if !val.Id.IsSpecified() || val.Id.IsNull() {
+			continue
+		}
+		if keyRef != val.Name {
+			continue
+		}
+
+		if foundKeyID != "" {
+			return "", diag.NewErrorDiagnostic(
+				"Ambiguous Import Identifier",
+				`Found multiple keys in the project that match the provided import identifier.
+Please use a more specific identifier like myprojectref/mykeyname/type or myprojectref/00000000-0000-0000-0000-000000000000`,
+			)
+		}
+
+		foundKeyID = val.Id.MustGet()
+	}
+
+	if foundKeyID == "" {
+		return "", diag.NewErrorDiagnostic(
+			"Import Error",
+			"Did not find a key matching the provided identifier.",
+		)
+	}
+
+	return foundKeyID, nil
+}
+
+func importAPIKeyByNameAndType(ctx context.Context, client *api.ClientWithResponses, projectRef, keyName, keyType string) (string, diag.Diagnostic) {
+	if projectRef == "" || keyName == "" || keyType == "" {
+		return "", diag.NewErrorDiagnostic(
+			"Unexpected Import Identifier",
+			"Both project_ref, api_key_name, and api_key_type must be provided when importing. Example: myprojectref/key-name/publishable",
+		)
+	}
+
+	apiKeyType := api.ApiKeyResponseType(keyType)
+	switch apiKeyType {
+	case api.ApiKeyResponseTypePublishable, api.ApiKeyResponseTypeSecret:
+	default:
+		return "", diag.NewErrorDiagnostic(
+			"Unexpected Import Identifier",
+			fmt.Sprintf("Unexpected API key type provided: `%s`. Must be either publishable or secret.", keyType),
+		)
+	}
+
+	httpResp, err := client.V1GetProjectApiKeysWithResponse(ctx, projectRef, &api.V1GetProjectApiKeysParams{})
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read api keys, got error: %s", err)
+		return "", diag.NewErrorDiagnostic("Client Error", msg)
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read api keys, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return "", diag.NewErrorDiagnostic("Client Error", msg)
+	}
+
+	keyName = strings.ToLower(keyName)
+	for _, val := range *httpResp.JSON200 {
+		if !val.Type.IsSpecified() || val.Type.IsNull() {
+			continue
+		}
+		if !val.Id.IsSpecified() || val.Id.IsNull() {
+			continue
+		}
+
+		respType := val.Type.MustGet()
+		if respType != apiKeyType {
+			continue
+		}
+
+		// key names in the response are always lowercase, enforced API side
+		if val.Name != keyName {
+			continue
+		}
+
+		return val.Id.MustGet(), nil
+	}
+
+	return "", diag.NewErrorDiagnostic("Import Error", "Specified API key wasn't found in the project.")
 }
 
 func (r *APIKeyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
