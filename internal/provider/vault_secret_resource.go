@@ -73,7 +73,7 @@ func (r *VaultSecretResource) Schema(ctx context.Context, req resource.SchemaReq
 			},
 			"name": schema.StringAttribute{
 				MarkdownDescription: "Name of the secret",
-				Optional:            true,
+				Required:            true,
 			},
 			"description": schema.StringAttribute{
 				MarkdownDescription: "Description of the secret",
@@ -100,7 +100,7 @@ func (r *VaultSecretResource) Create(ctx context.Context, req resource.CreateReq
 
 	// Build SQL query with escaped values
 	value := escapeSQLLiteralValue(data.Value.ValueString())
-	name := escapeSQLLiteral(data.Name.ValueStringPointer())
+	name := escapeSQLLiteralValue(data.Name.ValueString())
 	description := escapeSQLLiteral(data.Description.ValueStringPointer())
 
 	query := fmt.Sprintf("SELECT vault.create_secret(%s, %s, %s)", value, name, description)
@@ -258,7 +258,7 @@ func (r *VaultSecretResource) Update(ctx context.Context, req resource.UpdateReq
 	// Build SQL query with escaped values
 	id := escapeSQLLiteralValue(data.Id.ValueString())
 	value := escapeSQLLiteralValue(data.Value.ValueString())
-	name := escapeSQLLiteral(data.Name.ValueStringPointer())
+	name := escapeSQLLiteralValue(data.Name.ValueString())
 	description := escapeSQLLiteral(data.Description.ValueStringPointer())
 
 	query := fmt.Sprintf("SELECT vault.update_secret(%s, %s, %s, %s)", id, value, name, description)

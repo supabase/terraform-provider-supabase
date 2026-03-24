@@ -26,13 +26,13 @@ resource "supabase_vault_secret" "example" {
 
 ### Required
 
+- `name` (String) Name of the secret
 - `project_ref` (String) Project reference ID
 - `value` (String, Sensitive) The secret value to be encrypted and stored
 
 ### Optional
 
 - `description` (String) Description of the secret
-- `name` (String) Name of the secret
 
 ### Read-Only
 
