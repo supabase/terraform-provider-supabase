@@ -300,6 +300,94 @@ resource "supabase_migrations" "test" {
 	})
 }
 
+func TestAccMigrationsResource_IdempotencyRetry(t *testing.T) {
+	// Test that retrying with the same idempotency key prevents duplicate migration execution
+	defer gock.OffAll()
+
+	tmpDir := t.TempDir()
+	migration1Path := filepath.Join(tmpDir, "001_test.sql")
+	migration1Content := "CREATE TABLE test (id SERIAL);"
+	err := os.WriteFile(migration1Path, []byte(migration1Content), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute the expected idempotency key (just the digest)
+	digest := computeSHA256(migration1Content)
+	expectedIdempotencyKey := digest
+
+	testConfig := fmt.Sprintf(`
+resource "supabase_migrations" "test" {
+	project_ref = "%s"
+	migrations_dir = "%s"
+}
+`, testProjectRef, tmpDir)
+
+	// Mock project status check
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		AddMatcher(exactPathMatcher(projectApiPath)).
+		Persist().
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+
+	// Track how many times the migration API is called with the idempotency key
+	migrationCallCount := 0
+	receivedIdempotencyKey := ""
+	gock.New(defaultApiEndpoint).
+		Post(migrationsApiPath).
+		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+			// Capture the idempotency key from query params or headers
+			idempotencyKey := req.URL.Query().Get("idempotency_key")
+			if idempotencyKey == "" {
+				// Try alternate param name formats
+				idempotencyKey = req.URL.Query().Get("idempotencyKey")
+			}
+			if idempotencyKey == "" {
+				// Try as a header
+				idempotencyKey = req.Header.Get("Idempotency-Key")
+			}
+			receivedIdempotencyKey = idempotencyKey
+			migrationCallCount++
+			return true, nil
+		}).
+		Persist().
+		Reply(http.StatusOK)
+
+	// Mock migration history read
+	gock.New(defaultApiEndpoint).
+		Get(migrationsApiPath).
+		Persist().
+		Reply(http.StatusOK).
+		AddHeader("Content-Type", "application/json").
+		BodyString(`[{"name":"001_test.sql","version":"001"}]`)
+
+	testresource.Test(t, testresource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []testresource.TestStep{
+			{
+				Config: testConfig,
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("supabase_migrations.test", "migrations.#", "1"),
+					testresource.TestCheckResourceAttr("supabase_migrations.test", "migrations.0.name", "001_test.sql"),
+				),
+			},
+		},
+	})
+
+	// Verify that the migration was called exactly once with the correct idempotency key
+	if migrationCallCount != 1 {
+		t.Errorf("Expected migration to be called once, but was called %d times", migrationCallCount)
+	}
+	if receivedIdempotencyKey != expectedIdempotencyKey {
+		t.Errorf("Expected idempotency key %s, got %s", expectedIdempotencyKey, receivedIdempotencyKey)
+	}
+}
+
 func TestMigrationDigestComputation(t *testing.T) {
 	// Unit test for digest computation
 	testCases := []struct {

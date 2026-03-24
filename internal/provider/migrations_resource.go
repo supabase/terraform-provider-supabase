@@ -646,6 +646,7 @@ func (r *MigrationsResource) applyMigration(ctx context.Context, projectRef stri
 
 	content := migration.Content.ValueString()
 	name := migration.Name.ValueString()
+	digest := migration.Digest.ValueString()
 
 	// Build migration request body
 	body := api.V1ApplyAMigrationJSONRequestBody{
@@ -653,8 +654,14 @@ func (r *MigrationsResource) applyMigration(ctx context.Context, projectRef stri
 		Query: content,
 	}
 
-	// Call the Supabase API to apply the migration
-	httpResp, err := r.client.V1ApplyAMigrationWithResponse(ctx, projectRef, nil, body)
+	// Generate idempotency key to prevent duplicate migration application on retries
+	// Use the digest as the idempotency key for uniqueness per migration
+	idempotencyKey := digest
+
+	// Call the Supabase API to apply the migration with idempotency key
+	httpResp, err := r.client.V1ApplyAMigrationWithResponse(ctx, projectRef, &api.V1ApplyAMigrationParams{
+		IdempotencyKey: &idempotencyKey,
+	}, body)
 	if err != nil {
 		diags.AddError(
 			"Failed to Apply Migration",
