@@ -131,34 +131,57 @@ func (r *VaultSecretResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	// Parse response to extract UUID
-	var result [][]interface{}
-	if err := json.Unmarshal(httpResp.Body, &result); err != nil {
-		resp.Diagnostics.AddError(
-			"Parse Error",
-			fmt.Sprintf("Unable to parse create_secret response: %s", err.Error()),
-		)
-		return
-	}
+	// Try array-of-objects format first (TypeScript client format)
+	var resultObjects []map[string]interface{}
+	if err := json.Unmarshal(httpResp.Body, &resultObjects); err == nil && len(resultObjects) > 0 {
+		// Extract UUID from first row - the column name is "create_secret"
+		var uuid string
+		for _, v := range resultObjects[0] {
+			if s, ok := v.(string); ok {
+				uuid = s
+				break
+			}
+		}
+		if uuid != "" {
+			data.Id = types.StringValue(uuid)
+		} else {
+			resp.Diagnostics.AddError(
+				"Parse Error",
+				"Unable to extract UUID from create_secret response",
+			)
+			return
+		}
+	} else {
+		// Fall back to array-of-arrays format (actual API format)
+		var resultArrays [][]interface{}
+		if err := json.Unmarshal(httpResp.Body, &resultArrays); err != nil {
+			resp.Diagnostics.AddError(
+				"Parse Error",
+				fmt.Sprintf("Unable to parse create_secret response: %s", err.Error()),
+			)
+			return
+		}
 
-	if len(result) == 0 || len(result[0]) == 0 {
-		resp.Diagnostics.AddError(
-			"API Error",
-			"create_secret returned empty result",
-		)
-		return
-	}
+		if len(resultArrays) == 0 || len(resultArrays[0]) == 0 {
+			resp.Diagnostics.AddError(
+				"API Error",
+				"create_secret returned empty result",
+			)
+			return
+		}
 
-	// Extract UUID from first row, first column
-	uuid, ok := result[0][0].(string)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Parse Error",
-			fmt.Sprintf("Expected UUID string, got: %T", result[0][0]),
-		)
-		return
-	}
+		// Extract UUID from first row, first column
+		uuid, ok := resultArrays[0][0].(string)
+		if !ok {
+			resp.Diagnostics.AddError(
+				"Parse Error",
+				fmt.Sprintf("Expected UUID string, got: %T", resultArrays[0][0]),
+			)
+			return
+		}
 
-	data.Id = types.StringValue(uuid)
+		data.Id = types.StringValue(uuid)
+	}
 
 	tflog.Debug(ctx, "Created vault secret", map[string]interface{}{
 		"id": data.Id.ValueString(),
@@ -207,40 +230,61 @@ func (r *VaultSecretResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 
 	// Parse response
-	var result [][]interface{}
-	if err := json.Unmarshal(httpResp.Body, &result); err != nil {
-		resp.Diagnostics.AddError(
-			"Parse Error",
-			fmt.Sprintf("Unable to parse read response: %s", err.Error()),
-		)
-		return
-	}
+	// Try array-of-objects format first (TypeScript client format)
+	var resultObjects []map[string]interface{}
+	if err := json.Unmarshal(httpResp.Body, &resultObjects); err == nil {
+		// If no rows returned, the secret was deleted
+		if len(resultObjects) == 0 {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 
-	// If no rows returned, the secret was deleted
-	if len(result) == 0 {
-		resp.State.RemoveResource(ctx)
-		return
-	}
+		// Extract decrypted secret value from the "decrypted_secret" column
+		secretValue, ok := resultObjects[0]["decrypted_secret"].(string)
+		if !ok {
+			resp.Diagnostics.AddError(
+				"Parse Error",
+				fmt.Sprintf("Expected secret value string in 'decrypted_secret' column, got: %T", resultObjects[0]["decrypted_secret"]),
+			)
+			return
+		}
+		data.Value = types.StringValue(secretValue)
+	} else {
+		// Fall back to array-of-arrays format (actual API format)
+		var resultArrays [][]interface{}
+		if err := json.Unmarshal(httpResp.Body, &resultArrays); err != nil {
+			resp.Diagnostics.AddError(
+				"Parse Error",
+				fmt.Sprintf("Unable to parse read response: %s", err.Error()),
+			)
+			return
+		}
 
-	if len(result[0]) == 0 {
-		resp.Diagnostics.AddError(
-			"API Error",
-			"Read query returned empty row",
-		)
-		return
-	}
+		// If no rows returned, the secret was deleted
+		if len(resultArrays) == 0 {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 
-	// Extract decrypted secret value
-	secretValue, ok := result[0][0].(string)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Parse Error",
-			fmt.Sprintf("Expected secret value string, got: %T", result[0][0]),
-		)
-		return
-	}
+		if len(resultArrays[0]) == 0 {
+			resp.Diagnostics.AddError(
+				"API Error",
+				"Read query returned empty row",
+			)
+			return
+		}
 
-	data.Value = types.StringValue(secretValue)
+		// Extract decrypted secret value
+		secretValue, ok := resultArrays[0][0].(string)
+		if !ok {
+			resp.Diagnostics.AddError(
+				"Parse Error",
+				fmt.Sprintf("Expected secret value string, got: %T", resultArrays[0][0]),
+			)
+			return
+		}
+		data.Value = types.StringValue(secretValue)
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

@@ -26,8 +26,8 @@ func TestAccVaultSecretResource(t *testing.T) {
 			"query": "SELECT vault.create_secret('my-secret-value', 'my-secret', 'My test secret')",
 		}).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{testSecretUUID},
+		JSON([]map[string]interface{}{
+			{"create_secret": testSecretUUID},
 		})
 
 	// READ after CREATE: mock decrypted_secrets query response
@@ -39,8 +39,8 @@ func TestAccVaultSecretResource(t *testing.T) {
 		}).
 		Times(2). // Once for Create verification, once for Import state verification
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{"my-secret-value"},
+		JSON([]map[string]interface{}{
+			{"decrypted_secret": "my-secret-value"},
 		})
 
 	// UPDATE: mock vault.update_secret() response
@@ -51,8 +51,8 @@ func TestAccVaultSecretResource(t *testing.T) {
 			"query": fmt.Sprintf("SELECT vault.update_secret('%s', 'updated-value', 'updated-name', 'Updated description')", testSecretUUID),
 		}).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{testSecretUUID},
+		JSON([]map[string]interface{}{
+			{"update_secret": testSecretUUID},
 		})
 
 	// READ after UPDATE: mock decrypted_secrets query response with updated value
@@ -64,8 +64,8 @@ func TestAccVaultSecretResource(t *testing.T) {
 		}).
 		Times(2). // Once for Update verification, once for final refresh
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{"updated-value"},
+		JSON([]map[string]interface{}{
+			{"decrypted_secret": "updated-value"},
 		})
 
 	// DELETE: mock vault.secrets delete response
@@ -76,7 +76,7 @@ func TestAccVaultSecretResource(t *testing.T) {
 			"query": fmt.Sprintf("DELETE FROM vault.secrets WHERE id = '%s'", testSecretUUID),
 		}).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{})
+		JSON([]map[string]interface{}{})
 
 	// Run test
 	resource.Test(t, resource.TestCase{
@@ -143,8 +143,8 @@ func TestAccVaultSecretResource_NoDescription(t *testing.T) {
 			"query": "SELECT vault.create_secret('test-value', 'test-name', NULL)",
 		}).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{secretUUID},
+		JSON([]map[string]interface{}{
+			{"create_secret": secretUUID},
 		})
 
 	// READ after CREATE: mock decrypted_secrets query response
@@ -156,8 +156,8 @@ func TestAccVaultSecretResource_NoDescription(t *testing.T) {
 		}).
 		Times(2). // Once for Create verification, once for final refresh
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{"test-value"},
+		JSON([]map[string]interface{}{
+			{"decrypted_secret": "test-value"},
 		})
 
 	// DELETE: mock vault.secrets delete response
@@ -168,7 +168,7 @@ func TestAccVaultSecretResource_NoDescription(t *testing.T) {
 			"query": fmt.Sprintf("DELETE FROM vault.secrets WHERE id = '%s'", secretUUID),
 		}).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{})
+		JSON([]map[string]interface{}{})
 
 	// Run test
 	resource.Test(t, resource.TestCase{
@@ -215,8 +215,8 @@ func TestAccVaultSecretResource_UpdateNoDescription(t *testing.T) {
 			"query": "SELECT vault.create_secret('initial-value', 'initial-name', 'Initial description')",
 		}).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{secretUUID},
+		JSON([]map[string]interface{}{
+			{"create_secret": secretUUID},
 		})
 
 	// READ after CREATE
@@ -228,8 +228,8 @@ func TestAccVaultSecretResource_UpdateNoDescription(t *testing.T) {
 		}).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{"initial-value"},
+		JSON([]map[string]interface{}{
+			{"decrypted_secret": "initial-value"},
 		})
 
 	// UPDATE: mock vault.update_secret() with NULL description
@@ -240,8 +240,8 @@ func TestAccVaultSecretResource_UpdateNoDescription(t *testing.T) {
 			"query": fmt.Sprintf("SELECT vault.update_secret('%s', 'updated-value', 'updated-name', NULL)", secretUUID),
 		}).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{secretUUID},
+		JSON([]map[string]interface{}{
+			{"update_secret": secretUUID},
 		})
 
 	// READ after UPDATE
@@ -253,8 +253,8 @@ func TestAccVaultSecretResource_UpdateNoDescription(t *testing.T) {
 		}).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{
-			{"updated-value"},
+		JSON([]map[string]interface{}{
+			{"decrypted_secret": "updated-value"},
 		})
 
 	// DELETE
@@ -265,7 +265,7 @@ func TestAccVaultSecretResource_UpdateNoDescription(t *testing.T) {
 			"query": fmt.Sprintf("DELETE FROM vault.secrets WHERE id = '%s'", secretUUID),
 		}).
 		Reply(http.StatusOK).
-		JSON([][]interface{}{})
+		JSON([]map[string]interface{}{})
 
 	// Run test
 	resource.Test(t, resource.TestCase{
