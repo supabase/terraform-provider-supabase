@@ -12,6 +12,7 @@ const (
 	billingApiPath             = projectApiPath + "/billing/addons"
 	dbPasswordApiPath          = projectApiPath + "/database/password"
 	dbConfigApiPath            = projectApiPath + "/config/database/postgres"
+	networkBansApiPath         = projectApiPath + "/network-bans/retrieve"
 	networkRestrictionsApiPath = projectApiPath + "/network-restrictions"
 	postgrestApiPath           = projectApiPath + "/postgrest"
 	authConfigApiPath          = projectApiPath + "/config/auth"
