@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -98,11 +99,86 @@ func (r *VaultSecretResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	// Build SQL query with escaped values
+	// Build escaped values
 	value := escapeSQLLiteralValue(data.Value.ValueString())
 	name := escapeSQLLiteralValue(data.Name.ValueString())
 	description := escapeSQLLiteral(data.Description.ValueStringPointer())
 
+	// Check if a secret with this name already exists
+	checkQuery := fmt.Sprintf("SELECT id FROM vault.secrets WHERE name = %s LIMIT 1", name)
+
+	tflog.Debug(ctx, "Checking for existing vault secret", map[string]interface{}{
+		"project_ref": data.ProjectRef.ValueString(),
+		"name":        data.Name.ValueString(),
+	})
+
+	checkResp, err := r.client.V1RunAQueryWithResponse(ctx, data.ProjectRef.ValueString(), api.V1RunAQueryJSONRequestBody{
+		Query: checkQuery,
+	})
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Client Error",
+			fmt.Sprintf("Unable to check for existing vault secret: %s", err.Error()),
+		)
+		return
+	}
+
+	if checkResp.StatusCode() >= 400 {
+		resp.Diagnostics.AddError(
+			"API Error",
+			fmt.Sprintf("Unable to check for existing vault secret, status code: %d, body: %s",
+				checkResp.StatusCode(), string(checkResp.Body)),
+		)
+		return
+	}
+
+	// Parse check response to see if secret exists
+	existingID := r.parseSecretID(ctx, checkResp.Body, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if existingID != "" {
+		// Secret already exists, update it instead
+		tflog.Debug(ctx, "Vault secret already exists, updating it", map[string]interface{}{
+			"id": existingID,
+		})
+
+		data.Id = types.StringValue(existingID)
+
+		updateQuery := fmt.Sprintf("SELECT vault.update_secret(%s, %s, %s, %s)",
+			escapeSQLLiteralValue(existingID), value, name, description)
+
+		updateResp, err := r.client.V1RunAQueryWithResponse(ctx, data.ProjectRef.ValueString(), api.V1RunAQueryJSONRequestBody{
+			Query: updateQuery,
+		})
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Client Error",
+				fmt.Sprintf("Unable to update existing vault secret: %s", err.Error()),
+			)
+			return
+		}
+
+		if updateResp.StatusCode() >= 400 {
+			resp.Diagnostics.AddError(
+				"API Error",
+				fmt.Sprintf("Unable to update existing vault secret, status code: %d, body: %s",
+					updateResp.StatusCode(), string(updateResp.Body)),
+			)
+			return
+		}
+
+		tflog.Debug(ctx, "Updated existing vault secret", map[string]interface{}{
+			"id": data.Id.ValueString(),
+		})
+
+		// Save data into Terraform state
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
+	}
+
+	// Secret doesn't exist, create it
 	query := fmt.Sprintf("SELECT vault.create_secret(%s, %s, %s)", value, name, description)
 
 	tflog.Debug(ctx, "Creating vault secret", map[string]interface{}{
@@ -121,7 +197,84 @@ func (r *VaultSecretResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
+	// Handle duplicate key error (race condition)
 	if httpResp.StatusCode() >= 400 {
+		bodyStr := string(httpResp.Body)
+		if httpResp.StatusCode() == 400 && strings.Contains(bodyStr, "duplicate key value violates unique constraint") {
+			tflog.Debug(ctx, "Duplicate key error detected, attempting to update existing secret", map[string]interface{}{
+				"project_ref": data.ProjectRef.ValueString(),
+			})
+
+			// Re-check for the existing secret
+			recheckResp, err := r.client.V1RunAQueryWithResponse(ctx, data.ProjectRef.ValueString(), api.V1RunAQueryJSONRequestBody{
+				Query: checkQuery,
+			})
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Client Error",
+					fmt.Sprintf("Unable to re-check for existing vault secret after duplicate key error: %s", err.Error()),
+				)
+				return
+			}
+
+			if recheckResp.StatusCode() >= 400 {
+				resp.Diagnostics.AddError(
+					"API Error",
+					fmt.Sprintf("Unable to re-check for existing vault secret, status code: %d, body: %s",
+						recheckResp.StatusCode(), string(recheckResp.Body)),
+				)
+				return
+			}
+
+			existingID := r.parseSecretID(ctx, recheckResp.Body, &resp.Diagnostics)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			if existingID == "" {
+				resp.Diagnostics.AddError(
+					"API Error",
+					"Duplicate key error occurred but unable to find existing secret",
+				)
+				return
+			}
+
+			data.Id = types.StringValue(existingID)
+
+			// Update the existing secret
+			updateQuery := fmt.Sprintf("SELECT vault.update_secret(%s, %s, %s, %s)",
+				escapeSQLLiteralValue(existingID), value, name, description)
+
+			updateResp, err := r.client.V1RunAQueryWithResponse(ctx, data.ProjectRef.ValueString(), api.V1RunAQueryJSONRequestBody{
+				Query: updateQuery,
+			})
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Client Error",
+					fmt.Sprintf("Unable to update existing vault secret after duplicate key error: %s", err.Error()),
+				)
+				return
+			}
+
+			if updateResp.StatusCode() >= 400 {
+				resp.Diagnostics.AddError(
+					"API Error",
+					fmt.Sprintf("Unable to update existing vault secret, status code: %d, body: %s",
+						updateResp.StatusCode(), string(updateResp.Body)),
+				)
+				return
+			}
+
+			tflog.Debug(ctx, "Updated existing vault secret after duplicate key error", map[string]interface{}{
+				"id": data.Id.ValueString(),
+			})
+
+			// Save data into Terraform state
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			return
+		}
+
+		// Other error, not duplicate key
 		resp.Diagnostics.AddError(
 			"API Error",
 			fmt.Sprintf("Unable to create vault secret, status code: %d, body: %s",
@@ -388,6 +541,62 @@ func (r *VaultSecretResource) ImportState(ctx context.Context, req resource.Impo
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_ref"), parts[0])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), parts[1])...)
+}
+
+// parseSecretID parses a secret ID from a query response.
+// Returns empty string if no results found (indicating secret doesn't exist).
+// Adds diagnostic errors if parsing fails.
+func (r *VaultSecretResource) parseSecretID(ctx context.Context, body []byte, diags *diag.Diagnostics) string {
+	// Try array-of-objects format first
+	var resultObjects []map[string]interface{}
+	if err := json.Unmarshal(body, &resultObjects); err == nil {
+		if len(resultObjects) == 0 {
+			return "" // No results found
+		}
+		// Extract ID from first row
+		if id, ok := resultObjects[0]["id"].(string); ok {
+			return id
+		}
+		diags.AddError(
+			"Parse Error",
+			fmt.Sprintf("Expected id string in result, got: %T", resultObjects[0]["id"]),
+		)
+		return ""
+	}
+
+	// Fall back to array-of-arrays format
+	var resultArrays [][]interface{}
+	if err := json.Unmarshal(body, &resultArrays); err != nil {
+		diags.AddError(
+			"Parse Error",
+			fmt.Sprintf("Unable to parse query response: %s", err.Error()),
+		)
+		return ""
+	}
+
+	if len(resultArrays) == 0 {
+		return "" // No results found
+	}
+
+	if len(resultArrays[0]) == 0 {
+		diags.AddError(
+			"API Error",
+			"Query returned empty row",
+		)
+		return ""
+	}
+
+	// Extract ID from first row, first column
+	id, ok := resultArrays[0][0].(string)
+	if !ok {
+		diags.AddError(
+			"Parse Error",
+			fmt.Sprintf("Expected id string, got: %T", resultArrays[0][0]),
+		)
+		return ""
+	}
+
+	return id
 }
 
 // escapeSQLLiteral escapes a string pointer for safe use in SQL queries.

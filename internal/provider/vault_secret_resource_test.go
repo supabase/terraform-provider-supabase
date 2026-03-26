@@ -18,6 +18,16 @@ func TestAccVaultSecretResource(t *testing.T) {
 	// Setup mock API
 	defer gock.OffAll()
 
+	// CHECK: mock the pre-create existence check - returns no results (secret doesn't exist)
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": "SELECT id FROM vault.secrets WHERE name = 'my-secret' LIMIT 1",
+		}).
+		Reply(http.StatusOK).
+		JSON([][]interface{}{}) // Empty result
+
 	// CREATE: mock vault.create_secret() response
 	gock.New(defaultApiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
@@ -135,6 +145,16 @@ func TestAccVaultSecretResource_NoDescription(t *testing.T) {
 
 	secretUUID := "b2c3d4e5-f6a7-8901-bcde-f12345678901"
 
+	// CHECK: mock the pre-create existence check - returns no results
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": "SELECT id FROM vault.secrets WHERE name = 'test-name' LIMIT 1",
+		}).
+		Reply(http.StatusOK).
+		JSON([][]interface{}{}) // Empty result
+
 	// CREATE: mock vault.create_secret() with NULL description
 	gock.New(defaultApiEndpoint).
 		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
@@ -206,6 +226,16 @@ func TestAccVaultSecretResource_UpdateNoDescription(t *testing.T) {
 	defer gock.OffAll()
 
 	secretUUID := "c3d4e5f6-a7b8-9012-cdef-123456789012"
+
+	// CHECK: mock the pre-create existence check - returns no results
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": "SELECT id FROM vault.secrets WHERE name = 'initial-name' LIMIT 1",
+		}).
+		Reply(http.StatusOK).
+		JSON([][]interface{}{}) // Empty result
 
 	// CREATE: mock vault.create_secret() with description
 	gock.New(defaultApiEndpoint).
@@ -443,4 +473,168 @@ func TestSQLQueryGeneration(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAccVaultSecretResource_PreExisting(t *testing.T) {
+	// Test that Create updates an existing secret instead of failing
+	defer gock.OffAll()
+
+	existingUUID := "pre-existing-uuid-1234"
+
+	// CHECK: mock the pre-create existence check - returns existing secret ID
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": "SELECT id FROM vault.secrets WHERE name = 'existing-secret' LIMIT 1",
+		}).
+		Reply(http.StatusOK).
+		JSON([][]interface{}{
+			{existingUUID},
+		})
+
+	// UPDATE: mock vault.update_secret() since secret already exists
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": fmt.Sprintf("SELECT vault.update_secret('%s', 'new-value', 'existing-secret', 'Updated via terraform')", existingUUID),
+		}).
+		Reply(http.StatusOK).
+		JSON([]map[string]interface{}{
+			{"update_secret": existingUUID},
+		})
+
+	// READ after UPDATE: mock decrypted_secrets query response
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": fmt.Sprintf("SELECT decrypted_secret FROM vault.decrypted_secrets WHERE id = '%s'", existingUUID),
+		}).
+		Reply(http.StatusOK).
+		JSON([]map[string]interface{}{
+			{"decrypted_secret": "new-value"},
+		})
+
+	// DELETE: mock vault.secrets delete response
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": fmt.Sprintf("DELETE FROM vault.secrets WHERE id = '%s'", existingUUID),
+		}).
+		Reply(http.StatusOK).
+		JSON([]map[string]interface{}{})
+
+	// Run test
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccVaultSecretResourceConfig("new-value", "existing-secret", "Updated via terraform"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "id", existingUUID),
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "project_ref", testProjectRef),
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "value", "new-value"),
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "name", "existing-secret"),
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "description", "Updated via terraform"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccVaultSecretResource_DuplicateKeyRace(t *testing.T) {
+	// Test that Create handles duplicate key error (race condition) gracefully
+	defer gock.OffAll()
+
+	raceUUID := "race-condition-uuid-5678"
+
+	// CHECK: mock the pre-create existence check - returns no results (secret doesn't exist yet)
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": "SELECT id FROM vault.secrets WHERE name = 'race-secret' LIMIT 1",
+		}).
+		Reply(http.StatusOK).
+		JSON([][]interface{}{}) // Empty result
+
+	// CREATE: mock vault.create_secret() returning duplicate key error
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": "SELECT vault.create_secret('race-value', 'race-secret', 'Race condition test')",
+		}).
+		Reply(http.StatusBadRequest).
+		JSON(map[string]interface{}{
+			"message": "Failed to run sql query: ERROR:  23505: duplicate key value violates unique constraint \"secrets_name_idx\"\nDETAIL:  Key (name)=(race-secret) already exists.",
+		})
+
+	// RE-CHECK: mock the re-check query after duplicate key error - now returns existing secret ID
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": "SELECT id FROM vault.secrets WHERE name = 'race-secret' LIMIT 1",
+		}).
+		Reply(http.StatusOK).
+		JSON([][]interface{}{
+			{raceUUID},
+		})
+
+	// UPDATE: mock vault.update_secret() to update the existing secret
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": fmt.Sprintf("SELECT vault.update_secret('%s', 'race-value', 'race-secret', 'Race condition test')", raceUUID),
+		}).
+		Reply(http.StatusOK).
+		JSON([]map[string]interface{}{
+			{"update_secret": raceUUID},
+		})
+
+	// READ after UPDATE: mock decrypted_secrets query response
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": fmt.Sprintf("SELECT decrypted_secret FROM vault.decrypted_secrets WHERE id = '%s'", raceUUID),
+		}).
+		Reply(http.StatusOK).
+		JSON([]map[string]interface{}{
+			{"decrypted_secret": "race-value"},
+		})
+
+	// DELETE: mock vault.secrets delete response
+	gock.New(defaultApiEndpoint).
+		Post(fmt.Sprintf("/v1/projects/%s/database/query", testProjectRef)).
+		MatchType("json").
+		JSON(map[string]interface{}{
+			"query": fmt.Sprintf("DELETE FROM vault.secrets WHERE id = '%s'", raceUUID),
+		}).
+		Reply(http.StatusOK).
+		JSON([]map[string]interface{}{})
+
+	// Run test
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccVaultSecretResourceConfig("race-value", "race-secret", "Race condition test"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "id", raceUUID),
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "project_ref", testProjectRef),
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "value", "race-value"),
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "name", "race-secret"),
+					resource.TestCheckResourceAttr("supabase_vault_secret.test", "description", "Race condition test"),
+				),
+			},
+		},
+	})
 }
