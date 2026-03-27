@@ -27,4 +27,4 @@ data "supabase_network_bans" "test" {
 
 ### Read-Only
 
-- `banned_ipv4_addresses` (List of String) List of banned IPv4 addresses
+- `banned_ipv4_addresses` (Set of String) List of banned IPv4 addresses

@@ -546,7 +546,7 @@
             "attributes": {
               "banned_ipv4_addresses": {
                 "type": [
-                  "list",
+                  "set",
                   "string"
                 ],
                 "description": "List of banned IPv4 addresses",

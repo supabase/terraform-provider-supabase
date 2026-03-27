@@ -29,7 +29,7 @@ type NetworkBansDataSource struct {
 // Describes the data source data model.
 type NetworkBansDataSourceModel struct {
 	ProjectRef          types.String `tfsdk:"project_ref"`
-	BannedIpv4Addresses types.List   `tfsdk:"banned_ipv4_addresses"`
+	BannedIpv4Addresses types.Set    `tfsdk:"banned_ipv4_addresses"`
 }
 
 func (d *NetworkBansDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -45,7 +45,7 @@ func (d *NetworkBansDataSource) Schema(ctx context.Context, req datasource.Schem
 				MarkdownDescription: "Project reference ID",
 				Required:            true,
 			},
-			"banned_ipv4_addresses": schema.ListAttribute{
+			"banned_ipv4_addresses": schema.SetAttribute{
 				MarkdownDescription: "List of banned IPv4 addresses",
 				Computed:            true,
 				ElementType:         types.StringType,
@@ -86,7 +86,7 @@ func (d *NetworkBansDataSource) Read(ctx context.Context, req datasource.ReadReq
 		addresses = []string{}
 	}
 
-	bannedAddresses, diags := types.ListValueFrom(ctx, types.StringType, addresses)
+	bannedAddresses, diags := types.SetValueFrom(ctx, types.StringType, addresses)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return

@@ -32,8 +32,8 @@ func TestAccNetworkBansDataSource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("data.supabase_network_bans.test", "project_ref", testProjectRef),
 					resource.TestCheckResourceAttr("data.supabase_network_bans.test", "banned_ipv4_addresses.#", "2"),
-					resource.TestCheckResourceAttr("data.supabase_network_bans.test", "banned_ipv4_addresses.0", "1.2.3.4"),
-					resource.TestCheckResourceAttr("data.supabase_network_bans.test", "banned_ipv4_addresses.1", "5.6.7.8"),
+					resource.TestCheckTypeSetElemAttr("data.supabase_network_bans.test", "banned_ipv4_addresses.*", "1.2.3.4"),
+					resource.TestCheckTypeSetElemAttr("data.supabase_network_bans.test", "banned_ipv4_addresses.*", "5.6.7.8"),
 				),
 			},
 		},
