@@ -22,7 +22,7 @@ jobs:
           if [[ `git status --porcelain` ]]; then
             echo "[bot] Schema changes detected, committing."
             # git sha != sha1: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-            sha=$(gh api -X GET repos/{owner}/{repo}/contents/$SCHEMA_FILE -F ref="${HEAD_REF}"" --jq '.sha')
+            sha=$(gh api -X GET repos/{owner}/{repo}/contents/$SCHEMA_FILE -F ref="${HEAD_REF}" --jq '.sha')
             b64=$(cat $SCHEMA_FILE | base64)
             gh api -X PUT repos/{owner}/{repo}/contents/$SCHEMA_FILE -F branch="${HEAD_REF}" \
             -F content="$b64" -F sha="$sha" -F message='docs: update json schema file'
