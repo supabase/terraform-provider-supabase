@@ -57,6 +57,10 @@ func TestAccSettingsResource(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(projectStatusResponse)
 	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
+	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
@@ -267,6 +271,10 @@ func TestAccSettingsResource(t *testing.T) {
 			},
 		})
 	// Step 3: update
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
 	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
@@ -533,6 +541,10 @@ func TestAccSettingsResource_SmtpPass(t *testing.T) {
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
+	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
@@ -611,6 +623,10 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
 	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
+	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
@@ -683,6 +699,10 @@ func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 			Id:     testProjectRef,
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
 	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
@@ -935,6 +955,10 @@ func TestAccSettingsResource_WaitsForProjectActive(t *testing.T) {
 			Id:     testProjectRef,
 			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
 		})
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
 	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
