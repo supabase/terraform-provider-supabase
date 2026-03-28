@@ -102,7 +102,6 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 						string(api.V1CreateProjectBodyDesiredInstanceSizeN4xlarge),
 						string(api.V1CreateProjectBodyDesiredInstanceSizeN8xlarge),
 						string(api.V1CreateProjectBodyDesiredInstanceSizeNano),
-						string(api.V1CreateProjectBodyDesiredInstanceSizePico),
 						string(api.V1CreateProjectBodyDesiredInstanceSizeSmall),
 						string(api.V1CreateProjectBodyDesiredInstanceSizeXlarge),
 					),
