@@ -158,6 +158,7 @@ func (p *SupabaseProvider) DataSources(ctx context.Context) []func() datasource.
 		NewBranchDataSource,
 		NewPoolerDataSource,
 		NewAPIKeysDataSource,
+		NewNetworkBansDataSource,
 	}
 }
 
