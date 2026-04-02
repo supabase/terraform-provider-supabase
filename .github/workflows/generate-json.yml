@@ -1,4 +1,4 @@
-# Regenerates JSON schema whenever a PR is merged to main 
+# Regenerates JSON schema whenever a PR is merged to main
 name: Generate JSON
 
 on: pull_request
@@ -11,9 +11,9 @@ jobs:
   schema:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: hashicorp/setup-terraform@v4
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -22,9 +22,9 @@ jobs:
           if [[ `git status --porcelain` ]]; then
             echo "[bot] Schema changes detected, committing."
             # git sha != sha1: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-            sha=$(gh api -X GET repos/{owner}/{repo}/contents/$SCHEMA_FILE -F ref='${{ github.head_ref }}' --jq '.sha')
+            sha=$(gh api -X GET repos/{owner}/{repo}/contents/$SCHEMA_FILE -F ref="${HEAD_REF}" --jq '.sha')
             b64=$(cat $SCHEMA_FILE | base64)
-            gh api -X PUT repos/{owner}/{repo}/contents/$SCHEMA_FILE -F branch='${{ github.head_ref }}' \
+            gh api -X PUT repos/{owner}/{repo}/contents/$SCHEMA_FILE -F branch="${HEAD_REF}" \
             -F content="$b64" -F sha="$sha" -F message='docs: update json schema file'
           else
             echo "[bot] No schema changes detected, nothing to commit."
@@ -32,3 +32,4 @@ jobs:
         env:
           SCHEMA_FILE: docs/schema.json
           GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
