@@ -540,6 +540,30 @@
             "description_kind": "markdown"
           }
         },
+        "supabase_network_bans": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "banned_ipv4_addresses": {
+                "type": [
+                  "set",
+                  "string"
+                ],
+                "description": "List of banned IPv4 addresses",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              }
+            },
+            "description": "Network bans data source",
+            "description_kind": "markdown"
+          }
+        },
         "supabase_pooler": {
           "version": 0,
           "block": {
