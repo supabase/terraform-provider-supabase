@@ -574,6 +574,7 @@ func copySensitiveFields(source api.UpdateAuthConfigBody, target *api.UpdateAuth
 	target.ExternalTwitterSecret = source.ExternalTwitterSecret
 	target.ExternalWorkosSecret = source.ExternalWorkosSecret
 	target.ExternalZoomSecret = source.ExternalZoomSecret
+	target.ExternalXSecret = source.ExternalXSecret
 	// Hook provider secrets
 	target.HookCustomAccessTokenSecrets = source.HookCustomAccessTokenSecrets
 	target.HookMfaVerificationAttemptSecrets = source.HookMfaVerificationAttemptSecrets
