@@ -21,4 +21,6 @@ var (
 	PoolerDataSourceConfig string
 	//go:embed data-sources/supabase_apikeys/data-source.tf
 	APIKeysDataSourceConfig string
+	//go:embed data-sources/supabase_network_bans/data-source.tf
+	NetworkBansDataSourceConfig string
 )
