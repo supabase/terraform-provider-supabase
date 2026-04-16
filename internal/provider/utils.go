@@ -44,7 +44,7 @@ var terminalProjectStatuses = []api.V1ProjectWithDatabaseResponseStatus{
 
 // fails fast on terminal states (GOING_DOWN, INIT_FAILED, REMOVED, etc.) and
 // keeps polling on transient states (COMING_UP, RESTORING, ACTIVE_UNHEALTHY, etc.).
-func waitForProjectActive(ctx context.Context, projectRef string, client *api.ClientWithResponses) diag.Diagnostics {
+func waitForProjectActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
 	stateConf := &retry.StateChangeConf{
 		Pending: []string{
 			string(api.V1ProjectWithDatabaseResponseStatusACTIVEUNHEALTHY),
@@ -80,7 +80,7 @@ func waitForProjectActive(ctx context.Context, projectRef string, client *api.Cl
 
 			return httpResp.JSON200, status, nil
 		},
-		Timeout: defaultWaitTimeout,
+		Timeout: timeout,
 	}
 
 	_, err := stateConf.WaitForStateContext(ctx)
@@ -120,9 +120,9 @@ func isDataApiDisabled(ctx context.Context, projectRef string, client *api.Clien
 	return strings.TrimSpace(httpResp.JSON200.DbSchema) == "", nil
 }
 
-func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses) diag.Diagnostics {
+func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
 	stateConf := &retry.StateChangeConf{
-		Timeout: defaultWaitTimeout,
+		Timeout: timeout,
 		Pending: []string{waitForServicesStatusPending},
 		Target:  []string{waitForServicesStatusDone},
 		Refresh: func() (any, string, error) {
