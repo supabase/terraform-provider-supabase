@@ -64,7 +64,6 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"timeouts": timeouts.Block(ctx, timeouts.Opts{
 				Create: true,
 				Update: true,
-				Delete: true,
 			}),
 		},
 		Attributes: map[string]schema.Attribute{
@@ -262,15 +261,6 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	deleteTimeout, diags := data.Timeouts.Delete(ctx, defaultWaitTimeout)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
-	defer cancel()
 
 	resp.Diagnostics.Append(deleteProject(ctx, &data, r.client)...)
 	if resp.Diagnostics.HasError() {

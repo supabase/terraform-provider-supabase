@@ -389,7 +389,6 @@ func projectResourceConfigWithTimeouts(p ProjectResourceModel) string {
   timeouts {
     create = "30m"
     update = "30m"
-    delete = "30m"
   }
 ` + s[idx:]
 }
