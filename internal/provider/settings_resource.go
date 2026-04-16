@@ -14,6 +14,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -284,7 +285,15 @@ func (r *SettingsResource) Delete(ctx context.Context, req resource.DeleteReques
 }
 
 func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	data := SettingsResourceModel{Id: types.StringValue(req.ID)}
+	data := SettingsResourceModel{
+		Id: types.StringValue(req.ID),
+		Timeouts: timeouts.Value{
+			Object: types.ObjectNull(map[string]attr.Type{
+				"create": types.StringType,
+				"update": types.StringType,
+			}),
+		},
+	}
 
 	// Read all configs from API when importing so it's easier to pick
 	// individual fields to manage through TF.
