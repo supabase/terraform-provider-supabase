@@ -135,9 +135,6 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, createTimeout)
-	defer cancel()
-
 	resp.Diagnostics.Append(waitForProjectActive(ctx, data.ProjectRef.ValueString(), r.client, createTimeout)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -237,9 +234,6 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
-	defer cancel()
 
 	resp.Diagnostics.Append(waitForProjectActive(ctx, planData.ProjectRef.ValueString(), r.client, updateTimeout)...)
 	if resp.Diagnostics.HasError() {

@@ -159,9 +159,6 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, createTimeout)
-	defer cancel()
-
 	tflog.Trace(ctx, "create project")
 	resp.Diagnostics.Append(createProject(ctx, &data, r.client, createTimeout)...)
 	if resp.Diagnostics.HasError() {
@@ -219,9 +216,6 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
-	defer cancel()
 
 	// required attributes
 	if !plan.Name.Equal(state.Name) {
