@@ -367,7 +367,7 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 	}
 
 	for _, addon := range addonsResp.JSON200.SelectedAddons {
-		if addon.Type != api.ComputeInstance {
+		if addon.Type != api.ListProjectAddonsResponseSelectedAddonsTypeComputeInstance {
 			continue
 		}
 
