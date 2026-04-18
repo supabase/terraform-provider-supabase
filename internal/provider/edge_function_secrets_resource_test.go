@@ -693,9 +693,11 @@ resource "supabase_edge_function_secrets" "test" {
 		Post(secretsApiPath).
 		Reply(http.StatusOK)
 
-	// ...but the subsequent read fails with 500
+	// ...but the subsequent read fails with 500. Persist the mock because the
+	// provider retries transient GET failures before surfacing the error.
 	gock.New(defaultApiEndpoint).
 		Get(secretsApiPath).
+		Persist().
 		Reply(http.StatusInternalServerError).
 		BodyString(`{"message":"internal server error"}`)
 
