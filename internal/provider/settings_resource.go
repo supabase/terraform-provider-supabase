@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -48,6 +50,7 @@ type SettingsResourceModel struct {
 	Auth       jsontypes.Normalized `tfsdk:"auth"`
 	Api        jsontypes.Normalized `tfsdk:"api"`
 	Id         types.String         `tfsdk:"id"`
+	Timeouts   timeouts.Value       `tfsdk:"timeouts"`
 }
 
 func (r *SettingsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -59,6 +62,13 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Settings resource",
 
+		Blocks: map[string]schema.Block{
+			"timeouts": timeouts.Block(ctx, timeouts.Opts{
+				Create: true,
+				Update: true,
+				Delete: false,
+			}),
+		},
 		Attributes: map[string]schema.Attribute{
 			"project_ref": schema.StringAttribute{
 				MarkdownDescription: "Project reference ID",
@@ -120,12 +130,18 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	resp.Diagnostics.Append(waitForProjectActive(ctx, data.ProjectRef.ValueString(), r.client)...)
+	createTimeout, diags := data.Timeouts.Create(ctx, defaultWaitTimeout)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(waitForServicesActive(ctx, data.ProjectRef.ValueString(), r.client)...)
+	resp.Diagnostics.Append(waitForProjectActive(ctx, data.ProjectRef.ValueString(), r.client, createTimeout)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(waitForServicesActive(ctx, data.ProjectRef.ValueString(), r.client, createTimeout)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -214,12 +230,18 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	resp.Diagnostics.Append(waitForProjectActive(ctx, planData.ProjectRef.ValueString(), r.client)...)
+	updateTimeout, diags := planData.Timeouts.Update(ctx, defaultWaitTimeout)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(waitForServicesActive(ctx, planData.ProjectRef.ValueString(), r.client)...)
+	resp.Diagnostics.Append(waitForProjectActive(ctx, planData.ProjectRef.ValueString(), r.client, updateTimeout)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(waitForServicesActive(ctx, planData.ProjectRef.ValueString(), r.client, updateTimeout)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -263,7 +285,15 @@ func (r *SettingsResource) Delete(ctx context.Context, req resource.DeleteReques
 }
 
 func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	data := SettingsResourceModel{Id: types.StringValue(req.ID)}
+	data := SettingsResourceModel{
+		Id: types.StringValue(req.ID),
+		Timeouts: timeouts.Value{
+			Object: types.ObjectNull(map[string]attr.Type{
+				"create": types.StringType,
+				"update": types.StringType,
+			}),
+		},
+	}
 
 	// Read all configs from API when importing so it's easier to pick
 	// individual fields to manage through TF.
@@ -574,6 +604,7 @@ func copySensitiveFields(source api.UpdateAuthConfigBody, target *api.UpdateAuth
 	target.ExternalTwitterSecret = source.ExternalTwitterSecret
 	target.ExternalWorkosSecret = source.ExternalWorkosSecret
 	target.ExternalZoomSecret = source.ExternalZoomSecret
+	target.ExternalXSecret = source.ExternalXSecret
 	// Hook provider secrets
 	target.HookCustomAccessTokenSecrets = source.HookCustomAccessTokenSecrets
 	target.HookMfaVerificationAttemptSecrets = source.HookMfaVerificationAttemptSecrets

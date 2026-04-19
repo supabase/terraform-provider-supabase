@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -43,7 +44,7 @@ var terminalProjectStatuses = []api.V1ProjectWithDatabaseResponseStatus{
 
 // fails fast on terminal states (GOING_DOWN, INIT_FAILED, REMOVED, etc.) and
 // keeps polling on transient states (COMING_UP, RESTORING, ACTIVE_UNHEALTHY, etc.).
-func waitForProjectActive(ctx context.Context, projectRef string, client *api.ClientWithResponses) diag.Diagnostics {
+func waitForProjectActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
 	stateConf := &retry.StateChangeConf{
 		Pending: []string{
 			string(api.V1ProjectWithDatabaseResponseStatusACTIVEUNHEALTHY),
@@ -79,7 +80,7 @@ func waitForProjectActive(ctx context.Context, projectRef string, client *api.Cl
 
 			return httpResp.JSON200, status, nil
 		},
-		Timeout: defaultWaitTimeout,
+		Timeout: timeout,
 	}
 
 	_, err := stateConf.WaitForStateContext(ctx)
@@ -103,13 +104,38 @@ var allProjectServices = []api.V1GetServicesHealthParamsServices{
 	api.V1GetServicesHealthParamsServicesRest, api.V1GetServicesHealthParamsServicesStorage,
 }
 
-func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses) diag.Diagnostics {
+// isDataApiDisabled checks whether the Data API (PostgREST) is currently disabled
+// by fetching the project's PostgREST config and checking if db_schema is empty.
+// This is the canonical mechanism used by the Supabase Dashboard to disable the Data API.
+func isDataApiDisabled(ctx context.Context, projectRef string, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
+	httpResp, err := client.V1GetPostgrestServiceConfigWithResponse(ctx, projectRef)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to fetch PostgREST config for project %s, got error: %s", projectRef, err)
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to fetch PostgREST config for project %s, got status %d: %s", projectRef, httpResp.StatusCode(), httpResp.Body)
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return strings.TrimSpace(httpResp.JSON200.DbSchema) == "", nil
+}
+
+func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
 	stateConf := &retry.StateChangeConf{
-		Timeout: defaultWaitTimeout,
+		Timeout: timeout,
 		Pending: []string{waitForServicesStatusPending},
 		Target:  []string{waitForServicesStatusDone},
 		Refresh: func() (any, string, error) {
-			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{Services: allProjectServices})
+			services := allProjectServices
+			disabled, diags := isDataApiDisabled(ctx, projectRef, client)
+			if diags.HasError() {
+				tflog.Warn(ctx, fmt.Sprintf("Failed to check Data API status for project %s, continuing to check all services: %s", projectRef, diags.Errors()))
+			} else if disabled {
+				services = slices.DeleteFunc(slices.Clone(allProjectServices), func(s api.V1GetServicesHealthParamsServices) bool {
+					return s == api.V1GetServicesHealthParamsServicesRest
+				})
+			}
+			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{Services: services})
 			if err != nil {
 				return nil, "", fmt.Errorf("failed to get health information for project services: %w", err)
 			}
