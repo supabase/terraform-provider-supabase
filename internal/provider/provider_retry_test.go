@@ -23,7 +23,7 @@ func testRetryClient(t *testing.T, serverURL string) *api.Client {
 
 	client, err := api.NewClient(
 		serverURL,
-		api.WithHTTPClient(newRetryableClient()),
+		api.WithHTTPClient(newRetryableClient(nil)),
 		api.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer test")
 			req.Header.Set("User-Agent", "TFProvider/test")

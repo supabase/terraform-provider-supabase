@@ -29,7 +29,8 @@ type SupabaseProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
-	version string
+	version        string
+	baseHTTPClient *http.Client
 }
 
 // SupabaseProviderModel describes the provider data model.
@@ -118,10 +119,11 @@ func (t *retryGETTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	return t.plain.RoundTrip(req)
 }
 
-func newRetryableClient() *http.Client {
+func newRetryableClient(base *http.Client) *http.Client {
 	rc := retryablehttp.NewClient()
-	// keep gock-based tests intercepting requests
-	rc.HTTPClient = http.DefaultClient
+	if base != nil {
+		rc.HTTPClient = base
+	}
 	rc.RetryMax = 3
 	rc.RetryWaitMin = 500 * time.Millisecond
 	rc.RetryWaitMax = 1500 * time.Millisecond
@@ -217,7 +219,7 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	// Example client configuration for data sources and resources
 	client, err := api.NewClientWithResponses(
 		apiEndpoint,
-		api.WithHTTPClient(newRetryableClient()),
+		api.WithHTTPClient(newRetryableClient(p.baseHTTPClient)),
 		api.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer "+accessToken)
 			req.Header.Set("User-Agent", "TFProvider/"+p.version)

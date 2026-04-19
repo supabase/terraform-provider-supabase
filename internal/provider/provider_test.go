@@ -9,18 +9,27 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"gopkg.in/h2non/gock.v1"
 )
 
+// newWithBaseClient injects a base HTTP client into the provider for acceptance
+// tests that rely on gock to intercept GET requests through the retrying transport.
+func newWithBaseClient(version string, base *http.Client) func() provider.Provider {
+	return func() provider.Provider {
+		return &SupabaseProvider{version: version, baseHTTPClient: base}
+	}
+}
+
 // testAccProtoV6ProviderFactories are used to instantiate a provider during
 // acceptance testing. The factory function will be invoked for every Terraform
 // CLI command executed to create a provider server to which the CLI can
 // reattach.
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"supabase": providerserver.NewProtocol6WithError(New("test")()),
+	"supabase": providerserver.NewProtocol6WithError(newWithBaseClient("test", http.DefaultClient)()),
 }
 
 func testAccPreCheck(t *testing.T) {
