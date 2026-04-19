@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -27,7 +29,8 @@ type SupabaseProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
-	version string
+	version        string
+	baseHTTPClient *http.Client
 }
 
 // SupabaseProviderModel describes the provider data model.
@@ -37,6 +40,104 @@ type SupabaseProviderModel struct {
 }
 
 const defaultApiEndpoint = "https://api.supabase.com"
+
+// Stores the HTTP method in request context so transport-error
+// retries can still distinguish GET requests.
+type retryMethodKey struct{}
+
+const maxRetryAfterWait = 10 * time.Second
+
+// Caps Retry-After delays so refresh does not stall for too long.
+func cappedJitterBackoff(minWait, maxWait time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	wait := retryablehttp.RateLimitLinearJitterBackoff(minWait, maxWait, attemptNum, resp)
+	if wait > maxRetryAfterWait {
+		return maxRetryAfterWait
+	}
+	return wait
+}
+
+// Retries transient GET failures only. Writes are never retried.
+func getOnlyRetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	if ctx.Err() != nil {
+		// A response arrived, return nil so the body reaches the caller.
+		// Returning ctx.Err() causes the generated helpers to discard it.
+		if resp != nil {
+			return false, nil
+		}
+		return false, ctx.Err()
+	}
+
+	method := ""
+	if resp != nil && resp.Request != nil {
+		method = resp.Request.Method
+	} else if m, ok := ctx.Value(retryMethodKey{}).(string); ok {
+		method = m
+	}
+
+	if method != http.MethodGet {
+		return false, nil
+	}
+
+	if err != nil {
+		return retryablehttp.ErrorPropagatedRetryPolicy(ctx, nil, err)
+	}
+
+	// 408, 429, 500, 502, 503, 504
+	switch resp.StatusCode {
+	case http.StatusRequestTimeout,
+		http.StatusTooManyRequests,
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout:
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// Records the HTTP method so transport-error retries can
+// still gate on GET versus write requests.
+func stashRequestMethod(_ context.Context, req *http.Request) error {
+	*req = *req.WithContext(context.WithValue(req.Context(), retryMethodKey{}, req.Method))
+	return nil
+}
+
+// Sends GETs through retryablehttp and bypasses it for
+// writes, which avoids extra body buffering on non-retried requests.
+type retryGETTransport struct {
+	// used for GET only
+	retrying http.RoundTripper
+	// used for all writes, no buffering
+	plain http.RoundTripper
+}
+
+func (t *retryGETTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Method == http.MethodGet {
+		return t.retrying.RoundTrip(req)
+	}
+	return t.plain.RoundTrip(req)
+}
+
+func newRetryableClient(base *http.Client) *http.Client {
+	rc := retryablehttp.NewClient()
+	if base != nil {
+		rc.HTTPClient = base
+	}
+	rc.RetryMax = 3
+	rc.RetryWaitMin = 500 * time.Millisecond
+	rc.RetryWaitMax = 1500 * time.Millisecond
+	rc.Logger = nil
+	rc.CheckRetry = getOnlyRetryPolicy
+	rc.Backoff = cappedJitterBackoff
+	rc.ErrorHandler = retryablehttp.PassthroughErrorHandler
+	return &http.Client{
+		Transport: &retryGETTransport{
+			retrying: rc.StandardClient().Transport,
+			plain:    http.DefaultTransport,
+		},
+	}
+}
 
 func (p *SupabaseProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "supabase"
@@ -118,11 +219,13 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	// Example client configuration for data sources and resources
 	client, err := api.NewClientWithResponses(
 		apiEndpoint,
+		api.WithHTTPClient(newRetryableClient(p.baseHTTPClient)),
 		api.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer "+accessToken)
 			req.Header.Set("User-Agent", "TFProvider/"+p.version)
 			return nil
 		}),
+		api.WithRequestEditorFn(stashRequestMethod),
 	)
 	if err != nil {
 		tflog.Error(ctx, "NewClientWithResponses Error: "+err.Error())
