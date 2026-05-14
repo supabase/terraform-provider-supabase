@@ -352,6 +352,7 @@
                 "description": "Controls whether `anon` and `service_role` JWT-based api keys should be enabled. Please note: these keys are no longer recommended ([more information here](https://supabase.com/docs/guides/api/api-keys#why-are-anon-and-servicerole-jwt-based-keys-no-longer-recommended)).",
                 "description_kind": "markdown",
                 "deprecated": true,
+                "deprecation_message": "Deprecated. This field will be removed once the transition to publishable and secret keys is complete.",
                 "optional": true,
                 "computed": true
               },
