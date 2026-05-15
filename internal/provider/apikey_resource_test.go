@@ -6,6 +6,7 @@ package provider
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -20,6 +21,13 @@ const testAccApikeyResourceConfig = `
 resource "supabase_apikey" "new" {
   project_ref = "` + testProjectRef + `"
   name        = "test"
+}
+`
+
+const testAccApikeyResourceConfigInvalidName = `
+resource "supabase_apikey" "new" {
+  project_ref = "` + testProjectRef + `"
+  name        = "Invalid-Name-123" # Contains capital letters and hyphens
 }
 `
 
@@ -106,6 +114,19 @@ func TestAccApiKeyResource(t *testing.T) {
 				),
 			},
 			// Delete testing automatically occurs in TestCase
+		},
+	})
+}
+
+func TestAccApiKeyResource_InvalidName(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccApikeyResourceConfigInvalidName,
+				ExpectError: regexp.MustCompile(`Name must start with a lowercase letter or an underscore`),
+			},
 		},
 	})
 }
