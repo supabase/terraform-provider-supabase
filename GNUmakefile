@@ -49,3 +49,12 @@ generate-json:
 
 	@echo "Cleaning up"
 	@rm -r temp
+
+# Generate terraform docs
+.PHONY: generate-docs
+generate-docs:
+	@go generate ./...
+
+# Runs all generate targets
+.PHONY: generate
+generate: generate-docs generate-json
