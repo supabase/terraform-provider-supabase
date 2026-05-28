@@ -17,6 +17,7 @@ const (
 	postgrestApiPath           = projectApiPath + "/postgrest"
 	authConfigApiPath          = projectApiPath + "/config/auth"
 	storageConfigApiPath       = projectApiPath + "/config/storage"
+	sslEnforcementApiPath      = projectApiPath + "/ssl-enforcement"
 	secretsApiPath             = projectApiPath + "/secrets"
 
 	functionSlug          = "foo"

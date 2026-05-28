@@ -447,6 +447,12 @@
                 "description_kind": "markdown",
                 "required": true
               },
+              "ssl_enforcement": {
+                "type": "bool",
+                "description": "Enforce SSL on all database connections. See the [SSL enforcement API](https://api.supabase.com/api/v1#tag/database/put/v1/projects/%7Bref%7D/ssl-enforcement).",
+                "description_kind": "markdown",
+                "optional": true
+              },
               "storage": {
                 "type": "string",
                 "description": "Storage settings as serialised JSON",

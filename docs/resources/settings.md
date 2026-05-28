@@ -73,6 +73,7 @@ Affected fields: `smtp_pass`, `sms_twilio_auth_token`, `sms_twilio_verify_auth_t
 - `database` (String) Database settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateConfig)
 - `network` (String) Network settings as serialised JSON
 - `pooler` (String) Pooler settings as serialised JSON
+- `ssl_enforcement` (Boolean) Enforce SSL on all database connections. See the [SSL enforcement API](https://api.supabase.com/api/v1#tag/database/put/v1/projects/%7Bref%7D/ssl-enforcement).
 - `storage` (String) Storage settings as serialised JSON
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
