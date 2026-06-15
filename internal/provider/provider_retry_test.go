@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/cli/apps/cli-go/pkg/api"
 )
 
 func testRetryClient(t *testing.T, serverURL string) *api.Client {
