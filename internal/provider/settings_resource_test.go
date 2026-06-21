@@ -19,7 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/oapi-codegen/nullable"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/cli/apps/cli-go/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
 	"gopkg.in/h2non/gock.v1"
 )

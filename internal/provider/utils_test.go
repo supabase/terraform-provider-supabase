@@ -10,7 +10,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/cli/apps/cli-go/pkg/api"
 	"gopkg.in/h2non/gock.v1"
 )
 
