@@ -248,6 +248,7 @@ func (p *SupabaseProvider) Resources(ctx context.Context) []func() resource.Reso
 	return []func() resource.Resource{
 		NewProjectResource,
 		NewSettingsResource,
+		NewAuthSettingsResource,
 		NewBranchResource,
 		NewEdgeFunctionResource,
 		NewEdgeFunctionSecretsResource,
