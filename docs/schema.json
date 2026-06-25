@@ -413,7 +413,7 @@
               },
               "auth": {
                 "type": "string",
-                "description": "Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig)",
+                "description": "Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig).\n\n~> Several fields are returned as a hash by the API rather than plaintext. The provider preserves these fields from prior state, so out-of-band changes will not appear in `terraform plan`.\n\nAffected fields: `smtp_pass`, `sms_twilio_auth_token`, `sms_twilio_verify_auth_token`, `sms_messagebird_access_key`, `sms_textlocal_api_key`, `sms_vonage_api_secret`, `security_captcha_secret`, `external_apple_secret`, `external_azure_secret`, `external_bitbucket_secret`, `external_discord_secret`, `external_facebook_secret`, `external_figma_secret`, `external_github_secret`, `external_gitlab_secret`, `external_google_secret`, `external_kakao_secret`, `external_keycloak_secret`, `external_linkedin_oidc_secret`, `external_notion_secret`, `external_slack_oidc_secret`, `external_slack_secret`, `external_spotify_secret`, `external_twitch_secret`, `external_twitter_secret`, `external_workos_secret`, `external_x_secret`, `external_zoom_secret`, `hook_custom_access_token_secrets`, `hook_mfa_verification_attempt_secrets`, `hook_password_verification_attempt_secrets`, `hook_send_email_secrets`, `hook_send_sms_secrets`.",
                 "description_kind": "markdown",
                 "optional": true
               },
@@ -446,6 +446,12 @@
                 "description": "Project reference ID",
                 "description_kind": "markdown",
                 "required": true
+              },
+              "ssl_enforcement": {
+                "type": "bool",
+                "description": "Enforce SSL on all database connections. See the [SSL enforcement API](https://api.supabase.com/api/v1#tag/database/put/v1/projects/%7Bref%7D/ssl-enforcement).",
+                "description_kind": "markdown",
+                "optional": true
               },
               "storage": {
                 "type": "string",

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
@@ -22,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/supabase/cli/pkg/api"
 )
 
@@ -30,6 +32,18 @@ var (
 	_ resource.Resource                = &SettingsResource{}
 	_ resource.ResourceWithImportState = &SettingsResource{}
 )
+
+// Backend returns this 400 body fragment for unsupported projects.
+const sslEnforcementUnsupported = "not allowed to configure SSL enforcements"
+
+const (
+	sslEnforcementStatusPending = "SSL_ENFORCEMENT_PENDING"
+	sslEnforcementStatusApplied = "SSL_ENFORCEMENT_APPLIED"
+)
+
+func isSslEnforcementUnsupported(body []byte) bool {
+	return strings.Contains(string(body), sslEnforcementUnsupported)
+}
 
 func NewSettingsResource() resource.Resource {
 	return &SettingsResource{}
@@ -42,15 +56,16 @@ type SettingsResource struct {
 
 // SettingsResourceModel describes the resource data model.
 type SettingsResourceModel struct {
-	ProjectRef types.String         `tfsdk:"project_ref"`
-	Database   jsontypes.Normalized `tfsdk:"database"`
-	Pooler     jsontypes.Normalized `tfsdk:"pooler"`
-	Network    jsontypes.Normalized `tfsdk:"network"`
-	Storage    jsontypes.Normalized `tfsdk:"storage"`
-	Auth       jsontypes.Normalized `tfsdk:"auth"`
-	Api        jsontypes.Normalized `tfsdk:"api"`
-	Id         types.String         `tfsdk:"id"`
-	Timeouts   timeouts.Value       `tfsdk:"timeouts"`
+	ProjectRef     types.String         `tfsdk:"project_ref"`
+	Database       jsontypes.Normalized `tfsdk:"database"`
+	Pooler         jsontypes.Normalized `tfsdk:"pooler"`
+	Network        jsontypes.Normalized `tfsdk:"network"`
+	Storage        jsontypes.Normalized `tfsdk:"storage"`
+	Auth           jsontypes.Normalized `tfsdk:"auth"`
+	Api            jsontypes.Normalized `tfsdk:"api"`
+	SslEnforcement types.Bool           `tfsdk:"ssl_enforcement"`
+	Id             types.String         `tfsdk:"id"`
+	Timeouts       timeouts.Value       `tfsdk:"timeouts"`
 }
 
 func (r *SettingsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -95,13 +110,24 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 				Optional:            true,
 			},
 			"auth": schema.StringAttribute{
-				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig)",
-				Optional:            true,
+				CustomType: jsontypes.NormalizedType{},
+				MarkdownDescription: "Auth settings as [serialised JSON](https://api.supabase.com/api/v1#/projects%20config/updateV1AuthConfig).\n\n" +
+					"~> Several fields are returned as a hash by the API rather than plaintext. The provider preserves these fields from prior state, so out-of-band changes will not appear in `terraform plan`.\n\n" +
+					"Affected fields: `smtp_pass`, `sms_twilio_auth_token`, `sms_twilio_verify_auth_token`, `sms_messagebird_access_key`, `sms_textlocal_api_key`, `sms_vonage_api_secret`, " +
+					"`security_captcha_secret`, `external_apple_secret`, `external_azure_secret`, `external_bitbucket_secret`, `external_discord_secret`, `external_facebook_secret`, " +
+					"`external_figma_secret`, `external_github_secret`, `external_gitlab_secret`, `external_google_secret`, `external_kakao_secret`, `external_keycloak_secret`, " +
+					"`external_linkedin_oidc_secret`, `external_notion_secret`, `external_slack_oidc_secret`, `external_slack_secret`, `external_spotify_secret`, `external_twitch_secret`, " +
+					"`external_twitter_secret`, `external_workos_secret`, `external_x_secret`, `external_zoom_secret`, `hook_custom_access_token_secrets`, `hook_mfa_verification_attempt_secrets`, " +
+					"`hook_password_verification_attempt_secrets`, `hook_send_email_secrets`, `hook_send_sms_secrets`.",
+				Optional: true,
 			},
 			"api": schema.StringAttribute{
 				CustomType:          jsontypes.NormalizedType{},
 				MarkdownDescription: "API settings as [serialised JSON](https://api.supabase.com/api/v1#/services/updatePostgRESTConfig)",
+				Optional:            true,
+			},
+			"ssl_enforcement": schema.BoolAttribute{
+				MarkdownDescription: "Enforce SSL on all database connections. See the [SSL enforcement API](https://api.supabase.com/api/v1#tag/database/put/v1/projects/%7Bref%7D/ssl-enforcement).",
 				Optional:            true,
 			},
 			"id": schema.StringAttribute{
@@ -163,6 +189,9 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 	if !data.Storage.IsNull() {
 		resp.Diagnostics.Append(updateStorageConfig(ctx, &data, r.client)...)
 	}
+	if !data.SslEnforcement.IsNull() && !data.SslEnforcement.IsUnknown() {
+		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &data, r.client, createTimeout)...)
+	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
@@ -203,6 +232,9 @@ func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 	if !data.Storage.IsNull() {
 		resp.Diagnostics.Append(readStorageConfig(ctx, &data, r.client)...)
+	}
+	if !data.SslEnforcement.IsNull() {
+		resp.Diagnostics.Append(readSslEnforcementConfig(ctx, &data, r.client)...)
 	}
 	// TODO: read all settings above concurrently
 	if resp.Diagnostics.HasError() {
@@ -263,6 +295,9 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 	if !planData.Storage.IsNull() && !planData.Storage.Equal(stateData.Storage) {
 		resp.Diagnostics.Append(updateStorageConfig(ctx, &planData, r.client)...)
 	}
+	if !planData.SslEnforcement.IsNull() && !planData.SslEnforcement.IsUnknown() && !planData.SslEnforcement.Equal(stateData.SslEnforcement) {
+		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &planData, r.client, updateTimeout)...)
+	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
 		return
@@ -302,6 +337,7 @@ func (r *SettingsResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(readApiConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readAuthConfig(ctx, &data, r.client)...)
 	resp.Diagnostics.Append(readStorageConfig(ctx, &data, r.client)...)
+	resp.Diagnostics.Append(readSslEnforcementConfig(ctx, &data, r.client)...)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -457,6 +493,94 @@ func updateDatabaseConfig(ctx context.Context, plan *SettingsResourceModel, clie
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	return nil
+}
+
+func readSslEnforcementConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.V1GetSslEnforcementConfigWithResponse(ctx, state.Id.ValueString())
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read SSL enforcement config, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// Deleted project is an orphan resource, not returning error so it can be destroyed.
+	switch httpResp.StatusCode() {
+	case http.StatusNotFound, http.StatusNotAcceptable:
+		return nil
+	case http.StatusBadRequest:
+		// Preserve the managed value for unsupported projects.
+		if isSslEnforcementUnsupported(httpResp.Body) {
+			tflog.Warn(ctx, "SSL enforcement not supported, preserving existing state", map[string]any{
+				"project_ref": state.Id.ValueString(),
+				"body":        string(httpResp.Body),
+			})
+			return nil
+		}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read SSL enforcement config, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	state.SslEnforcement = types.BoolValue(httpResp.JSON200.CurrentConfig.Database)
+	return nil
+}
+
+func updateSslEnforcementConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
+	desired := plan.SslEnforcement.ValueBool()
+	var body api.SslEnforcementRequest
+	body.RequestedConfig.Database = desired
+
+	projectRef := plan.ProjectRef.ValueString()
+	httpResp, err := client.V1UpdateSslEnforcementConfigWithResponse(ctx, projectRef, body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update SSL enforcement config, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.StatusCode() == http.StatusBadRequest {
+		if isSslEnforcementUnsupported(httpResp.Body) {
+			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error",
+				"SSL enforcement is not supported on this project. Upgrade your plan or check your project type.")}
+		}
+		msg := fmt.Sprintf("Unable to update SSL enforcement config, got status 400: %s", httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to update SSL enforcement config, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200.AppliedSuccessfully && httpResp.JSON200.CurrentConfig.Database == desired {
+		plan.SslEnforcement = types.BoolValue(desired)
+		return nil
+	}
+	stateConf := &retry.StateChangeConf{
+		Pending: []string{sslEnforcementStatusPending},
+		Target:  []string{sslEnforcementStatusApplied},
+		Timeout: timeout,
+		Refresh: func() (any, string, error) {
+			getResp, err := client.V1GetSslEnforcementConfigWithResponse(ctx, projectRef)
+			if err != nil {
+				return nil, "", fmt.Errorf("failed polling SSL enforcement: %w", err)
+			}
+			if getResp.JSON200 == nil {
+				return nil, "", fmt.Errorf("unexpected status %d: %s", getResp.StatusCode(), getResp.Body)
+			}
+			tflog.Debug(ctx, "Polling SSL enforcement convergence", map[string]any{
+				"project_ref":          projectRef,
+				"applied_successfully": getResp.JSON200.AppliedSuccessfully,
+				"current_database":     getResp.JSON200.CurrentConfig.Database,
+				"desired":              desired,
+			})
+			if getResp.JSON200.AppliedSuccessfully && getResp.JSON200.CurrentConfig.Database == desired {
+				return getResp.JSON200, sslEnforcementStatusApplied, nil
+			}
+			return getResp.JSON200, sslEnforcementStatusPending, nil
+		},
+	}
+	if _, err := stateConf.WaitForStateContext(ctx); err != nil {
+		return diag.Diagnostics{diag.NewErrorDiagnostic("SSL Enforcement Timeout",
+			fmt.Sprintf("SSL enforcement did not converge for project %s: %s", projectRef, err))}
+	}
+	plan.SslEnforcement = types.BoolValue(desired)
+	// Wait for ancillary services after the database reboot.
+	return waitForServicesActive(ctx, projectRef, client, timeout)
 }
 
 func parseConfig(field jsontypes.Normalized, config any) (jsontypes.Normalized, error) {

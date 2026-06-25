@@ -18,6 +18,7 @@ const (
 	authConfigApiPath          = projectApiPath + "/config/auth"
 	thirdPartyAuthApiPath      = authConfigApiPath + "/third-party-auth"
 	storageConfigApiPath       = projectApiPath + "/config/storage"
+	sslEnforcementApiPath      = projectApiPath + "/ssl-enforcement"
 	secretsApiPath             = projectApiPath + "/secrets"
 
 	functionSlug              = "foo"

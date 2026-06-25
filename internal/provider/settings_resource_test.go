@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -270,6 +271,15 @@ func TestAccSettingsResource(t *testing.T) {
 				"upstreamTarget": "main",
 			},
 		})
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, false))
+	// Import is followed by a refresh Read, so ssl_enforcement is fetched twice.
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, false))
 	// Step 3: update
 	gock.New(defaultApiEndpoint).
 		Get(postgrestApiPath).
@@ -1239,3 +1249,381 @@ resource "supabase_settings" "production" {
   # })
 }
 `, testProjectRef)
+
+var sslEnforcementEnabled = fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref     = %q
+  ssl_enforcement = true
+}
+`, testProjectRef)
+
+var sslEnforcementDisabled = fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref     = %q
+  ssl_enforcement = false
+}
+`, testProjectRef)
+
+func sslEnforcementResponse(applied, database bool) api.SslEnforcementResponse {
+	resp := api.SslEnforcementResponse{AppliedSuccessfully: applied}
+	resp.CurrentConfig.Database = database
+	return resp
+}
+
+// Verify the PUT body sends the expected boolean.
+func matchSslPutBody(database bool) gock.MatchFunc {
+	return func(req *http.Request, _ *gock.Request) (bool, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return false, err
+		}
+		req.Body = io.NopCloser(bytes.NewBuffer(body))
+		var payload api.SslEnforcementRequest
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return false, err
+		}
+		return payload.RequestedConfig.Database == database, nil
+	}
+}
+
+// Mock the PostgREST config check and services health check.
+func mockServicesActiveHealth() {
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		Reply(http.StatusOK).
+		JSON(allServicesHealthy)
+}
+
+func TestAccSettingsResource_SslEnforcementEnable(t *testing.T) {
+	defer gock.OffAll()
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+	gock.New(defaultApiEndpoint).
+		Put(sslEnforcementApiPath).
+		AddMatcher(matchSslPutBody(true)).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: sslEnforcementEnabled,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
+					resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccSettingsResource_SslEnforcementUpdate(t *testing.T) {
+	defer gock.OffAll()
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+	gock.New(defaultApiEndpoint).
+		Put(sslEnforcementApiPath).
+		AddMatcher(matchSslPutBody(true)).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+	gock.New(defaultApiEndpoint).
+		Put(sslEnforcementApiPath).
+		AddMatcher(matchSslPutBody(false)).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, false))
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, false))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: sslEnforcementEnabled,
+				Check:  resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
+			},
+			{
+				Config: sslEnforcementDisabled,
+				Check:  resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "false"),
+			},
+		},
+	})
+}
+
+func TestAccSettingsResource_SslEnforcementAsyncConvergence(t *testing.T) {
+	defer gock.OffAll()
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+
+	// PUT returns appliedSuccessfully=false, the reboot is still in progress.
+	gock.New(defaultApiEndpoint).
+		Put(sslEnforcementApiPath).
+		AddMatcher(matchSslPutBody(true)).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(false, false))
+
+	// Polling 1st GET: still not applied
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(false, false))
+
+	// Polling 2nd GET: converged
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+
+	// SSL enforcement triggers a database reboot, wait for services to recover.
+	mockServicesActiveHealth()
+
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: sslEnforcementEnabled,
+				Check:  resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
+			},
+		},
+	})
+}
+
+func TestAccSettingsResource_SslEnforcementCapabilityGatedImport(t *testing.T) {
+	defer gock.OffAll()
+
+	// Create with no ssl_enforcement so the resource enters state.
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+
+	// ImportState reads all configs. Return 404 for everything except SSL.
+	// The known capability-gated 400 keeps ssl_enforcement empty.
+	gock.New(defaultApiEndpoint).
+		Get(dbConfigApiPath).
+		Reply(http.StatusNotFound)
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
+		Reply(http.StatusNotFound)
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusNotFound)
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
+		Reply(http.StatusNotFound)
+	gock.New(defaultApiEndpoint).
+		Get(storageConfigApiPath).
+		Reply(http.StatusNotFound)
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusBadRequest).
+		BodyString(`"not allowed to configure SSL enforcements"`)
+
+	var minimalConfig = fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref = %q
+}
+`, testProjectRef)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: minimalConfig,
+				Check:  resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
+			},
+			{
+				ResourceName: "supabase_settings.test",
+				ImportState:  true,
+				ImportStateIdFunc: func(*terraform.State) (string, error) {
+					return testProjectRef, nil
+				},
+				ImportStateCheck: func(is []*terraform.InstanceState) error {
+					if len(is) != 1 {
+						return errors.New("expected a single resource in the state")
+					}
+					if v := is[0].Attributes["ssl_enforcement"]; v != "" {
+						return fmt.Errorf("ssl_enforcement should be empty for capability-gated project, got %q", v)
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
+func TestAccSettingsResource_SslEnforcementCapabilityGatedCreate(t *testing.T) {
+	defer gock.OffAll()
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+	gock.New(defaultApiEndpoint).
+		Put(sslEnforcementApiPath).
+		AddMatcher(matchSslPutBody(true)).
+		Reply(http.StatusBadRequest).
+		BodyString(`"not allowed to configure SSL enforcements"`)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      sslEnforcementEnabled,
+				ExpectError: regexp.MustCompile(`not supported`),
+			},
+		},
+	})
+}
+
+func TestAccSettingsResource_SslEnforcement400NonCapability(t *testing.T) {
+	defer gock.OffAll()
+
+	// Create first so ssl_enforcement is non-null on the next refresh.
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+	gock.New(defaultApiEndpoint).
+		Put(sslEnforcementApiPath).
+		AddMatcher(matchSslPutBody(true)).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+
+	// Read returns a non-matching 400 body, the provider must surface a real error.
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusBadRequest).
+		BodyString(`"bad request"`)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: sslEnforcementEnabled,
+				Check:  resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
+			},
+			{
+				Config:      sslEnforcementEnabled,
+				ExpectError: regexp.MustCompile(`got status 400`),
+			},
+		},
+	})
+}
+
+// Read should trust currentConfig.database even while the reboot is still in progress.
+func TestAccSettingsResource_SslEnforcementReadIgnoresAppliedSuccessfully(t *testing.T) {
+	defer gock.OffAll()
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+	gock.New(defaultApiEndpoint).
+		Put(sslEnforcementApiPath).
+		AddMatcher(matchSslPutBody(true)).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(true, true))
+
+	// Plan-only refresh during the reboot window. The plan must stay empty.
+	gock.New(defaultApiEndpoint).
+		Get(sslEnforcementApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON(sslEnforcementResponse(false, true))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: sslEnforcementEnabled,
+				Check:  resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
+			},
+			{
+				Config:   sslEnforcementEnabled,
+				PlanOnly: true,
+				Check:    resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
+			},
+		},
+	})
+}
