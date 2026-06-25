@@ -16,15 +16,18 @@ const (
 	networkRestrictionsApiPath = projectApiPath + "/network-restrictions"
 	postgrestApiPath           = projectApiPath + "/postgrest"
 	authConfigApiPath          = projectApiPath + "/config/auth"
+	thirdPartyAuthApiPath      = authConfigApiPath + "/third-party-auth"
 	storageConfigApiPath       = projectApiPath + "/config/storage"
 	secretsApiPath             = projectApiPath + "/secrets"
 
-	functionSlug          = "foo"
-	testApiKeyUUID        = "d9bece6b-52cc-4d67-a948-2349d46676f5" //nolint:gosec
-	testBranchUUID        = "3574ed44-5151-4f01-a6e3-2bc0339152d9" //nolint:gosec
-	apiKeyApiPath         = apiKeysApiPath + "/" + testApiKeyUUID
-	legacyApiKeysApiPath  = apiKeysApiPath + "/legacy"
-	branchApiPath         = "/v1/branches/" + testBranchUUID
-	deployFunctionApiPath = functionsApiPath + "/deploy"
-	functionApiPath       = functionsApiPath + "/" + functionSlug
+	functionSlug              = "foo"
+	testApiKeyUUID            = "d9bece6b-52cc-4d67-a948-2349d46676f5" //nolint:gosec
+	testThirdPartyAuthUUID    = "88888888-8888-4888-8888-888888888888" //nolint:gosec
+	testBranchUUID            = "3574ed44-5151-4f01-a6e3-2bc0339152d9" //nolint:gosec
+	apiKeyApiPath             = apiKeysApiPath + "/" + testApiKeyUUID
+	thirdPartyAuthItemApiPath = thirdPartyAuthApiPath + "/" + testThirdPartyAuthUUID
+	legacyApiKeysApiPath      = apiKeysApiPath + "/legacy"
+	branchApiPath             = "/v1/branches/" + testBranchUUID
+	deployFunctionApiPath     = functionsApiPath + "/deploy"
+	functionApiPath           = functionsApiPath + "/" + functionSlug
 )

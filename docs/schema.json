@@ -352,6 +352,7 @@
                 "description": "Controls whether `anon` and `service_role` JWT-based api keys should be enabled. Please note: these keys are no longer recommended ([more information here](https://supabase.com/docs/guides/api/api-keys#why-are-anon-and-servicerole-jwt-based-keys-no-longer-recommended)).",
                 "description_kind": "markdown",
                 "deprecated": true,
+                "deprecation_message": "Deprecated. This field will be removed once the transition to publishable and secret keys is complete.",
                 "optional": true,
                 "computed": true
               },
@@ -476,6 +477,91 @@
               }
             },
             "description": "Settings resource",
+            "description_kind": "markdown"
+          }
+        },
+        "supabase_third_party_auth": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "custom_jwks": {
+                "type": "string",
+                "description": "Custom public JWKS as serialised JSON. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured. This field follows Terraform provider industry practice for public verification keys and is not marked sensitive; do not include private or symmetric JWK material.",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Third-party auth integration identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "inserted_at": {
+                "type": "string",
+                "description": "Timestamp when the integration was created",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "jwks_url": {
+                "type": "string",
+                "description": "JWKS URL. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured.",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "oidc_issuer_url": {
+                "type": "string",
+                "description": "OIDC issuer URL. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured.",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "resolved_at": {
+                "type": "string",
+                "description": "Timestamp when JWKS was last resolved",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "resolved_jwks": {
+                "type": "string",
+                "description": "Resolved JWKS as serialised JSON",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "type": {
+                "type": "string",
+                "description": "Third-party auth integration type",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "updated_at": {
+                "type": "string",
+                "description": "Timestamp when the integration was last updated",
+                "description_kind": "markdown",
+                "computed": true
+              }
+            },
+            "block_types": {
+              "timeouts": {
+                "nesting_mode": "single",
+                "block": {
+                  "attributes": {
+                    "create": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    }
+                  },
+                  "description_kind": "plain"
+                }
+              }
+            },
+            "description": "Third-party auth resource",
             "description_kind": "markdown"
           }
         }

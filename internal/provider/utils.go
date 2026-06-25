@@ -200,6 +200,70 @@ func waitForServicesActive(ctx context.Context, projectRef string, client *api.C
 	return nil
 }
 
+func waitForAuthServiceActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
+	stateConf := &retry.StateChangeConf{
+		Timeout: timeout,
+		Pending: []string{waitForServicesStatusPending},
+		Target:  []string{waitForServicesStatusDone},
+		Refresh: func() (any, string, error) {
+			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{
+				Services: []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesAuth},
+			})
+			if err != nil {
+				return nil, "", fmt.Errorf("failed to get health information for project auth service: %w", err)
+			}
+			if resp.JSON200 == nil {
+				return nil, "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode(), resp.Body)
+			}
+
+			tflog.Debug(ctx, "Waiting for project auth service to become active", map[string]any{
+				"project_ref": projectRef,
+				"status":      resp.JSON200,
+			})
+
+			comingupCount := 0
+			var errs []error
+
+			for _, v := range *resp.JSON200 {
+				switch v.Status {
+				case api.UNHEALTHY:
+					err := errorFromServiceErrorDescription(v.Name, v.Error)
+					// errFailedToRetrieveHealth is always transient, poll again to get more information.
+					if errors.Is(err, errFailedToRetrieveHealth) {
+						tflog.Debug(ctx, "Retrying a recoverable error", map[string]any{
+							"error":  err,
+							"status": v,
+						})
+						comingupCount++
+						continue
+					}
+					errs = append(errs, err)
+				case api.COMINGUP:
+					comingupCount++
+				}
+			}
+
+			if err := errors.Join(errs...); err != nil {
+				return nil, "", err
+			}
+
+			if comingupCount > 0 {
+				return nil, waitForServicesStatusPending, nil
+			}
+
+			return resp.JSON200, waitForServicesStatusDone, nil
+		},
+	}
+
+	if _, err := stateConf.WaitForStateContext(ctx); err != nil {
+		return diag.Diagnostics{diag.NewErrorDiagnostic(
+			"Project Auth Service Unhealthy",
+			fmt.Sprintf("Project %s auth service did not become active within timeout: %s", projectRef, err),
+		)}
+	}
+	return nil
+}
+
 var (
 	errServiceNotFound        = errors.New("not found")
 	errFailedToRetrieveHealth = errors.New("failed to retrieve health information for the service")
