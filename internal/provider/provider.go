@@ -252,6 +252,7 @@ func (p *SupabaseProvider) Resources(ctx context.Context) []func() resource.Reso
 		NewEdgeFunctionResource,
 		NewEdgeFunctionSecretsResource,
 		NewApiKeyResource,
+		NewThirdPartyAuthResource,
 	}
 }
 
