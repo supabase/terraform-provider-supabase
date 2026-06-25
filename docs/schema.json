@@ -86,6 +86,1147 @@
             "description_kind": "markdown"
           }
         },
+        "supabase_auth_settings": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "disable_signup": {
+                "type": "bool",
+                "description": "Disable new user sign-ups.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "external": {
+                "nested_type": {
+                  "attributes": {
+                    "apple": {
+                      "nested_type": {
+                        "attributes": {
+                          "additional_client_ids": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "azure": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          },
+                          "url": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "bitbucket": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "discord": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "facebook": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "figma": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "github": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "gitlab": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          },
+                          "url": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "google": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "kakao": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "keycloak": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          },
+                          "url": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "linkedin_oidc": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "notion": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "slack": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "slack_oidc": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "spotify": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "twitch": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "twitter": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "workos": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          },
+                          "url": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "x": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "zoom": {
+                      "nested_type": {
+                        "attributes": {
+                          "client_id": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secret": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "OAuth provider configuration.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "external_email_enabled": {
+                "type": "bool",
+                "description": "Allow email sign-ins.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "external_phone_enabled": {
+                "type": "bool",
+                "description": "Allow phone sign-ins.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "hooks": {
+                "nested_type": {
+                  "attributes": {
+                    "custom_access_token": {
+                      "nested_type": {
+                        "attributes": {
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secrets": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          },
+                          "uri": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "mfa_verification_attempt": {
+                      "nested_type": {
+                        "attributes": {
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secrets": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          },
+                          "uri": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "password_verification_attempt": {
+                      "nested_type": {
+                        "attributes": {
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secrets": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          },
+                          "uri": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "send_email": {
+                      "nested_type": {
+                        "attributes": {
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secrets": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          },
+                          "uri": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "send_sms": {
+                      "nested_type": {
+                        "attributes": {
+                          "enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "secrets": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true,
+                            "sensitive": true
+                          },
+                          "uri": {
+                            "type": "string",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description_kind": "plain",
+                      "optional": true,
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Auth hook configuration.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Resource identifier (same as project_ref).",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "jwt_exp": {
+                "type": "number",
+                "description": "JWT expiry in seconds.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "mfa": {
+                "nested_type": {
+                  "attributes": {
+                    "max_enrolled_factors": {
+                      "type": "number",
+                      "description": "Maximum number of enrolled MFA factors per user.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "phone": {
+                      "nested_type": {
+                        "attributes": {
+                          "enroll_enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "max_frequency": {
+                            "type": "number",
+                            "description": "Minimum interval between MFA challenge requests (seconds).",
+                            "description_kind": "markdown",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "otp_length": {
+                            "type": "number",
+                            "description": "Length of the OTP code.",
+                            "description_kind": "markdown",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "template": {
+                            "type": "string",
+                            "description": "SMS template for MFA OTP.",
+                            "description_kind": "markdown",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "verify_enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description": "Phone MFA factor settings.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "totp": {
+                      "nested_type": {
+                        "attributes": {
+                          "enroll_enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "verify_enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description": "TOTP factor settings.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "web_authn": {
+                      "nested_type": {
+                        "attributes": {
+                          "enroll_enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          },
+                          "verify_enabled": {
+                            "type": "bool",
+                            "description_kind": "plain",
+                            "optional": true,
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "single"
+                      },
+                      "description": "WebAuthn factor settings.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Multi-factor authentication settings.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "password_min_length": {
+                "type": "number",
+                "description": "Minimum password length.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID.",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "secret_hashes": {
+                "type": [
+                  "map",
+                  "string"
+                ],
+                "description": "API-returned hashes for sensitive fields, keyed by API field name. Used for out-of-band drift detection.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "security": {
+                "nested_type": {
+                  "attributes": {
+                    "captcha_enabled": {
+                      "type": "bool",
+                      "description": "Enable CAPTCHA protection.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "captcha_provider": {
+                      "type": "string",
+                      "description": "CAPTCHA provider: `hcaptcha` or `turnstile`.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "captcha_secret": {
+                      "type": "string",
+                      "description": "CAPTCHA secret key.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true,
+                      "sensitive": true
+                    },
+                    "manual_linking_enabled": {
+                      "type": "bool",
+                      "description": "Enable manual account linking.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Security settings.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "sessions": {
+                "nested_type": {
+                  "attributes": {
+                    "inactivity_timeout": {
+                      "type": "number",
+                      "description": "Inactivity timeout (seconds). 0 means unlimited.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "single_per_user": {
+                      "type": "bool",
+                      "description": "Allow only one active session per user.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "timebox": {
+                      "type": "number",
+                      "description": "Maximum session duration (seconds). 0 means unlimited.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Session settings.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "site_url": {
+                "type": "string",
+                "description": "The base URL of the site.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "smtp": {
+                "nested_type": {
+                  "attributes": {
+                    "admin_email": {
+                      "type": "string",
+                      "description": "Sender email address.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "host": {
+                      "type": "string",
+                      "description": "SMTP host.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "max_frequency": {
+                      "type": "number",
+                      "description": "Minimum interval between emails sent to the same address (seconds).",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "pass": {
+                      "type": "string",
+                      "description": "SMTP password.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true,
+                      "sensitive": true
+                    },
+                    "port": {
+                      "type": "string",
+                      "description": "SMTP port.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "sender_name": {
+                      "type": "string",
+                      "description": "Display name for the sender.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    },
+                    "user": {
+                      "type": "string",
+                      "description": "SMTP username.",
+                      "description_kind": "markdown",
+                      "optional": true,
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Custom SMTP server settings.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              }
+            },
+            "block_types": {
+              "timeouts": {
+                "nesting_mode": "single",
+                "block": {
+                  "attributes": {
+                    "create": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    },
+                    "update": {
+                      "type": "string",
+                      "description": "A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as \"30s\" or \"2h45m\". Valid time units are \"s\" (seconds), \"m\" (minutes), \"h\" (hours).",
+                      "description_kind": "plain",
+                      "optional": true
+                    }
+                  },
+                  "description_kind": "plain"
+                }
+              }
+            },
+            "description": "Auth settings resource for a Supabase project.",
+            "description_kind": "markdown"
+          }
+        },
         "supabase_branch": {
           "version": 0,
           "block": {

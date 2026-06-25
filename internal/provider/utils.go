@@ -31,6 +31,26 @@ func NullableToString[T ~string](n nullable.Nullable[T]) tftypes.String {
 	return tftypes.StringNull()
 }
 
+// NullableToBool converts an oapi-codegen [nullable.Nullable] bool to a terraform bool type.
+func NullableToBool[T ~bool](n nullable.Nullable[T]) tftypes.Bool {
+	if n.IsSpecified() && !n.IsNull() {
+		return tftypes.BoolValue(bool(n.MustGet()))
+	}
+	return tftypes.BoolNull()
+}
+
+type numericType interface {
+	~int | ~int32 | ~int64 | ~float32 | ~float64
+}
+
+// NullableToInt64 converts an oapi-codegen [nullable.Nullable] integer or float to a terraform Int64 type.
+func NullableToInt64[T numericType](n nullable.Nullable[T]) tftypes.Int64 {
+	if n.IsSpecified() && !n.IsNull() {
+		return tftypes.Int64Value(int64(n.MustGet()))
+	}
+	return tftypes.Int64Null()
+}
+
 const defaultWaitTimeout = 5 * time.Minute
 
 var terminalProjectStatuses = []api.V1ProjectWithDatabaseResponseStatus{
