@@ -29,7 +29,8 @@ func TestAccBranchResource(t *testing.T) {
 	// Step 1: create
 	gock.New(defaultApiEndpoint).
 		Get(branchesApiPath).
-		Reply(http.StatusUnprocessableEntity)
+		Reply(http.StatusOK).
+		JSON([]api.BranchResponse{})
 	gock.New(defaultApiEndpoint).
 		Post(branchesApiPath).
 		Reply(http.StatusCreated).
