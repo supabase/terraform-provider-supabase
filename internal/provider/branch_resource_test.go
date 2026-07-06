@@ -56,6 +56,13 @@ func TestAccBranchResource(t *testing.T) {
 		Get(branchApiPath).
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
+	gock.New(defaultApiEndpoint).
+		Get(branchesApiPath + "/main").
+		Reply(http.StatusOK).
+		JSON(api.BranchResponse{
+			ParentProjectRef: testProjectRef,
+			GitBranch:        Ptr("main"),
+		})
 	// Step 2: read
 	gock.New(defaultApiEndpoint).
 		Get(branchApiPath).
@@ -71,6 +78,13 @@ func TestAccBranchResource(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	gock.New(defaultApiEndpoint).
+		Get(branchesApiPath + "/main").
+		Reply(http.StatusOK).
+		JSON(api.BranchResponse{
+			ParentProjectRef: testProjectRef,
+			GitBranch:        Ptr("main"),
+		})
+	gock.New(defaultApiEndpoint).
 		Patch(branchApiPath).
 		Reply(http.StatusOK).
 		JSON(api.BranchResponse{
@@ -82,6 +96,13 @@ func TestAccBranchResource(t *testing.T) {
 		Get(branchApiPath).
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
+	gock.New(defaultApiEndpoint).
+		Get(branchesApiPath + "/develop").
+		Reply(http.StatusOK).
+		JSON(api.BranchResponse{
+			ParentProjectRef: testProjectRef,
+			GitBranch:        Ptr("develop"),
+		})
 	// Step 4: delete
 	gock.New(defaultApiEndpoint).
 		Delete(branchApiPath).
@@ -96,6 +117,7 @@ func TestAccBranchResource(t *testing.T) {
 				Config: examples.BranchResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_branch.new", "id", testBranchUUID),
+					resource.TestCheckResourceAttr("supabase_branch.new", "persistent", "false"),
 				),
 			},
 			// ImportState testing
@@ -103,7 +125,7 @@ func TestAccBranchResource(t *testing.T) {
 				ResourceName:            "supabase_branch.new",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"git_branch", "parent_project_ref"},
+				ImportStateVerifyIgnore: []string{"git_branch", "parent_project_ref", "persistent"},
 			},
 			// Update and Read testing
 			{
