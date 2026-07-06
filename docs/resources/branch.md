@@ -29,7 +29,7 @@ resource "supabase_branch" "new" {
 
 ### Optional
 
-- `persistent` (Boolean) Branch persistency, default false (preview branch)
+- `persistent` (Boolean) Branch persistency
 - `region` (String) Database region
 
 ### Read-Only
