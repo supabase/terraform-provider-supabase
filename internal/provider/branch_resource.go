@@ -293,6 +293,7 @@ func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 		(resp.StatusCode() == http.StatusOK && len(*resp.JSON200) == 0) {
 		httpResp, err := client.V1CreateABranchWithResponse(ctx, plan.ParentProjectRef.ValueString(), api.CreateBranchBody{
 			BranchName: "Production",
+			IsDefault:  Ptr(true),
 		})
 		if err != nil {
 			msg := fmt.Sprintf("Unable to enable branching, got error: %s", err)
