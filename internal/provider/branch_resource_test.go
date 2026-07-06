@@ -19,6 +19,7 @@ const (
 resource "supabase_branch" "new" {
   parent_project_ref = "` + testProjectRef + `"
   git_branch         = "develop"
+  persistent         = true
 }
 `
 )
@@ -91,6 +92,7 @@ func TestAccBranchResource(t *testing.T) {
 			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("develop"),
+			Persistent:       true,
 		})
 	gock.New(defaultApiEndpoint).
 		Get(branchApiPath).
@@ -102,8 +104,16 @@ func TestAccBranchResource(t *testing.T) {
 		JSON(api.BranchResponse{
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("develop"),
+			Persistent:       true,
 		})
-	// Step 4: delete
+	// Step 4: delete (persistent branch — rejected, demoted, then deleted)
+	gock.New(defaultApiEndpoint).
+		Delete(branchApiPath).
+		Reply(http.StatusUnprocessableEntity)
+	gock.New(defaultApiEndpoint).
+		Patch(branchApiPath).
+		Reply(http.StatusOK).
+		JSON(api.BranchResponse{})
 	gock.New(defaultApiEndpoint).
 		Delete(branchApiPath).
 		Reply(http.StatusOK)
@@ -132,6 +142,7 @@ func TestAccBranchResource(t *testing.T) {
 				Config: testAccBranchResourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_branch.new", "git_branch", "develop"),
+					resource.TestCheckResourceAttr("supabase_branch.new", "persistent", "true"),
 					// resource.TestCheckResourceAttrSet("supabase_branch.new", "database"),
 				),
 			},
