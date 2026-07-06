@@ -289,6 +289,10 @@ func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	// 1. Enable branching
+	if resp.StatusCode() == http.StatusOK && resp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to list branches, got status %d: %s", resp.StatusCode(), resp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
 	if resp.StatusCode() == http.StatusUnprocessableEntity ||
 		(resp.StatusCode() == http.StatusOK && len(*resp.JSON200) == 0) {
 		httpResp, err := client.V1CreateABranchWithResponse(ctx, plan.ParentProjectRef.ValueString(), api.CreateBranchBody{
