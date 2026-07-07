@@ -415,6 +415,7 @@ func readAuthConfig(ctx context.Context, state *SettingsResourceModel, client *a
 	resultBody := convertAuthResponse(ctx, httpResp.JSON200)
 	// Override sensitive fields with values from state
 	copySensitiveFields(stateBody.UpdateAuthConfigBody, &resultBody)
+	preserveAppleAdditionalClientIDs(stateBody.UpdateAuthConfigBody, &resultBody)
 
 	if state.Auth, err = parseConfig(state.Auth, resultBody); err != nil {
 		msg := fmt.Sprintf("Unable to read auth settings, got error: %s", err)
@@ -442,6 +443,7 @@ func updateAuthConfig(ctx context.Context, plan *SettingsResourceModel, client *
 	resultBody := convertAuthResponse(ctx, httpResp.JSON200)
 	// Copy over sensitive fields from TF plan
 	copySensitiveFields(body, &resultBody)
+	preserveAppleAdditionalClientIDs(body, &resultBody)
 
 	if plan.Auth, err = parseConfig(plan.Auth, resultBody); err != nil {
 		msg := fmt.Sprintf("Unable to update auth settings, got error: %s", err)
@@ -735,6 +737,19 @@ func copySensitiveFields(source api.UpdateAuthConfigBody, target *api.UpdateAuth
 	target.HookPasswordVerificationAttemptSecrets = source.HookPasswordVerificationAttemptSecrets
 	target.HookSendEmailSecrets = source.HookSendEmailSecrets
 	target.HookSendSmsSecrets = source.HookSendSmsSecrets
+}
+
+func preserveAppleAdditionalClientIDs(source api.UpdateAuthConfigBody, target *api.UpdateAuthConfigBody) {
+	if !source.ExternalAppleAdditionalClientIds.IsSpecified() {
+		return
+	}
+
+	// API can fold additional Apple client IDs into external_apple_client_id.
+	// Preserve the user's split fields to avoid post-apply state drift.
+	target.ExternalAppleAdditionalClientIds = source.ExternalAppleAdditionalClientIds
+	if source.ExternalAppleClientId.IsSpecified() {
+		target.ExternalAppleClientId = source.ExternalAppleClientId
+	}
 }
 
 type NetworkConfig struct {
