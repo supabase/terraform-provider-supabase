@@ -807,6 +807,106 @@ resource "supabase_settings" "test" {
 	})
 }
 
+func TestAccSettingsResource_AppleAdditionalClientIds(t *testing.T) {
+	defer gock.OffAll()
+
+	const appleClientID = "com.example.service"
+	const appleAdditionalClientIDs = "com.example.ios,com.example.macos"
+	mergedAppleClientIDs := appleClientID + "," + appleAdditionalClientIDs
+	authResponse := func() api.AuthConfigResponse {
+		return api.AuthConfigResponse{
+			SiteUrl:                          nullable.NewNullableWithValue("http://localhost:3000"),
+			ExternalAppleEnabled:             nullable.NewNullableWithValue(true),
+			ExternalAppleClientId:            nullable.NewNullableWithValue(mergedAppleClientIDs),
+			ExternalAppleAdditionalClientIds: nullable.NewNullNullable[string](),
+			ExternalAppleEmailOptional:       nullable.NewNullableWithValue(false),
+			SmtpAdminEmail:                   nullable.NewNullNullable[openapi_types.Email](),
+			MailerOtpExp:                     3600,
+			MfaPhoneOtpLength:                6,
+			SmsOtpLength:                     6,
+		}
+	}
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		Reply(http.StatusOK).
+		JSON(allServicesHealthy)
+	gock.New(defaultApiEndpoint).
+		Patch(authConfigApiPath).
+		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				return false, err
+			}
+			req.Body = io.NopCloser(bytes.NewBuffer(body))
+
+			var payload map[string]any
+			if err := json.Unmarshal(body, &payload); err != nil {
+				return false, err
+			}
+
+			return payload["external_apple_client_id"] == appleClientID &&
+				payload["external_apple_additional_client_ids"] == appleAdditionalClientIDs, nil
+		}).
+		Reply(http.StatusOK).
+		JSON(authResponse())
+	for range 2 {
+		gock.New(defaultApiEndpoint).
+			Get(authConfigApiPath).
+			Reply(http.StatusOK).
+			JSON(authResponse())
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref = "%s"
+
+  auth = jsonencode({
+    site_url                             = "http://localhost:3000"
+    external_apple_enabled              = true
+    external_apple_client_id            = "%s"
+    external_apple_additional_client_ids = "%s"
+    external_apple_email_optional       = false
+  })
+}
+`, testProjectRef, appleClientID, appleAdditionalClientIDs),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
+					resource.TestCheckResourceAttrWith("supabase_settings.test", "auth", func(value string) error {
+						var auth map[string]any
+						if err := json.Unmarshal([]byte(value), &auth); err != nil {
+							return err
+						}
+						if auth["external_apple_client_id"] != appleClientID {
+							return fmt.Errorf("expected external_apple_client_id to be %s, got %v", appleClientID, auth["external_apple_client_id"])
+						}
+						if auth["external_apple_additional_client_ids"] != appleAdditionalClientIDs {
+							return fmt.Errorf("expected external_apple_additional_client_ids to be %s, got %v", appleAdditionalClientIDs, auth["external_apple_additional_client_ids"])
+						}
+						return nil
+					}),
+				),
+			},
+		},
+	})
+}
+
 func TestAccSettingsResource_IgnoreChanges(t *testing.T) {
 	defer gock.OffAll()
 
