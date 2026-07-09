@@ -15,6 +15,8 @@ var (
 	EdgeFunctionSecretsResourceConfig string
 	//go:embed resources/supabase_apikey/resource.tf
 	ApiKeyResourceConfig string
+	//go:embed resources/supabase_third_party_auth/resource.tf
+	ThirdPartyAuthResourceConfig string
 	//go:embed data-sources/supabase_branch/data-source.tf
 	BranchDataSourceConfig string
 	//go:embed data-sources/supabase_pooler/data-source.tf
