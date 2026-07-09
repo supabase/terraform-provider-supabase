@@ -256,6 +256,41 @@ func TestWaitForServicesActive_SkipsRestWhenDataApiDisabled(t *testing.T) {
 	}
 }
 
+func TestWaitForAuthServiceActive_ChecksOnlyAuth(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	var capturedServices []string
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		SetMatcher(gock.NewBasicMatcher()).
+		AddMatcher(func(req *http.Request, ereq *gock.Request) (bool, error) {
+			capturedServices = req.URL.Query()["services"]
+			return true, nil
+		}).
+		Reply(http.StatusOK).
+		JSON([]api.V1ServiceHealthResponse{
+			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		})
+
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	diags := waitForAuthServiceActive(t.Context(), testProjectRef, client, 5*time.Minute)
+	if diags.HasError() {
+		t.Errorf("Expected success, got errors: %v", diags)
+	}
+	if !slices.Equal(capturedServices, []string{string(api.V1GetServicesHealthParamsServicesAuth)}) {
+		t.Errorf("Expected only auth in services query param, got: %v", capturedServices)
+	}
+	if gock.HasUnmatchedRequest() {
+		t.Errorf("Expected no unmatched requests, got: %v", gock.GetUnmatchedRequests())
+	}
+}
+
 func TestWaitForServicesActive_TransientErrorsKeepsPolling(t *testing.T) {
 	defer gock.OffAll()
 	gock.InterceptClient(http.DefaultClient)

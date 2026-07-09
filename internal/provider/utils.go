@@ -121,28 +121,53 @@ func isDataApiDisabled(ctx context.Context, projectRef string, client *api.Clien
 }
 
 func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
+	getServices := func() []api.V1GetServicesHealthParamsServices {
+		services := allProjectServices
+		disabled, diags := isDataApiDisabled(ctx, projectRef, client)
+		if diags.HasError() {
+			tflog.Warn(ctx, fmt.Sprintf("Failed to check Data API status for project %s, continuing to check all services: %s", projectRef, diags.Errors()))
+		} else if disabled {
+			services = slices.DeleteFunc(slices.Clone(allProjectServices), func(s api.V1GetServicesHealthParamsServices) bool {
+				return s == api.V1GetServicesHealthParamsServicesRest
+			})
+		}
+		return services
+	}
+
+	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "services", "Project Services Unhealthy", true)
+}
+
+func waitForAuthServiceActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
+	getServices := func() []api.V1GetServicesHealthParamsServices {
+		return []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesAuth}
+	}
+
+	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "auth service", "Project Auth Service Unhealthy", false)
+}
+
+func waitForProjectServicesActive(
+	ctx context.Context,
+	projectRef string,
+	client *api.ClientWithResponses,
+	timeout time.Duration,
+	getServices func() []api.V1GetServicesHealthParamsServices,
+	serviceLabel string,
+	unhealthySummary string,
+	retryPoolerNotFound bool,
+) diag.Diagnostics {
 	stateConf := &retry.StateChangeConf{
 		Timeout: timeout,
 		Pending: []string{waitForServicesStatusPending},
 		Target:  []string{waitForServicesStatusDone},
 		Refresh: func() (any, string, error) {
-			services := allProjectServices
-			disabled, diags := isDataApiDisabled(ctx, projectRef, client)
-			if diags.HasError() {
-				tflog.Warn(ctx, fmt.Sprintf("Failed to check Data API status for project %s, continuing to check all services: %s", projectRef, diags.Errors()))
-			} else if disabled {
-				services = slices.DeleteFunc(slices.Clone(allProjectServices), func(s api.V1GetServicesHealthParamsServices) bool {
-					return s == api.V1GetServicesHealthParamsServicesRest
-				})
-			}
-			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{Services: services})
+			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{Services: getServices()})
 			if err != nil {
-				return nil, "", fmt.Errorf("failed to get health information for project services: %w", err)
+				return nil, "", fmt.Errorf("failed to get health information for project %s: %w", serviceLabel, err)
 			}
 			if resp.JSON200 == nil {
 				return nil, "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode(), resp.Body)
 			}
-			tflog.Debug(ctx, "Waiting for project services to become active", map[string]any{
+			tflog.Debug(ctx, fmt.Sprintf("Waiting for project %s to become active", serviceLabel), map[string]any{
 				"project_ref": projectRef,
 				"status":      resp.JSON200,
 			})
@@ -165,7 +190,7 @@ func waitForServicesActive(ctx context.Context, projectRef string, client *api.C
 					}
 					// pooler reports UNHEALTHY: "not found" for the first couple of seconds of provisioning,
 					// so we treat it as COMINGUP
-					if v.Name == api.V1ServiceHealthResponseNamePooler && errors.Is(err, errServiceNotFound) {
+					if retryPoolerNotFound && v.Name == api.V1ServiceHealthResponseNamePooler && errors.Is(err, errServiceNotFound) {
 						tflog.Debug(ctx, "Retrying a recoverable error", map[string]any{
 							"error":  err,
 							"status": v,
@@ -193,8 +218,8 @@ func waitForServicesActive(ctx context.Context, projectRef string, client *api.C
 
 	if _, err := stateConf.WaitForStateContext(ctx); err != nil {
 		return diag.Diagnostics{diag.NewErrorDiagnostic(
-			"Project Services Unhealthy",
-			fmt.Sprintf("Project %s services did not become active within timeout: %s", projectRef, err),
+			unhealthySummary,
+			fmt.Sprintf("Project %s %s did not become active within timeout: %s", projectRef, serviceLabel, err),
 		)}
 	}
 	return nil
