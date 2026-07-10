@@ -283,15 +283,21 @@ func readBranchDatabase(ctx context.Context, state *BranchResourceModel, client 
 }
 
 func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	resp, err := client.V1ListAllBranches(ctx, plan.ParentProjectRef.ValueString())
+	resp, err := client.V1ListAllBranchesWithResponse(ctx, plan.ParentProjectRef.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to enable branching, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	// 1. Enable branching
-	if resp.StatusCode == http.StatusUnprocessableEntity {
+	if resp.StatusCode() == http.StatusOK && resp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to list branches, got status %d: %s", resp.StatusCode(), resp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if resp.StatusCode() == http.StatusUnprocessableEntity ||
+		(resp.StatusCode() == http.StatusOK && len(*resp.JSON200) == 0) {
 		httpResp, err := client.V1CreateABranchWithResponse(ctx, plan.ParentProjectRef.ValueString(), api.CreateBranchBody{
 			BranchName: "Production",
+			IsDefault:  Ptr(true),
 		})
 		if err != nil {
 			msg := fmt.Sprintf("Unable to enable branching, got error: %s", err)
