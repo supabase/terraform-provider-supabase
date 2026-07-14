@@ -58,12 +58,13 @@ func TestAccBranchResource(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	gock.New(defaultApiEndpoint).
-		Get(branchesApiPath + "/main").
+		Get(branchesApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchResponse{
+		JSON([]api.BranchResponse{{
+			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("main"),
-		})
+		}})
 	// Step 2: read
 	gock.New(defaultApiEndpoint).
 		Get(branchApiPath).
@@ -79,12 +80,13 @@ func TestAccBranchResource(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	gock.New(defaultApiEndpoint).
-		Get(branchesApiPath + "/main").
+		Get(branchesApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchResponse{
+		JSON([]api.BranchResponse{{
+			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("main"),
-		})
+		}})
 	gock.New(defaultApiEndpoint).
 		Patch(branchApiPath).
 		Reply(http.StatusOK).
@@ -99,13 +101,14 @@ func TestAccBranchResource(t *testing.T) {
 		Reply(http.StatusOK).
 		JSON(api.BranchDetailResponse{})
 	gock.New(defaultApiEndpoint).
-		Get(branchesApiPath + "/develop").
+		Get(branchesApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchResponse{
+		JSON([]api.BranchResponse{{
+			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("develop"),
 			Persistent:       true,
-		})
+		}})
 	// Step 4: delete (persistent branch — rejected, demoted, then deleted)
 	gock.New(defaultApiEndpoint).
 		Delete(branchApiPath).

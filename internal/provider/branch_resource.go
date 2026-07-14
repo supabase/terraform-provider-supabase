@@ -270,10 +270,10 @@ func readBranch(ctx context.Context, state *BranchResourceModel, client *api.Cli
 }
 
 func readBranchPersistent(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	if state.ParentProjectRef.IsNull() || state.GitBranch.IsNull() {
+	if state.ParentProjectRef.IsNull() || state.Id.IsNull() {
 		return nil
 	}
-	httpResp, err := client.V1GetABranchWithResponse(ctx, state.ParentProjectRef.ValueString(), state.GitBranch.ValueString())
+	httpResp, err := client.V1ListAllBranchesWithResponse(ctx, state.ParentProjectRef.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read branch, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
@@ -282,7 +282,12 @@ func readBranchPersistent(ctx context.Context, state *BranchResourceModel, clien
 		msg := fmt.Sprintf("Unable to read branch, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-	state.Persistent = types.BoolValue(httpResp.JSON200.Persistent)
+	for _, branch := range *httpResp.JSON200 {
+		if branch.Id.String() == state.Id.ValueString() {
+			state.Persistent = types.BoolValue(branch.Persistent)
+			return nil
+		}
+	}
 	return nil
 }
 
