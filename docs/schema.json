@@ -168,6 +168,13 @@
                 "description_kind": "markdown",
                 "required": true
               },
+              "persistent": {
+                "type": "bool",
+                "description": "Branch persistency",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
               "region": {
                 "type": "string",
                 "description": "Database region",

@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -65,6 +66,7 @@ type BranchResourceModel struct {
 	GitBranch        types.String `tfsdk:"git_branch"`
 	ParentProjectRef types.String `tfsdk:"parent_project_ref"`
 	Region           types.String `tfsdk:"region"`
+	Persistent       types.Bool   `tfsdk:"persistent"`
 	Database         types.Object `tfsdk:"database"`
 	Id               types.String `tfsdk:"id"`
 }
@@ -93,6 +95,12 @@ func (r *BranchResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+			},
+			"persistent": schema.BoolAttribute{
+				MarkdownDescription: "Branch persistency",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"database": schema.SingleNestedAttribute{
 				MarkdownDescription: "Database connection details",
@@ -232,6 +240,7 @@ func updateBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 	httpResp, err := client.V1UpdateABranchConfigWithResponse(ctx, plan.Id.ValueString(), api.UpdateBranchBody{
 		BranchName: plan.GitBranch.ValueStringPointer(),
 		GitBranch:  plan.GitBranch.ValueStringPointer(),
+		Persistent: plan.Persistent.ValueBoolPointer(),
 	})
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update branch, got error: %s", err)
@@ -244,6 +253,7 @@ func updateBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 
 	plan.ParentProjectRef = types.StringValue(httpResp.JSON200.ParentProjectRef)
 	plan.GitBranch = types.StringPointerValue(httpResp.JSON200.GitBranch)
+	plan.Persistent = types.BoolValue(httpResp.JSON200.Persistent)
 	if diag := readBranchDatabase(ctx, plan, client); diag.HasError() {
 		for _, err := range diag.Errors() {
 			tflog.Warn(ctx, fmt.Sprintf("%s: %s", err.Summary(), err.Detail()))
@@ -253,7 +263,32 @@ func updateBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 }
 
 func readBranch(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	return readBranchDatabase(ctx, state, client)
+	if diags := readBranchDatabase(ctx, state, client); diags.HasError() {
+		return diags
+	}
+	return readBranchPersistent(ctx, state, client)
+}
+
+func readBranchPersistent(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	if state.ParentProjectRef.IsNull() || state.Id.IsNull() {
+		return nil
+	}
+	httpResp, err := client.V1ListAllBranchesWithResponse(ctx, state.ParentProjectRef.ValueString())
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read branch, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read branch, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	for _, branch := range *httpResp.JSON200 {
+		if branch.Id.String() == state.Id.ValueString() {
+			state.Persistent = types.BoolValue(branch.Persistent)
+			return nil
+		}
+	}
+	return nil
 }
 
 func readBranchDatabase(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
@@ -313,6 +348,7 @@ func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 		BranchName: plan.GitBranch.ValueString(),
 		GitBranch:  plan.GitBranch.ValueStringPointer(),
 		Region:     plan.Region.ValueStringPointer(),
+		Persistent: plan.Persistent.ValueBoolPointer(),
 	})
 	if err != nil {
 		msg := fmt.Sprintf("Unable to create branch, got error: %s", err)
@@ -324,6 +360,7 @@ func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 	}
 	// Update computed fields
 	plan.Id = types.StringValue(httpResp.JSON201.Id.String())
+	plan.Persistent = types.BoolValue(httpResp.JSON201.Persistent)
 	if diag := readBranchDatabase(ctx, plan, client); diag.HasError() {
 		for _, err := range diag.Errors() {
 			tflog.Warn(ctx, fmt.Sprintf("%s: %s", err.Summary(), err.Detail()))
@@ -338,8 +375,34 @@ func deleteBranch(ctx context.Context, state *BranchResourceModel, client *api.C
 		msg := fmt.Sprintf("Unable to delete branch, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
+	// on 422 --> attempt demote and retry
+	if httpResp.StatusCode() == http.StatusUnprocessableEntity {
+		if diags := demoteBranch(ctx, state, client); diags.HasError() {
+			return diags
+		}
+		httpResp, err = client.V1DeleteABranchWithResponse(ctx, state.Id.ValueString(), &api.V1DeleteABranchParams{})
+		if err != nil {
+			msg := fmt.Sprintf("Unable to delete branch, got error: %s", err)
+			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		}
+	}
 	if httpResp.StatusCode() != http.StatusOK {
 		msg := fmt.Sprintf("Unable to delete branch, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return nil
+}
+
+func demoteBranch(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	httpResp, err := client.V1UpdateABranchConfigWithResponse(ctx, state.Id.ValueString(), api.UpdateBranchBody{
+		Persistent: Ptr(false),
+	})
+	if err != nil {
+		msg := fmt.Sprintf("Unable to demote persistent branch, got error: %s", err)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to demote persistent branch, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	return nil
