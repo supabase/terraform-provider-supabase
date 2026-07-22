@@ -6,6 +6,7 @@ package provider
 import (
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -39,6 +40,159 @@ func TestWaitForProjectActive_TerminalState(t *testing.T) {
 
 	if !diags.HasError() {
 		t.Errorf("Expected error for terminal state, got success")
+	}
+}
+
+func TestWaitForProjectActive_BranchRefFallsBackToBranchesEndpoint(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	// Branch refs are not returned by the projects endpoint.
+	gock.New(defaultApiEndpoint).
+		Get(branchProjectApiPath).
+		Reply(http.StatusNotFound).
+		JSON(map[string]string{"message": "Project not found"})
+
+	gock.New(defaultApiEndpoint).
+		Get(branchRefApiPath).
+		Reply(http.StatusOK).
+		JSON(api.BranchDetailResponse{
+			Ref:    testBranchRef,
+			Status: api.BranchDetailResponseStatusACTIVEHEALTHY,
+		})
+
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	diags := waitForProjectActive(t.Context(), testBranchRef, client, 5*time.Minute)
+	if diags.HasError() {
+		t.Errorf("Expected success for active branch ref, got errors: %v", diags)
+	}
+}
+
+func TestWaitForProjectActive_BranchRefPollsUntilActive(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	for _, status := range []api.BranchDetailResponseStatus{
+		api.BranchDetailResponseStatusCOMINGUP,
+		api.BranchDetailResponseStatusACTIVEHEALTHY,
+	} {
+		gock.New(defaultApiEndpoint).
+			Get(branchProjectApiPath).
+			Reply(http.StatusNotFound).
+			JSON(map[string]string{"message": "Project not found"})
+		gock.New(defaultApiEndpoint).
+			Get(branchRefApiPath).
+			Reply(http.StatusOK).
+			JSON(api.BranchDetailResponse{
+				Ref:    testBranchRef,
+				Status: status,
+			})
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		client, err := api.NewClientWithResponses(defaultApiEndpoint)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		diags := waitForProjectActive(t.Context(), testBranchRef, client, 5*time.Minute)
+		if diags.HasError() {
+			t.Errorf("Expected success once branch becomes active, got errors: %v", diags)
+		}
+	})
+}
+
+func TestWaitForProjectActive_BranchRefTerminalState(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	gock.New(defaultApiEndpoint).
+		Get(branchProjectApiPath).
+		Reply(http.StatusNotFound).
+		JSON(map[string]string{"message": "Project not found"})
+
+	gock.New(defaultApiEndpoint).
+		Get(branchRefApiPath).
+		Reply(http.StatusOK).
+		JSON(api.BranchDetailResponse{
+			Ref:    testBranchRef,
+			Status: api.BranchDetailResponseStatusINITFAILED,
+		})
+
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	diags := waitForProjectActive(t.Context(), testBranchRef, client, 5*time.Minute)
+	if !diags.HasError() {
+		t.Errorf("Expected error for branch in terminal state, got success")
+	}
+}
+
+func TestWaitForProjectActive_UnknownRefFails(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	gock.New(defaultApiEndpoint).
+		Get(branchProjectApiPath).
+		Reply(http.StatusNotFound).
+		JSON(map[string]string{"message": "Project not found"})
+
+	gock.New(defaultApiEndpoint).
+		Get(branchRefApiPath).
+		Reply(http.StatusNotFound).
+		JSON(map[string]string{"message": "Branch not found"})
+
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	diags := waitForProjectActive(t.Context(), testBranchRef, client, 5*time.Minute)
+	if !diags.HasError() {
+		t.Errorf("Expected error for ref unknown to both endpoints, got success")
+	}
+	// The original project lookup failure is surfaced, not the branch 404.
+	if detail := diags.Errors()[0].Detail(); !strings.Contains(detail, "Project not found") {
+		t.Errorf("Expected error to surface the project lookup failure, got: %s", detail)
+	}
+}
+
+func TestWaitForProjectActive_BranchEndpointErrorFails(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	gock.New(defaultApiEndpoint).
+		Get(branchProjectApiPath).
+		Reply(http.StatusNotFound).
+		JSON(map[string]string{"message": "Project not found"})
+
+	gock.New(defaultApiEndpoint).
+		Get(branchRefApiPath).
+		Reply(http.StatusInternalServerError).
+		JSON(map[string]string{"message": "Internal server error"})
+
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	diags := waitForProjectActive(t.Context(), testBranchRef, client, 5*time.Minute)
+	if !diags.HasError() {
+		t.Errorf("Expected error when branches endpoint fails, got success")
+	}
+	if detail := diags.Errors()[0].Detail(); !strings.Contains(detail, "unexpected status 500") {
+		t.Errorf("Expected error to surface the branches endpoint failure, got: %s", detail)
 	}
 }
 

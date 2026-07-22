@@ -1727,3 +1727,103 @@ func TestAccSettingsResource_SslEnforcementReadIgnoresAppliedSuccessfully(t *tes
 		},
 	})
 }
+
+// Branch refs return 404 from /v1/projects/{ref}; their status is served by
+// /v1/branches/{ref} instead. Settings must still apply against them.
+// https://github.com/supabase/terraform-provider-supabase/issues/345
+func TestAccSettingsResource_BranchRef(t *testing.T) {
+	defer gock.OffAll()
+
+	exactBranchProjectPath := func(req *http.Request, _ *gock.Request) (bool, error) {
+		return req.URL.Path == branchProjectApiPath, nil
+	}
+	branchAuthResponse := func(jwtExp int) api.AuthConfigResponse {
+		return api.AuthConfigResponse{
+			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+			JwtExp:            nullable.NewNullableWithValue(jwtExp),
+			MailerOtpExp:      3600,
+			MfaPhoneOtpLength: 6,
+			SmsOtpLength:      6,
+			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+		}
+	}
+	branchConfig := func(jwtExp int) string {
+		return fmt.Sprintf(`
+resource "supabase_settings" "branch" {
+  project_ref = "%s"
+
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+    jwt_exp  = %d
+  })
+}
+`, testBranchRef, jwtExp)
+	}
+
+	// Create and update each wait for the project to become active; branch
+	// refs 404 on the projects endpoint and resolve on the branches endpoint.
+	for range 2 {
+		gock.New(defaultApiEndpoint).
+			Get(branchProjectApiPath).
+			AddMatcher(exactBranchProjectPath).
+			Reply(http.StatusNotFound).
+			JSON(map[string]string{"message": "Project not found"})
+		gock.New(defaultApiEndpoint).
+			Get(branchRefApiPath).
+			Reply(http.StatusOK).
+			JSON(api.BranchDetailResponse{
+				Ref:    testBranchRef,
+				Status: api.BranchDetailResponseStatusACTIVEHEALTHY,
+			})
+		gock.New(defaultApiEndpoint).
+			Get(branchPostgrestApiPath).
+			Reply(http.StatusOK).
+			JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
+		gock.New(defaultApiEndpoint).
+			Get(branchHealthApiPath).
+			Reply(http.StatusOK).
+			JSON(allServicesHealthy)
+	}
+
+	// Step 1: create
+	gock.New(defaultApiEndpoint).
+		Patch(branchAuthConfigApiPath).
+		Reply(http.StatusOK).
+		JSON(branchAuthResponse(3600))
+	for range 2 {
+		gock.New(defaultApiEndpoint).
+			Get(branchAuthConfigApiPath).
+			Reply(http.StatusOK).
+			JSON(branchAuthResponse(3600))
+	}
+	// Step 2: update
+	gock.New(defaultApiEndpoint).
+		Patch(branchAuthConfigApiPath).
+		Reply(http.StatusOK).
+		JSON(branchAuthResponse(1800))
+	for range 2 {
+		gock.New(defaultApiEndpoint).
+			Get(branchAuthConfigApiPath).
+			Reply(http.StatusOK).
+			JSON(branchAuthResponse(1800))
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: branchConfig(3600),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.branch", "id", testBranchRef),
+				),
+			},
+			{
+				Config: branchConfig(1800),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.branch", "id", testBranchRef),
+				),
+			},
+		},
+	})
+}

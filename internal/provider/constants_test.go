@@ -21,6 +21,14 @@ const (
 	sslEnforcementApiPath      = projectApiPath + "/ssl-enforcement"
 	secretsApiPath             = projectApiPath + "/secrets"
 
+	// A branch ref resolves on /v1/branches/{ref} but returns 404 on /v1/projects/{ref}.
+	testBranchRef           = "zyxwvutsrqponmlkjihg" //nolint:gosec
+	branchProjectApiPath    = projectsApiPath + "/" + testBranchRef
+	branchRefApiPath        = "/v1/branches/" + testBranchRef
+	branchHealthApiPath     = branchProjectApiPath + "/health"
+	branchPostgrestApiPath  = branchProjectApiPath + "/postgrest"
+	branchAuthConfigApiPath = branchProjectApiPath + "/config/auth"
+
 	functionSlug              = "foo"
 	testApiKeyUUID            = "d9bece6b-52cc-4d67-a948-2349d46676f5" //nolint:gosec
 	testThirdPartyAuthUUID    = "88888888-8888-4888-8888-888888888888" //nolint:gosec
