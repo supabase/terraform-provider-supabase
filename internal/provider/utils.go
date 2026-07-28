@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -64,6 +65,11 @@ func waitForProjectActive(ctx context.Context, projectRef string, client *api.Cl
 			if err != nil {
 				return nil, "", fmt.Errorf("failed to get project status: %w", err)
 			}
+			// Branch refs are not served by the projects endpoint and return 404.
+			// Their status is available from the branches endpoint instead.
+			if httpResp.StatusCode() == http.StatusNotFound {
+				return refreshBranchStatus(ctx, projectRef, client, httpResp)
+			}
 			if httpResp.JSON200 == nil {
 				return nil, "", fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode(), httpResp.Body)
 			}
@@ -91,6 +97,35 @@ func waitForProjectActive(ctx context.Context, projectRef string, client *api.Cl
 		)}
 	}
 	return nil
+}
+
+// refreshBranchStatus polls branch status for refs that 404 on the projects
+// endpoint. BranchDetailResponseStatus shares its values with the project
+// status enum, so the result feeds the same state machine.
+func refreshBranchStatus(ctx context.Context, projectRef string, client *api.ClientWithResponses, projectResp *api.V1GetProjectResponse) (any, string, error) {
+	httpResp, err := client.V1GetABranchConfigWithResponse(ctx, projectRef)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get branch status: %w", err)
+	}
+	if httpResp.StatusCode() == http.StatusNotFound {
+		// Not a branch ref either; surface the original project lookup failure.
+		return nil, "", fmt.Errorf("unexpected status %d: %s", projectResp.StatusCode(), projectResp.Body)
+	}
+	if httpResp.JSON200 == nil {
+		return nil, "", fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode(), httpResp.Body)
+	}
+
+	status := string(httpResp.JSON200.Status)
+	tflog.Debug(ctx, "Waiting for branch to become active", map[string]interface{}{
+		"branch_ref": projectRef,
+		"status":     status,
+	})
+
+	if slices.Contains(terminalProjectStatuses, api.V1ProjectWithDatabaseResponseStatus(status)) {
+		return nil, "", fmt.Errorf("branch %s in terminal state: %s", projectRef, status)
+	}
+
+	return httpResp.JSON200, status, nil
 }
 
 const (
