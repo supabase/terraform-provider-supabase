@@ -58,3 +58,23 @@ _Note:_ Acceptance tests create real resources, and often cost money to run.
 ```shell
 make testacc
 ```
+
+## Releasing the Provider
+
+Releases are driven by git tags and require maintainer permissions. To cut a release, tag the tip of `main` with a new version following [semantic versioning](https://semver.org/) and push it:
+
+```shell
+git tag v1.10.0
+git push origin v1.10.0
+```
+
+Pushing the tag triggers the [release workflow](.github/workflows/release.yml), which:
+
+1. Builds and signs binaries for all supported platforms via [GoReleaser](https://goreleaser.com/), then creates a draft GitHub release with the binaries attached and a changelog generated from merged PR titles.
+1. Waits for manual approval from a maintainer (under the workflow run's `publish` job).
+1. Once approved, publishes the release. The [Terraform Registry](https://registry.terraform.io/providers/supabase/supabase/latest) picks up the new version automatically.
+
+### Common pitfalls
+
+- **Prefer pushing a tag over creating a release in the GitHub UI.** The workflow is only triggered by a tag being pushed. Saving a draft release in the UI doesn't create the tag, so nothing happens; publishing one does create the tag, but the release then goes live before any binaries exist. Pushing the tag directly lets the workflow create the release, and it stays a draft until the binaries are built and approved.
+- **Each release needs its own fresh commit.** GoReleaser fails with a `422 already_exists` error when uploading assets if the tagged commit already carries a previously released tag (e.g., tagging `v1.10.0` on the same commit as an already-released `v1.10.0-alpha`). If the tip of `main` has already been released under another tag, land a new commit first (an empty commit via a PR works) and tag that.
