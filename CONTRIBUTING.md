@@ -63,8 +63,14 @@ make testacc
 
 Releasing requires maintainer permissions, and nothing goes live until a manual approval at the very end.
 
-1. Draft a new release on the [GitHub releases page](https://github.com/supabase/terraform-provider-supabase/releases/new): choose a new tag following [semantic versioning](https://semver.org/) (e.g., `v1.10.0`), click **Generate release notes**, and edit the notes as needed. Keep the release title identical to the tag name (GoReleaser locates the draft by its title), then click **Save draft**.
-1. Saving a draft does _not_ create the git tag, so create and push it yourself:
+1. Create a draft release with a new tag following [semantic versioning](https://semver.org/) (e.g., `v1.10.0`) and auto-generated release notes:
+
+   ```shell
+   gh release create v1.10.0 --draft --generate-notes
+   ```
+
+   Edit the notes as needed via the link the command prints (or `gh release edit`). You can also draft the release from the [GitHub releases page](https://github.com/supabase/terraform-provider-supabase/releases/new) instead — if you do, keep the release title identical to the tag name, since GoReleaser locates the draft by its title.
+1. Drafting a release does _not_ create the git tag, so create and push it yourself:
 
    ```shell
    git tag v1.10.0
