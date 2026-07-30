@@ -61,20 +61,20 @@ make testacc
 
 ## Releasing the Provider
 
-Releases are driven by git tags and require maintainer permissions. To cut a release, tag the tip of `main` with a new version following [semantic versioning](https://semver.org/) and push it:
+Releasing requires maintainer permissions, and nothing goes live until a manual approval at the very end.
 
-```shell
-git tag v1.10.0
-git push origin v1.10.0
-```
+1. Draft a new release on the [GitHub releases page](https://github.com/supabase/terraform-provider-supabase/releases/new): choose a new tag following [semantic versioning](https://semver.org/) (e.g., `v1.10.0`), click **Generate release notes**, and edit the notes as needed. Keep the release title identical to the tag name (GoReleaser locates the draft by its title), then click **Save draft**.
+1. Saving a draft does _not_ create the git tag, so create and push it yourself:
 
-Pushing the tag triggers the [release workflow](.github/workflows/release.yml), which:
+   ```shell
+   git tag v1.10.0
+   git push origin v1.10.0
+   ```
 
-1. Builds and signs binaries for all supported platforms via [GoReleaser](https://goreleaser.com/), then creates a draft GitHub release with the binaries attached and a changelog generated from merged PR titles.
-1. Waits for manual approval from a maintainer (under the workflow run's `publish` job).
-1. Once approved, publishes the release. The [Terraform Registry](https://registry.terraform.io/providers/supabase/supabase/latest) picks up the new version automatically.
+1. Pushing the tag triggers the [release workflow](.github/workflows/release.yml): [GoReleaser](https://goreleaser.com/) builds and signs binaries for all supported platforms and attaches them to your draft, leaving your release notes untouched. (Step 1 is optional — if no draft exists, GoReleaser creates one with an auto-generated changelog.)
+1. Review the draft release, then approve the workflow's `publish` job. This publishes the release, and the [Terraform Registry](https://registry.terraform.io/providers/supabase/supabase/latest) picks up the new version automatically.
 
 ### Common pitfalls
 
-- **Prefer pushing a tag over creating a release in the GitHub UI.** The workflow is only triggered by a tag being pushed. Saving a draft release in the UI doesn't create the tag, so nothing happens; publishing one does create the tag, but the release then goes live before any binaries exist. Pushing the tag directly lets the workflow create the release, and it stays a draft until the binaries are built and approved.
-- **Each release needs its own fresh commit.** GoReleaser fails with a `422 already_exists` error when uploading assets if the tagged commit already carries a previously released tag (e.g., tagging `v1.10.0` on the same commit as an already-released `v1.10.0-alpha`). If the tip of `main` has already been released under another tag, land a new commit first (an empty commit via a PR works) and tag that.
+- **A draft release alone does nothing.** The workflow only triggers on a tag push, and GitHub doesn't create the tag until a release is published — hence step 2. Conversely, avoid the **Publish release** button: it also creates the tag, but takes the release live before any binaries exist.
+- **Tagging a commit that already carries a released tag.** The workflow pins GoReleaser to the pushed tag (`GORELEASER_CURRENT_TAG`), so this should work, but if the release still fails with `422 already_exists` errors while uploading assets, land a new commit (an empty commit via a PR works) and tag that instead.
