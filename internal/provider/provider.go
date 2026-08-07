@@ -197,9 +197,9 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	if apiEndpoint == "" {
 		apiEndpoint = defaultApiEndpoint
 	} else {
-		// Validate URL structure and scheme
+        // Validate URL structure, scheme, and host
 		u, err := url.ParseRequestURI(apiEndpoint)
-		if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("endpoint"),
 				"Invalid Supabase API Endpoint",
