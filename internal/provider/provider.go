@@ -5,7 +5,9 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -188,8 +190,23 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	if !data.Endpoint.IsNull() {
 		apiEndpoint = data.Endpoint.ValueString()
 	}
+
+	// Trim whitespace from the endpoint
+	apiEndpoint = strings.TrimSpace(apiEndpoint)
+
 	if apiEndpoint == "" {
 		apiEndpoint = defaultApiEndpoint
+	} else {
+		// Validate URL structure and scheme
+		u, err := url.ParseRequestURI(apiEndpoint)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("endpoint"),
+				"Invalid Supabase API Endpoint",
+				fmt.Sprintf("The endpoint %q is not a valid URL. It must be a fully-qualified HTTP/HTTPS URL, for example: https://api.supabase.com", apiEndpoint),
+			)
+			return
+		}
 	}
 
 	// Validate access_token
