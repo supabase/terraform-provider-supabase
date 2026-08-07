@@ -115,12 +115,27 @@ type retryGETTransport struct {
 }
 
 func (t *retryGETTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Method == http.MethodGet {
-		return t.retrying.RoundTrip(req)
-	}
-	return t.plain.RoundTrip(req)
-}
+	var resp *http.Response
+	var err error
 
+	if req.Method == http.MethodGet {
+		resp, err = t.retrying.RoundTrip(req)
+	} else {
+		resp, err = t.plain.RoundTrip(req)
+	}
+
+	// If the request context was cancelled while the underlying transport
+	// returned a response, we must treat that as a cancellation and not
+	// return the response to callers. Close the body to avoid leaks.
+	if err == nil && req.Context().Err() != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return nil, req.Context().Err()
+	}
+
+	return resp, err
+}
 func newRetryableClient(base *http.Client) *http.Client {
 	rc := retryablehttp.NewClient()
 	if base != nil {
