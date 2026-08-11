@@ -55,9 +55,14 @@ release:
   extra_files:
     - glob: 'terraform-registry-manifest.json'
       name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
-  # If you want to manually examine the release before its live, uncomment this line:
+  # Keep the release as a draft; the `publish` job in the release workflow
+  # takes it live after manual approval.
   draft: true
-  replace_existing_draft: true
+  # If a draft release was already created from the GitHub UI (its title must
+  # match the tag name), attach artifacts to it instead of replacing it, and
+  # preserve its release notes.
+  use_existing_draft: true
+  mode: keep-existing
 changelog:
   use: github
   groups:
