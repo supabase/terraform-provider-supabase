@@ -326,8 +326,15 @@ data "supabase_branch" "test" {
 func TestAccProviderConfigure_EndpointValidation_Invalid(t *testing.T) {
 	// Verify that invalid endpoints trigger a diagnostic error and halt execution.
 	invalidEndpoints := []string{
-		"api.supabase.com",          // Missing scheme
-		"http:////api.supabase.com", // Malformed
+		"api.supabase.com",                          // Missing scheme
+		"http:////api.supabase.com",                 // Malformed
+		"ftp://api.supabase.com",                    // Unsupported scheme
+		"https://:443",                              // Port without hostname
+		"https://localhost:99999",                   // Port out of range
+		"https://gateway.example/supabase?tenant=x", // Query component
+		"https://gateway.example/supabase?",         // Empty query component
+		"https://gateway.example/supabase#frag",     // Fragment component
+		"   ",                                       // Whitespace-only endpoint
 	}
 
 	for _, endpoint := range invalidEndpoints {

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -115,26 +116,10 @@ type retryGETTransport struct {
 }
 
 func (t *retryGETTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	var resp *http.Response
-	var err error
-
 	if req.Method == http.MethodGet {
-		resp, err = t.retrying.RoundTrip(req)
-	} else {
-		resp, err = t.plain.RoundTrip(req)
+		return t.retrying.RoundTrip(req)
 	}
-
-	// If the request context was cancelled while the underlying transport
-	// returned a response, we must treat that as a cancellation and not
-	// return the response to callers. Close the body to avoid leaks.
-	if err == nil && req.Context().Err() != nil {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-		return nil, req.Context().Err()
-	}
-
-	return resp, err
+	return t.plain.RoundTrip(req)
 }
 func newRetryableClient(base *http.Client) *http.Client {
 	rc := retryablehttp.NewClient()
@@ -206,21 +191,43 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 		apiEndpoint = data.Endpoint.ValueString()
 	}
 
-	// Trim whitespace from the endpoint
+	// Save original endpoint to check for whitespace-only strings
+	originalEndpoint := apiEndpoint
 	apiEndpoint = strings.TrimSpace(apiEndpoint)
 
 	if apiEndpoint == "" {
-		apiEndpoint = defaultApiEndpoint
-	} else {
-		// Validate URL structure, scheme, and host
-		u, err := url.ParseRequestURI(apiEndpoint)
-		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		if originalEndpoint != "" {
+			// The input was only whitespace, which is invalid
 			resp.Diagnostics.AddAttributeError(
 				path.Root("endpoint"),
 				"Invalid Supabase API Endpoint",
-				fmt.Sprintf("The endpoint %q is not a valid URL. It must be a fully-qualified HTTP/HTTPS URL, for example: https://api.supabase.com", apiEndpoint),
+				"The endpoint cannot be only whitespace.",
 			)
-			return
+		} else {
+			apiEndpoint = defaultApiEndpoint
+		}
+	} else {
+		// Validate URL structure, scheme, host, queries, fragments, and ports
+		u, err := url.Parse(apiEndpoint)
+		invalid := err != nil ||
+			(u.Scheme != "https" && u.Scheme != "http") ||
+			u.Hostname() == "" ||
+			u.RawQuery != "" || u.ForceQuery || u.Fragment != ""
+
+		if !invalid {
+			if portText := u.Port(); portText != "" {
+				port, portErr := strconv.Atoi(portText)
+				invalid = portErr != nil || port < 1 || port > 65535
+			}
+		}
+
+		if invalid {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("endpoint"),
+				"Invalid Supabase API Endpoint",
+				fmt.Sprintf("The endpoint %q is not a valid Supabase API endpoint. Use a fully-qualified HTTP or HTTPS URL with a hostname, no query or fragment, and, if specified, a port from 1 to 65535.", apiEndpoint),
+			)
+			// Intentionally not returning here so Terraform can also evaluate access_token errors below
 		}
 	}
 
