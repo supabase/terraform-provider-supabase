@@ -334,6 +334,8 @@ func TestAccProviderConfigure_EndpointValidation_Invalid(t *testing.T) {
 		"https://gateway.example/supabase?tenant=x", // Query component
 		"https://gateway.example/supabase?",         // Empty query component
 		"https://gateway.example/supabase#frag",     // Fragment component
+		"https://gateway.example/supabase#",         // Empty fragment
+		"https://selfhosted.example.com:",           // Empty explicit port
 		"   ",                                       // Whitespace-only endpoint
 	}
 
