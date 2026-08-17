@@ -212,7 +212,9 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 		invalid := err != nil ||
 			(u.Scheme != "https" && u.Scheme != "http") ||
 			u.Hostname() == "" ||
-			u.RawQuery != "" || u.ForceQuery || u.Fragment != ""
+			u.RawQuery != "" || u.ForceQuery ||
+			strings.Contains(apiEndpoint, "#") ||
+			strings.HasSuffix(u.Host, ":")
 
 		if !invalid {
 			if portText := u.Port(); portText != "" {
