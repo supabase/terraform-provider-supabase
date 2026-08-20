@@ -322,3 +322,71 @@ data "supabase_branch" "test" {
 		},
 	})
 }
+
+func TestAccProviderConfigure_EndpointValidation_Invalid(t *testing.T) {
+	// Verify that invalid endpoints trigger a diagnostic error and halt execution.
+	invalidEndpoints := []string{
+		"api.supabase.com",                          // Missing scheme
+		"http:////api.supabase.com",                 // Malformed
+		"ftp://api.supabase.com",                    // Unsupported scheme
+		"https://:443",                              // Port without hostname
+		"https://localhost:99999",                   // Port out of range
+		"https://gateway.example/supabase?tenant=x", // Query component
+		"https://gateway.example/supabase?",         // Empty query component
+		"https://gateway.example/supabase#frag",     // Fragment component
+		"https://gateway.example/supabase#",         // Empty fragment
+		"https://selfhosted.example.com:",           // Empty explicit port
+		"   ",                                       // Whitespace-only endpoint
+	}
+
+	for _, endpoint := range invalidEndpoints {
+		t.Run(endpoint, func(t *testing.T) {
+			resource.Test(t, resource.TestCase{
+				PreCheck: func() {
+					testAccPreCheck(t)
+					t.Setenv("SUPABASE_API_ENDPOINT", endpoint)
+					t.Setenv("SUPABASE_ACCESS_TOKEN", "test-token")
+				},
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					{
+						Config: fmt.Sprintf(`
+data "supabase_branch" "test" {
+  parent_project_ref = "%s"
+}
+`, testProjectRef),
+						ExpectError: regexp.MustCompile("Invalid Supabase API Endpoint"),
+					},
+				},
+			})
+		})
+	}
+}
+
+func TestAccProviderConfigure_EndpointValidation_Trimmed(t *testing.T) {
+	// Verify that endpoints with accidental whitespace are successfully trimmed and used.
+	defer gock.OffAll()
+	gock.New("https://api.supabase.com").
+		Get(branchesApiPath).
+		Persist().
+		Reply(http.StatusOK).
+		JSON([]map[string]any{})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			t.Setenv("SUPABASE_API_ENDPOINT", "  https://api.supabase.com  ")
+			t.Setenv("SUPABASE_ACCESS_TOKEN", "test-token")
+		},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+data "supabase_branch" "test" {
+  parent_project_ref = "%s"
+}
+`, testProjectRef),
+			},
+		},
+	})
+}

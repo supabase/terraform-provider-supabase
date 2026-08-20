@@ -5,8 +5,11 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,7 +121,6 @@ func (t *retryGETTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 	return t.plain.RoundTrip(req)
 }
-
 func newRetryableClient(base *http.Client) *http.Client {
 	rc := retryablehttp.NewClient()
 	if base != nil {
@@ -188,8 +190,47 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 	if !data.Endpoint.IsNull() {
 		apiEndpoint = data.Endpoint.ValueString()
 	}
+
+	// Save original endpoint to check for whitespace-only strings
+	originalEndpoint := apiEndpoint
+	apiEndpoint = strings.TrimSpace(apiEndpoint)
+
 	if apiEndpoint == "" {
-		apiEndpoint = defaultApiEndpoint
+		if originalEndpoint != "" {
+			// The input was only whitespace, which is invalid
+			resp.Diagnostics.AddAttributeError(
+				path.Root("endpoint"),
+				"Invalid Supabase API Endpoint",
+				"The endpoint cannot be only whitespace.",
+			)
+		} else {
+			apiEndpoint = defaultApiEndpoint
+		}
+	} else {
+		// Validate URL structure, scheme, host, queries, fragments, and ports
+		u, err := url.Parse(apiEndpoint)
+		invalid := err != nil ||
+			(u.Scheme != "https" && u.Scheme != "http") ||
+			u.Hostname() == "" ||
+			u.RawQuery != "" || u.ForceQuery ||
+			strings.Contains(apiEndpoint, "#") ||
+			strings.HasSuffix(u.Host, ":")
+
+		if !invalid {
+			if portText := u.Port(); portText != "" {
+				port, portErr := strconv.Atoi(portText)
+				invalid = portErr != nil || port < 1 || port > 65535
+			}
+		}
+
+		if invalid {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("endpoint"),
+				"Invalid Supabase API Endpoint",
+				fmt.Sprintf("The endpoint %q is not a valid Supabase API endpoint. Use a fully-qualified HTTP or HTTPS URL with a hostname, no query or fragment, and, if specified, a port from 1 to 65535.", apiEndpoint),
+			)
+			// Intentionally not returning here so Terraform can also evaluate access_token errors below
+		}
 	}
 
 	// Validate access_token
