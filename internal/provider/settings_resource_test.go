@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -1229,6 +1230,149 @@ func TestParseConfigNullablePreservesUserValue(t *testing.T) {
 	if resultMap["external_apple_additional_client_ids"] != "com.example.app" {
 		t.Errorf("expected external_apple_additional_client_ids to be preserved as 'com.example.app', got %v",
 			resultMap["external_apple_additional_client_ids"])
+	}
+}
+
+// Every postgres parameter in the plan must reach the API, including ones the
+// generated API client does not know about such as log_connections. The old
+// typed decoding silently dropped them, so the apply succeeded while the API
+// replaced the config without them.
+func TestAccSettingsResource_DatabaseForwardsAllParameters(t *testing.T) {
+	defer gock.OffAll()
+
+	databaseConfig := fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref = %q
+
+  database = jsonencode({
+    log_connections    = true
+    log_disconnections = true
+    statement_timeout  = "10s"
+  })
+}
+`, testProjectRef)
+	applied := map[string]any{
+		"log_connections":    true,
+		"log_disconnections": true,
+		"statement_timeout":  "10s",
+	}
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+	gock.New(defaultApiEndpoint).
+		Put(dbConfigApiPath).
+		AddMatcher(matchJSONBody(t, applied)).
+		Reply(http.StatusOK).
+		JSON(applied)
+	// Post-apply refresh.
+	gock.New(defaultApiEndpoint).
+		Get(dbConfigApiPath).
+		Reply(http.StatusOK).
+		JSON(applied)
+
+	// Connection logging is then disabled outside Terraform; the refresh must
+	// pick that up even though the generated client cannot decode the field.
+	gock.New(defaultApiEndpoint).
+		Get(dbConfigApiPath).
+		Persist().
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"log_connections":   false,
+			"statement_timeout": "10s",
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: databaseConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
+					resource.TestCheckResourceAttrWith("supabase_settings.test", "database", func(value string) error {
+						var database map[string]any
+						if err := json.Unmarshal([]byte(value), &database); err != nil {
+							return err
+						}
+						if !reflect.DeepEqual(database, applied) {
+							return fmt.Errorf("expected database settings %v in state, got %v", applied, database)
+						}
+						return nil
+					}),
+				),
+			},
+			{
+				Config:             databaseConfig,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestParseConfigGenericResponse(t *testing.T) {
+	userConfig := `{
+		"log_connections": true,
+		"log_disconnections": true,
+		"statement_timeout": "10s",
+		"restart_database": true
+	}`
+	apiResponse := map[string]any{
+		"log_connections":   false,
+		"statement_timeout": "10s",
+		"max_connections":   float64(100),
+	}
+
+	result, err := parseConfig(jsontypes.NewNormalizedValue(userConfig), apiResponse)
+	if err != nil {
+		t.Fatalf("parseConfig failed: %v", err)
+	}
+
+	var resultMap map[string]any
+	if err := json.Unmarshal([]byte(result.ValueString()), &resultMap); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
+
+	expected := map[string]any{
+		// Refreshed from the API so out-of-band changes show up as drift.
+		"log_connections": false,
+		// Removed out-of-band: becomes null rather than keeping the stale value.
+		"log_disconnections": nil,
+		"statement_timeout":  "10s",
+		// Request-only flag the API never echoes back: preserved from the plan.
+		"restart_database": true,
+		// Keys not managed in the plan are ignored.
+	}
+	if !reflect.DeepEqual(resultMap, expected) {
+		t.Errorf("expected %v, got %v", expected, resultMap)
+	}
+}
+
+func TestParseConfigGenericResponseWithoutState(t *testing.T) {
+	apiResponse := map[string]any{
+		"log_connections": true,
+		"work_mem":        nil,
+	}
+
+	result, err := parseConfig(jsontypes.NewNormalizedNull(), apiResponse)
+	if err != nil {
+		t.Fatalf("parseConfig failed: %v", err)
+	}
+
+	var resultMap map[string]any
+	if err := json.Unmarshal([]byte(result.ValueString()), &resultMap); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
+
+	expected := map[string]any{"log_connections": true}
+	if !reflect.DeepEqual(resultMap, expected) {
+		t.Errorf("expected %v, got %v", expected, resultMap)
 	}
 }
 
