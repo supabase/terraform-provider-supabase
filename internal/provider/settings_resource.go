@@ -463,11 +463,12 @@ func readDatabaseConfig(ctx context.Context, state *SettingsResourceModel, clien
 	case http.StatusNotFound, http.StatusNotAcceptable:
 		return nil
 	}
-	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to read database settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+	config, err := decodeDatabaseConfig(httpResp.StatusCode(), httpResp.Body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read database settings, %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-	if state.Database, err = parseConfig(state.Database, *httpResp.JSON200); err != nil {
+	if state.Database, err = parseConfig(state.Database, config); err != nil {
 		msg := fmt.Sprintf("Unable to read database settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
@@ -475,26 +476,54 @@ func readDatabaseConfig(ctx context.Context, state *SettingsResourceModel, clien
 }
 
 func updateDatabaseConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	var body api.UpdatePostgresConfigBody
+	// Only validate that the plan is a JSON object; the document itself is
+	// forwarded untouched so every parameter the API accepts reaches it.
+	var body map[string]any
 	if diags := plan.Database.Unmarshal(&body); diags.HasError() {
 		return diags
 	}
+	if body == nil {
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Invalid Attribute Value", "Database settings must be a JSON object, got null.")}
+	}
 
-	httpResp, err := client.V1UpdatePostgresConfigWithResponse(ctx, plan.ProjectRef.ValueString(), body)
+	httpResp, err := client.V1UpdatePostgresConfigWithBodyWithResponse(ctx, plan.ProjectRef.ValueString(), "application/json", strings.NewReader(plan.Database.ValueString()))
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update database settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
-	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to update database settings, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+	config, err := decodeDatabaseConfig(httpResp.StatusCode(), httpResp.Body)
+	if err != nil {
+		msg := fmt.Sprintf("Unable to update database settings, %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	if plan.Database, err = parseConfig(plan.Database, *httpResp.JSON200); err != nil {
+	if plan.Database, err = parseConfig(plan.Database, config); err != nil {
 		msg := fmt.Sprintf("Unable to update database settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	return nil
+}
+
+// decodeDatabaseConfig decodes a postgres config API response as a generic JSON
+// object instead of the generated api.PostgresConfigResponse struct.
+//
+// The generated request and response structs only know the parameters that
+// existed when the API client was generated, and encoding/json silently drops
+// every other key. Decoding the plan through api.UpdatePostgresConfigBody used
+// to strip newer parameters such as log_connections from the PUT body, so the
+// apply reported success while the API replaced the config without them.
+func decodeDatabaseConfig(statusCode int, body []byte) (map[string]any, error) {
+	if statusCode != http.StatusOK {
+		return nil, fmt.Errorf("got status %d: %s", statusCode, body)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(body, &config); err != nil {
+		return nil, fmt.Errorf("got error: %w", err)
+	}
+	if config == nil {
+		return nil, fmt.Errorf("got error: expected a JSON object, got null")
+	}
+	return config, nil
 }
 
 func readSslEnforcementConfig(ctx context.Context, state *SettingsResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
@@ -600,7 +629,17 @@ func parseConfig(field jsontypes.Normalized, config any) (jsontypes.Normalized, 
 	return jsontypes.NewNormalizedValue(string(value)), nil
 }
 
+// requestOnlyConfigKeys are accepted by update endpoints but never returned by
+// the API, so they are preserved from the plan instead of being refreshed.
+var requestOnlyConfigKeys = map[string]bool{
+	"restart_database": true,
+}
+
 func pickConfig(source any, target map[string]any) {
+	if sourceMap, ok := source.(map[string]any); ok {
+		pickConfigMap(sourceMap, target)
+		return
+	}
 	v := reflect.ValueOf(source)
 	t := reflect.TypeOf(source)
 	for i := 0; i < v.NumField(); i++ {
@@ -639,7 +678,28 @@ func pickConfig(source any, target map[string]any) {
 	}
 }
 
+// pickConfigMap refreshes the user-managed keys in target from a generic API
+// response. A key the API no longer returns becomes null so that the removal
+// shows up as drift in the plan, mirroring how nil pointer fields of the
+// generated structs are handled.
+func pickConfigMap(source, target map[string]any) {
+	for k := range target {
+		if requestOnlyConfigKeys[k] {
+			continue
+		}
+		target[k] = source[k]
+	}
+}
+
 func copyConfig(source any, target map[string]any) {
+	if sourceMap, ok := source.(map[string]any); ok {
+		for k, v := range sourceMap {
+			if v != nil {
+				target[k] = v
+			}
+		}
+		return
+	}
 	v := reflect.ValueOf(source)
 	t := reflect.TypeOf(source)
 	for i := 0; i < v.NumField(); i++ {
