@@ -482,6 +482,9 @@ func updateDatabaseConfig(ctx context.Context, plan *SettingsResourceModel, clie
 	if diags := plan.Database.Unmarshal(&body); diags.HasError() {
 		return diags
 	}
+	if body == nil {
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Invalid Attribute Value", "Database settings must be a JSON object, got null.")}
+	}
 
 	httpResp, err := client.V1UpdatePostgresConfigWithBodyWithResponse(ctx, plan.ProjectRef.ValueString(), "application/json", strings.NewReader(plan.Database.ValueString()))
 	if err != nil {
@@ -516,6 +519,9 @@ func decodeDatabaseConfig(statusCode int, body []byte) (map[string]any, error) {
 	var config map[string]any
 	if err := json.Unmarshal(body, &config); err != nil {
 		return nil, fmt.Errorf("got error: %w", err)
+	}
+	if config == nil {
+		return nil, fmt.Errorf("got error: expected a JSON object, got null")
 	}
 	return config, nil
 }

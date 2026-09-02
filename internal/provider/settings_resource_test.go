@@ -1316,6 +1316,65 @@ resource "supabase_settings" "test" {
 	})
 }
 
+// A null database document must be rejected before anything is sent. The old
+// typed decoding turned it into {} and wiped the project's postgres config.
+func TestAccSettingsResource_DatabaseRejectsNull(t *testing.T) {
+	defer gock.OffAll()
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	mockServicesActiveHealth()
+	putCalled := false
+	gock.New(defaultApiEndpoint).
+		Put(dbConfigApiPath).
+		AddMatcher(func(*http.Request, *gock.Request) (bool, error) {
+			putCalled = true
+			return true, nil
+		}).
+		Reply(http.StatusBadRequest)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref = %q
+  database    = jsonencode(null)
+}
+`, testProjectRef),
+				ExpectError: regexp.MustCompile(`must be a JSON object`),
+			},
+		},
+	})
+	if putCalled {
+		t.Error("database PUT was called with a null document")
+	}
+}
+
+func TestDecodeDatabaseConfig(t *testing.T) {
+	if _, err := decodeDatabaseConfig(http.StatusBadRequest, []byte(`{"message":"bad request"}`)); err == nil {
+		t.Error("expected an error for a non-200 status")
+	}
+	// A null body would otherwise null out every managed key in state.
+	if _, err := decodeDatabaseConfig(http.StatusOK, []byte(`null`)); err == nil {
+		t.Error("expected an error for a null body")
+	}
+	config, err := decodeDatabaseConfig(http.StatusOK, []byte(`{"log_connections":true}`))
+	if err != nil {
+		t.Fatalf("decodeDatabaseConfig failed: %v", err)
+	}
+	if config["log_connections"] != true {
+		t.Errorf("expected log_connections to be true, got %v", config["log_connections"])
+	}
+}
+
 func TestParseConfigGenericResponse(t *testing.T) {
 	userConfig := `{
 		"log_connections": true,
