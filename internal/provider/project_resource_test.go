@@ -509,3 +509,64 @@ func TestAccProjectResource_Timeouts(t *testing.T) {
 		},
 	})
 }
+
+func TestReadProject_LegacyApiKeysUnreadable(t *testing.T) {
+	// The legacy api keys endpoint is on its way out: Supabase answers 404 once it is gone for a
+	// project, and 403 for projects whose legacy keys the caller cannot read. Neither should fail
+	// the whole refresh — anything else still should.
+	for _, tt := range []struct {
+		name      string
+		status    int
+		wantError bool
+	}{
+		{name: "gone", status: http.StatusNotFound},
+		{name: "forbidden", status: http.StatusForbidden},
+		{name: "server error", status: http.StatusInternalServerError, wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			defer gock.OffAll()
+			gock.InterceptClient(http.DefaultClient)
+			defer gock.RestoreClient(http.DefaultClient)
+
+			gock.New(defaultApiEndpoint).
+				Get(projectApiPath).
+				Reply(http.StatusOK).
+				JSON(api.V1ProjectWithDatabaseResponse{
+					Id:             testProjectRef,
+					Name:           "foo",
+					OrganizationId: "continued-brown-smelt",
+					Region:         "us-east-1",
+					Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+				})
+			gock.New(defaultApiEndpoint).
+				Get(legacyApiKeysApiPath).
+				Reply(tt.status).
+				JSON(map[string]string{"message": "nope"})
+			gock.New(defaultApiEndpoint).
+				Get(billingApiPath).
+				Reply(http.StatusOK).
+				JSON(api.ListProjectAddonsResponse{})
+
+			client, err := api.NewClientWithResponses(defaultApiEndpoint)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			data := ProjectResourceModel{Id: types.StringValue(testProjectRef)}
+			diags := readProject(t.Context(), &data, client)
+
+			if tt.wantError {
+				if !diags.HasError() {
+					t.Fatalf("expected an error for status %d, got success", tt.status)
+				}
+				return
+			}
+			if diags.HasError() {
+				t.Fatalf("expected status %d to be tolerated, got: %v", tt.status, diags.Errors())
+			}
+			if data.LegacyApiKeysEnabled.ValueBool() {
+				t.Errorf("expected legacy_api_keys_enabled=false, got true")
+			}
+		})
+	}
+}

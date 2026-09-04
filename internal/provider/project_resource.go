@@ -345,7 +345,14 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 
 	if legacyKeysResp.JSON200 == nil {
 		// This API endpoint will be removed in the future, so explicitly check for HTTP 404 Not Found.
-		if legacyKeysResp.StatusCode() != http.StatusNotFound {
+		// 403 Forbidden means the same thing from the caller's side — the legacy keys cannot be read for
+		// this project — and the Management API declares it as an expected response for this operation.
+		// Failing the refresh there takes down every other resource in the plan, so degrade instead.
+		switch legacyKeysResp.StatusCode() {
+		case http.StatusNotFound:
+		case http.StatusForbidden:
+			tflog.Warn(ctx, fmt.Sprintf("legacy api keys are not readable for project %s (403); assuming disabled", project.Id))
+		default:
 			msg := fmt.Sprintf("Unable to read project legacy api keys, got status %d: %s", legacyKeysResp.StatusCode(), legacyKeysResp.Body)
 			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 		}
