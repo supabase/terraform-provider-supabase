@@ -17,6 +17,8 @@ var (
 	ApiKeyResourceConfig string
 	//go:embed resources/supabase_third_party_auth/resource.tf
 	ThirdPartyAuthResourceConfig string
+	//go:embed resources/supabase_custom_hostname/resource.tf
+	CustomHostnameResourceConfig string
 	//go:embed data-sources/supabase_branch/data-source.tf
 	BranchDataSourceConfig string
 	//go:embed data-sources/supabase_pooler/data-source.tf

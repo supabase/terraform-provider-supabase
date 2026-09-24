@@ -20,6 +20,10 @@ const (
 	storageConfigApiPath       = projectApiPath + "/config/storage"
 	sslEnforcementApiPath      = projectApiPath + "/ssl-enforcement"
 	secretsApiPath             = projectApiPath + "/secrets"
+	customHostnameApiPath      = projectApiPath + "/custom-hostname"
+	customHostnameInitApiPath  = customHostnameApiPath + "/initialize"
+	customHostnameReverifyPath = customHostnameApiPath + "/reverify"
+	customHostnameActivatePath = customHostnameApiPath + "/activate"
 
 	// A branch ref resolves on /v1/branches/{ref} but returns 404 on /v1/projects/{ref}.
 	testBranchRef           = "zyxwvutsrqponmlkjihg" //nolint:gosec
