@@ -169,6 +169,12 @@ func TestAccApiKeyResource_WithDescription(t *testing.T) {
 		})
 	gock.New(defaultApiEndpoint).
 		Post(apiKeysApiPath).
+		AddMatcher(matchJSONBody(t, map[string]any{
+			"name":                 "test",
+			"type":                 "secret",
+			"description":          "Service key for test",
+			"secret_jwt_template":  map[string]any{"role": "service_role"},
+		})).
 		Reply(http.StatusCreated).
 		JSON(api.ApiKeyResponse{
 			Id:          nullable.NewNullableWithValue(testApiKeyUUID),
