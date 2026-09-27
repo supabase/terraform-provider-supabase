@@ -77,8 +77,9 @@
               },
               "type": {
                 "type": "string",
-                "description": "Type of the API key",
+                "description": "Type of the API key: `secret` or `publishable`. A new key is `secret` when this is not set. Changing it replaces the key.",
                 "description_kind": "markdown",
+                "optional": true,
                 "computed": true
               }
             },

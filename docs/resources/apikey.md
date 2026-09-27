@@ -30,13 +30,13 @@ resource "supabase_apikey" "new" {
 ### Optional
 
 - `description` (String) Description of the API key
+- `type` (String) Type of the API key: `secret` or `publishable`. A new key is `secret` when this is not set. Changing it replaces the key.
 
 ### Read-Only
 
 - `api_key` (String, Sensitive) API key
 - `id` (String) API key identifier
 - `secret_jwt_template` (Attributes) Secret JWT template (see [below for nested schema](#nestedatt--secret_jwt_template))
-- `type` (String) Type of the API key
 
 <a id="nestedatt--secret_jwt_template"></a>
 ### Nested Schema for `secret_jwt_template`
