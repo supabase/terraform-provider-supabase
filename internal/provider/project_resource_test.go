@@ -15,6 +15,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
@@ -597,7 +598,7 @@ func TestAccProjectResource_WriteOnlyPassword(t *testing.T) {
 		Reply(http.StatusCreated).
 		JSON(api.V1ProjectResponse{Id: testProjectRef, Name: "foo"})
 	// Bumping the version counter rotates the password.
-	gock.New(defaultApiEndpoint).
+	rotatePassword := gock.New(defaultApiEndpoint).
 		Patch(dbPasswordApiPath).
 		AddMatcher(matchJSONField("password", "barbaz")).
 		Reply(http.StatusOK)
@@ -623,6 +624,7 @@ func TestAccProjectResource_WriteOnlyPassword(t *testing.T) {
 					// The secret is kept out of state; only the counter persists.
 					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password_wo"),
 					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password"),
+					checkMockDone("password rotation", rotatePassword, false),
 				),
 			},
 			{
@@ -630,10 +632,22 @@ func TestAccProjectResource_WriteOnlyPassword(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password_wo_version", "2"),
 					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password_wo"),
+					checkMockDone("password rotation", rotatePassword, true),
 				),
 			},
 		},
 	})
+}
+
+// gock.OffAll does not fail on a mock that was never called, so a test that
+// needs a request to be sent must check the mock itself.
+func checkMockDone(name string, mock *gock.Response, want bool) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		if got := mock.Done(); got != want {
+			return fmt.Errorf("%s mock done = %t, want %t", name, got, want)
+		}
+		return nil
+	}
 }
 
 func TestAccProjectResource_PasswordExactlyOneOf(t *testing.T) {
