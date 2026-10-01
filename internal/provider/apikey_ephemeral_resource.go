@@ -127,58 +127,18 @@ func (r *APIKeyEphemeralResource) Open(ctx context.Context, req ephemeral.OpenRe
 	resp.Diagnostics.Append(resp.Result.Set(ctx, &data)...)
 }
 
-// keyedLocker stores one mutex per key without a type assertion.
-type keyedLocker[K comparable] struct {
-	mu    sync.Mutex
-	locks map[K]*sync.Mutex
-}
-
-func (l *keyedLocker[K]) lock(key K) func() {
-	l.mu.Lock()
-	if l.locks == nil {
-		l.locks = make(map[K]*sync.Mutex)
-	}
-	entry := l.locks[key]
-	if entry == nil {
-		entry = &sync.Mutex{}
-		l.locks[key] = entry
-	}
-	l.mu.Unlock()
-
-	entry.Lock()
-	return entry.Unlock
-}
-
-// apiKeyOpenLocks serializes check-and-create for one project and name.
-// Concurrent opens can otherwise both miss the key and create duplicates,
-// which a later open rejects as ambiguous.
-var apiKeyOpenLocks keyedLocker[apiKeyOpenKey]
-
-// apiKeyProjectLocks serializes creation of the default publishable key.
-// The name lock does not cover it: two opens with different secret names can
-// both observe that key missing. Never acquire the name lock while holding this one.
-var apiKeyProjectLocks keyedLocker[string]
-
-type apiKeyOpenKey struct {
-	projectRef string
-	name       string
-}
-
-func lockAPIKeyOpen(projectRef, name string) func() {
-	return apiKeyOpenLocks.lock(apiKeyOpenKey{projectRef: projectRef, name: name})
-}
-
-func lockAPIKeyProject(projectRef string) func() {
-	return apiKeyProjectLocks.lock(projectRef)
-}
+// apiKeyOpenMu serializes ephemeral opens in this provider process.
+// Concurrent opens can otherwise both miss a key and create duplicates.
+// It does not coordinate with managed supabase_apikey creates or with other processes.
+var apiKeyOpenMu sync.Mutex
 
 // openAPIKey creates the secret key when this project does not already have
 // one with the configured name, then reveals it. Later opens reuse that key.
 // The key is left in place after the operation so it can still authenticate
 // requests; ephemeral resources are not destroyed when removed from configuration.
 func openAPIKey(ctx context.Context, data *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	unlock := lockAPIKeyOpen(data.ProjectRef.ValueString(), data.Name.ValueString())
-	defer unlock()
+	apiKeyOpenMu.Lock()
+	defer apiKeyOpenMu.Unlock()
 
 	keys, diags := listProjectAPIKeys(ctx, data.ProjectRef.ValueString(), client)
 	if diags.HasError() {
@@ -191,7 +151,7 @@ func openAPIKey(ctx context.Context, data *ApiKeyResourceModel, client *api.Clie
 	}
 
 	if !hasDefaultPublishable {
-		if diags := ensureDefaultPublishableAPIKeyOnce(ctx, data.ProjectRef.ValueString(), client); diags.HasError() {
+		if diags := ensureDefaultPublishableAPIKey(ctx, data.ProjectRef.ValueString(), client); diags.HasError() {
 			return diags
 		}
 	}
@@ -227,32 +187,6 @@ func listProjectAPIKeys(ctx context.Context, projectRef string, client *api.Clie
 		return nil, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 	return *listResp.JSON200, nil
-}
-
-// ensureDefaultPublishableAPIKeyOnce lists again under the project lock before
-// creating. Another open may have created the default key after this open's
-// first list and before it acquired the lock.
-func ensureDefaultPublishableAPIKeyOnce(ctx context.Context, projectRef string, client *api.ClientWithResponses) diag.Diagnostics {
-	unlock := lockAPIKeyProject(projectRef)
-	defer unlock()
-
-	keys, diags := listProjectAPIKeys(ctx, projectRef, client)
-	if diags.HasError() {
-		return diags
-	}
-	if hasDefaultPublishableKey(keys) {
-		return nil
-	}
-	return ensureDefaultPublishableAPIKey(ctx, projectRef, client)
-}
-
-func hasDefaultPublishableKey(keys []api.ApiKeyResponse) bool {
-	for _, key := range keys {
-		if isDefaultPublishableAPIKey(key) {
-			return true
-		}
-	}
-	return false
 }
 
 func isDefaultPublishableAPIKey(key api.ApiKeyResponse) bool {
