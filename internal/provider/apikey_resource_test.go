@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/oapi-codegen/nullable"
 	"github.com/supabase/cli/pkg/api"
@@ -21,6 +22,14 @@ const testAccApikeyResourceConfig = `
 resource "supabase_apikey" "new" {
   project_ref = "` + testProjectRef + `"
   name        = "test"
+}
+`
+
+const testAccApikeyResourceConfigWithDescription = `
+resource "supabase_apikey" "new" {
+  project_ref = "` + testProjectRef + `"
+  name        = "test"
+  description = "Service key for test"
 }
 `
 
@@ -129,6 +138,96 @@ func TestAccApiKeyResource_InvalidName(t *testing.T) {
 			},
 		},
 	})
+}
+
+func TestAccApiKeyResource_WithDescription(t *testing.T) {
+	defer gock.OffAll()
+
+	gock.New(defaultApiEndpoint).
+		Get(apiKeysApiPath).
+		Reply(http.StatusOK).
+		JSON([]api.ApiKeyResponse{
+			{
+				Name:   "anon",
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
+				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
+			},
+			{
+				Name:   "service_role",
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
+				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
+			},
+		})
+	gock.New(defaultApiEndpoint).
+		Post(apiKeysApiPath).
+		Reply(http.StatusCreated).
+		JSON(api.ApiKeyResponse{
+			Id:     nullable.NewNullableWithValue(uuid.New().String()),
+			Name:   "default",
+			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
+			ApiKey: nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+		})
+	gock.New(defaultApiEndpoint).
+		Post(apiKeysApiPath).
+		AddMatcher(matchJSONBody(t, map[string]any{
+			"name":                "test",
+			"type":                "secret",
+			"description":         "Service key for test",
+			"secret_jwt_template": map[string]any{"role": "service_role"},
+		})).
+		Reply(http.StatusCreated).
+		JSON(api.ApiKeyResponse{
+			Id:          nullable.NewNullableWithValue(testApiKeyUUID),
+			Name:        "test",
+			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
+			ApiKey:      nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+			Description: nullable.NewNullableWithValue("Service key for test"),
+		})
+	gock.New(defaultApiEndpoint).
+		Get(apiKeyApiPath).
+		Persist().
+		Reply(http.StatusOK).
+		JSON(api.ApiKeyResponse{
+			Id:          nullable.NewNullableWithValue(testApiKeyUUID),
+			Name:        "test",
+			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
+			ApiKey:      nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+			Description: nullable.NewNullableWithValue("Service key for test"),
+			SecretJwtTemplate: nullable.NewNullableWithValue(map[string]interface{}{
+				"role": "service_role",
+			}),
+		})
+	gock.New(defaultApiEndpoint).
+		Delete(apiKeyApiPath).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccApikeyResourceConfigWithDescription,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_apikey.new", "id", testApiKeyUUID),
+					resource.TestCheckResourceAttr("supabase_apikey.new", "description", "Service key for test"),
+				),
+			},
+		},
+	})
+}
+
+func TestNullableDescription(t *testing.T) {
+	t.Parallel()
+
+	got := nullableDescription(types.StringNull())
+	if got.IsSpecified() {
+		t.Fatalf("expected unspecified nullable for null description, got %#v", got)
+	}
+
+	got = nullableDescription(types.StringValue("Service key for test"))
+	if !got.IsSpecified() || got.IsNull() || got.MustGet() != "Service key for test" {
+		t.Fatalf("expected nullable value for description, got %#v", got)
+	}
 }
 
 func TestResolveAPIKeyImportID(t *testing.T) {
