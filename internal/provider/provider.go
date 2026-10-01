@@ -15,6 +15,7 @@ import (
 
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -25,7 +26,10 @@ import (
 )
 
 // Ensure SupabaseProvider satisfies various provider interfaces.
-var _ provider.Provider = &SupabaseProvider{}
+var (
+	_ provider.Provider                       = &SupabaseProvider{}
+	_ provider.ProviderWithEphemeralResources = &SupabaseProvider{}
+)
 
 // SupabaseProvider defines the provider implementation.
 type SupabaseProvider struct {
@@ -282,6 +286,7 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 
 	resp.DataSourceData = client
 	resp.ResourceData = client
+	resp.EphemeralResourceData = client
 }
 
 func (p *SupabaseProvider) Resources(ctx context.Context) []func() resource.Resource {
@@ -294,6 +299,13 @@ func (p *SupabaseProvider) Resources(ctx context.Context) []func() resource.Reso
 		NewEdgeFunctionSecretsResource,
 		NewApiKeyResource,
 		NewThirdPartyAuthResource,
+	}
+}
+
+func (p *SupabaseProvider) EphemeralResources(ctx context.Context) []func() ephemeral.EphemeralResource {
+	tflog.Debug(ctx, "supabase_provider returning ephemeral resources")
+	return []func() ephemeral.EphemeralResource{
+		NewApiKeyEphemeralResource,
 	}
 }
 
