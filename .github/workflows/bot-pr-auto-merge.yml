@@ -1,0 +1,66 @@
+# Adapted from supabase/cli's bot-pr-auto-merge.yml.
+#
+# Dependabot PRs against `main` are assigned to and approved by the `supabase-oss` account and
+# set to auto-merge, so green required checks are the only gate. `supabase-oss` co-owns the
+# files Dependabot updates in .github/CODEOWNERS, which is what lets its approval satisfy the
+# org-level code-owner review rule.
+name: Bot PR auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  approve-and-merge:
+    name: Approve and enable auto-merge
+    runs-on: ubuntu-latest
+    # Both the PR author and the event sender must be Dependabot: a human pushing onto a
+    # Dependabot branch, or any other app opening a PR here, still needs a maintainer.
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.sender.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft
+    # Holds `AUTO_APPROVE_PR_PAT`; the environment only deploys from the default branch, so a
+    # workflow edited on any other branch cannot approve with it.
+    environment: auto-approve
+    permissions:
+      pull-requests: read
+    steps:
+      # pull_request_target is safe here because this job never checks out PR code.
+      - name: Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Major updates are left for a maintainer, matching the previous automerge workflow.
+      - name: Assign supabase-oss
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr edit --repo "$GITHUB_REPOSITORY" "$PR_NUMBER" --add-assignee supabase-oss
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_APPROVE_PR_PAT }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
+      # A rebased PR keeps its approval; skipping it avoids stacking a review per push.
+      - name: Approve pull request
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: |
+          set -euo pipefail
+          decision="$(gh pr view --repo "$GITHUB_REPOSITORY" "$PR_NUMBER" --json reviewDecision --jq .reviewDecision)"
+          if [ "$decision" != "APPROVED" ]; then
+            gh pr review --approve --repo "$GITHUB_REPOSITORY" "$PR_NUMBER"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_APPROVE_PR_PAT }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
+      - name: Enable auto-merge
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash --repo "$GITHUB_REPOSITORY" "$PR_NUMBER"
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_APPROVE_PR_PAT }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}

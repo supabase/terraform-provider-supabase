@@ -1,1 +1,14 @@
+# Default all repository changes to the dev-workflows team.
 * @supabase/dev-workflows
+
+# Files that Dependabot updates. Either owner satisfies code-owner review; `supabase-oss` approves
+# only Dependabot PRs, through bot-pr-auto-merge.yml. Human PRs touching these paths still need a
+# @supabase/dev-workflows review, since `supabase-oss` never approves them.
+/go.mod @supabase/dev-workflows @supabase-oss
+/go.sum @supabase/dev-workflows @supabase-oss
+/.github/workflows/*.yml @supabase/dev-workflows @supabase-oss
+
+# These run with release signing secrets or hold the approval token, so Dependabot PRs touching
+# them still need a maintainer. Last matching pattern wins.
+/.github/workflows/release.yml @supabase/dev-workflows
+/.github/workflows/bot-pr-auto-merge.yml @supabase/dev-workflows
