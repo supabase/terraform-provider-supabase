@@ -67,6 +67,11 @@ func (m secretDigestsPlanModifier) PlanModifyMap(ctx context.Context, req planmo
 		return
 	}
 
+	resp.Diagnostics.Append(validateSecretNames(secretModels)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// If any individual secret name or value is unknown or null, we cannot
 	// safely compute a complete digests map. Leave secret_digests unchanged
 	// (unknown or from prior state) to avoid a known-but-incomplete value.
@@ -364,6 +369,24 @@ func computeSecretDigestsMap(secretModels []SecretModel) (types.Map, diag.Diagno
 	return types.MapValue(types.StringType, digestElements)
 }
 
+func validateSecretNames(secretModels []SecretModel) diag.Diagnostics {
+	names := make(map[string]struct{}, len(secretModels))
+	for _, secret := range secretModels {
+		if secret.Name.IsUnknown() || secret.Name.IsNull() {
+			continue
+		}
+		name := secret.Name.ValueString()
+		if _, exists := names[name]; exists {
+			return diag.Diagnostics{
+				diag.NewAttributeErrorDiagnostic(path.Root("secrets"), "Duplicate Secret Name",
+					fmt.Sprintf("Secret name %q appears more than once. Each secret must have a unique name.", name)),
+			}
+		}
+		names[name] = struct{}{}
+	}
+	return nil
+}
+
 // buildSecretSetAndDigestMap converts secretModels and newDigestElements into
 // types.Set and types.Map respectively, returning diagnostics on error.
 func buildSecretSetAndDigestMap(ctx context.Context, secretModels []SecretModel, newDigestElements map[string]attr.Value) (types.Set, types.Map, diag.Diagnostics) {
@@ -397,6 +420,10 @@ func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSe
 	var secretModels []SecretModel
 	diags := data.Secrets.ElementsAs(ctx, &secretModels, false)
 	if diags.HasError() {
+		return diags
+	}
+
+	if diags := validateSecretNames(secretModels); diags.HasError() {
 		return diags
 	}
 
