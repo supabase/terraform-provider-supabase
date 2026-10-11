@@ -731,6 +731,71 @@
             "description_kind": "markdown"
           }
         }
+      },
+      "ephemeral_resource_schemas": {
+        "supabase_apikey": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "api_key": {
+                "type": "string",
+                "description": "API key. Available only during the current Terraform operation and not stored in state.",
+                "description_kind": "markdown",
+                "computed": true,
+                "sensitive": true
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of the API key",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "id": {
+                "type": "string",
+                "description": "API key identifier",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the API key",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "secret_jwt_template": {
+                "nested_type": {
+                  "attributes": {
+                    "role": {
+                      "type": "string",
+                      "description": "Role of the secret JWT template",
+                      "description_kind": "markdown",
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Secret JWT template",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "type": {
+                "type": "string",
+                "description": "Type of the API key",
+                "description_kind": "markdown",
+                "computed": true
+              }
+            },
+            "description": "Provisions a Supabase secret API key for the current Terraform operation. The key value is kept in memory for that operation and is not written to the plan or state. Requires Terraform 1.10 or later.",
+            "description_kind": "markdown"
+          }
+        }
       }
     }
   }
