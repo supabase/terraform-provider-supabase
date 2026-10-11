@@ -336,10 +336,24 @@
             "attributes": {
               "database_password": {
                 "type": "string",
-                "description": "Password for the project database",
+                "description": "Password for the project database. Exactly one of `database_password` or `database_password_wo` must be set. This value is persisted in Terraform state in plaintext; prefer `database_password_wo` to keep it out of state.",
                 "description_kind": "markdown",
-                "required": true,
+                "optional": true,
                 "sensitive": true
+              },
+              "database_password_wo": {
+                "type": "string",
+                "description": "Write-only password for the project database, for example `ephemeral.random_password.db.result`. Exactly one of `database_password` or `database_password_wo` must be set. Unlike `database_password` this value is never persisted to Terraform state. Must be paired with `database_password_wo_version`, which is what triggers a rotation.",
+                "description_kind": "markdown",
+                "optional": true,
+                "sensitive": true,
+                "write_only": true
+              },
+              "database_password_wo_version": {
+                "type": "number",
+                "description": "Version counter for `database_password_wo`. Increment it to rotate the database password. A write-only value is absent from state, so this counter is what the provider compares to detect a rotation.",
+                "description_kind": "markdown",
+                "optional": true
               },
               "id": {
                 "type": "string",
