@@ -1,7 +1,7 @@
 # Adapted from supabase/cli's bot-pr-auto-merge.yml.
 #
-# Dependabot PRs against `main` are assigned to and approved by the `supabase-oss` account and
-# set to auto-merge, so green required checks are the only gate. `supabase-oss` co-owns the
+# Dependabot PRs against `main` are approved by the `supabase-oss` account and set to
+# auto-merge, so green required checks are the only gate. `supabase-oss` co-owns the
 # files Dependabot updates in .github/CODEOWNERS, which is what lets its approval satisfy the
 # org-level code-owner review rule.
 name: Bot PR auto-merge
@@ -38,13 +38,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Major updates are left for a maintainer, matching the previous automerge workflow.
-      - name: Assign supabase-oss
-        if: steps.meta.outputs.update-type != 'version-update:semver-major'
-        run: gh pr edit --repo "$GITHUB_REPOSITORY" "$PR_NUMBER" --add-assignee supabase-oss
-        env:
-          GH_TOKEN: ${{ secrets.AUTO_APPROVE_PR_PAT }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-
       # A rebased PR keeps its approval; skipping it avoids stacking a review per push.
       - name: Approve pull request
         if: steps.meta.outputs.update-type != 'version-update:semver-major'
@@ -64,3 +57,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AUTO_APPROVE_PR_PAT }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+
