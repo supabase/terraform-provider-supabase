@@ -28,13 +28,17 @@ resource "supabase_project" "test" {
 
 ### Required
 
-- `database_password` (String, Sensitive) Password for the project database
 - `name` (String) Name of the project
 - `organization_id` (String) Organization slug (found in the Supabase dashboard URL or organization settings)
 - `region` (String) Region where the project is located
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
+- `database_password` (String, Sensitive) Password for the project database. Exactly one of `database_password` or `database_password_wo` must be set. This value is persisted in Terraform state in plaintext; prefer `database_password_wo` to keep it out of state.
+- `database_password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only password for the project database, for example `ephemeral.random_password.db.result`. Exactly one of `database_password` or `database_password_wo` must be set. Unlike `database_password` this value is never persisted to Terraform state. Must be paired with `database_password_wo_version`, which is what triggers a rotation.
+- `database_password_wo_version` (Number) Version counter for `database_password_wo`. Increment it to rotate the database password. A write-only value is absent from state, so this counter is what the provider compares to detect a rotation.
 - `instance_size` (String) Desired instance size of the project
 - `legacy_api_keys_enabled` (Boolean, Deprecated) Controls whether `anon` and `service_role` JWT-based api keys should be enabled. Please note: these keys are no longer recommended ([more information here](https://supabase.com/docs/guides/api/api-keys#why-are-anon-and-servicerole-jwt-based-keys-no-longer-recommended)).
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))

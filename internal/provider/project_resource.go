@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -20,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/supabase/cli/pkg/api"
@@ -42,14 +44,16 @@ type ProjectResource struct {
 
 // ProjectResourceModel describes the resource data model.
 type ProjectResourceModel struct {
-	OrganizationId       types.String   `tfsdk:"organization_id"`
-	Name                 types.String   `tfsdk:"name"`
-	DatabasePassword     types.String   `tfsdk:"database_password"`
-	Region               types.String   `tfsdk:"region"`
-	InstanceSize         types.String   `tfsdk:"instance_size"`
-	Id                   types.String   `tfsdk:"id"`
-	LegacyApiKeysEnabled types.Bool     `tfsdk:"legacy_api_keys_enabled"`
-	Timeouts             timeouts.Value `tfsdk:"timeouts"`
+	OrganizationId            types.String   `tfsdk:"organization_id"`
+	Name                      types.String   `tfsdk:"name"`
+	DatabasePassword          types.String   `tfsdk:"database_password"`
+	DatabasePasswordWo        types.String   `tfsdk:"database_password_wo"`
+	DatabasePasswordWoVersion types.Int64    `tfsdk:"database_password_wo_version"`
+	Region                    types.String   `tfsdk:"region"`
+	InstanceSize              types.String   `tfsdk:"instance_size"`
+	Id                        types.String   `tfsdk:"id"`
+	LegacyApiKeysEnabled      types.Bool     `tfsdk:"legacy_api_keys_enabled"`
+	Timeouts                  timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -76,10 +80,36 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Required:            true,
 			},
 			"database_password": schema.StringAttribute{
-				MarkdownDescription: "Password for the project database",
-				Required:            true,
-				Sensitive:           true,
-				Validators:          []validator.String{stringvalidator.LengthAtLeast(4)},
+				MarkdownDescription: "Password for the project database. Exactly one of `database_password` or " +
+					"`database_password_wo` must be set. This value is persisted in Terraform state in plaintext; " +
+					"prefer `database_password_wo` to keep it out of state.",
+				Optional:  true,
+				Sensitive: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(4),
+					stringvalidator.ExactlyOneOf(path.MatchRoot("database_password_wo")),
+				},
+			},
+			"database_password_wo": schema.StringAttribute{
+				MarkdownDescription: "Write-only password for the project database, for example `ephemeral.random_password.db.result`. " +
+					"Exactly one of `database_password` or `database_password_wo` must be set. Unlike `database_password` " +
+					"this value is never persisted to Terraform state. Must be paired with `database_password_wo_version`, " +
+					"which is what triggers a rotation.",
+				Optional:  true,
+				Sensitive: true,
+				WriteOnly: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(4),
+					stringvalidator.AlsoRequires(path.MatchRoot("database_password_wo_version")),
+				},
+			},
+			"database_password_wo_version": schema.Int64Attribute{
+				MarkdownDescription: "Version counter for `database_password_wo`. Increment it to rotate the database password. " +
+					"A write-only value is absent from state, so this counter is what the provider compares to detect a rotation.",
+				Optional: true,
+				Validators: []validator.Int64{
+					int64validator.AlsoRequires(path.MatchRoot("database_password_wo")),
+				},
 			},
 			"region": schema.StringAttribute{
 				MarkdownDescription: "Region where the project is located",
@@ -159,8 +189,14 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	dbPass, diags := resolveDatabasePassword(ctx, req.Config, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	tflog.Trace(ctx, "create project")
-	resp.Diagnostics.Append(createProject(ctx, &data, r.client, createTimeout)...)
+	resp.Diagnostics.Append(createProject(ctx, &data, r.client, createTimeout, dbPass)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -221,8 +257,13 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 	if !plan.Name.Equal(state.Name) {
 		resp.Diagnostics.Append(updateName(ctx, &plan, r.client)...)
 	}
-	if !plan.DatabasePassword.Equal(state.DatabasePassword) {
-		resp.Diagnostics.Append(updateDatabasePassword(ctx, &plan, r.client)...)
+	if databasePasswordChanged(&plan, &state) {
+		dbPass, diags := resolveDatabasePassword(ctx, req.Config, &plan)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(updateDatabasePassword(ctx, &plan, r.client, dbPass)...)
 	}
 	if !plan.Region.Equal(state.Region) {
 		resp.Diagnostics.AddAttributeError(path.Root("region"), "Client Error", "Update is not supported for this attribute")
@@ -271,7 +312,7 @@ func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportSt
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
+func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses, timeout time.Duration, dbPass string) diag.Diagnostics {
 	regionSelection := api.V1CreateProjectBodyRegionSelection0{
 		Type: api.Specific,
 		Code: api.V1CreateProjectBodyRegionSelection0Code(data.Region.ValueString()),
@@ -287,7 +328,7 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 	body := api.V1CreateAProjectJSONRequestBody{
 		OrganizationSlug: data.OrganizationId.ValueString(),
 		Name:             data.Name.ValueString(),
-		DbPass:           data.DatabasePassword.ValueString(),
+		DbPass:           dbPass,
 		RegionSelection:  &region,
 	}
 	if !data.InstanceSize.IsUnknown() && !data.InstanceSize.IsNull() {
@@ -470,9 +511,9 @@ func updateName(ctx context.Context, plan *ProjectResourceModel, client *api.Cli
 	return nil
 }
 
-func updateDatabasePassword(ctx context.Context, plan *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+func updateDatabasePassword(ctx context.Context, plan *ProjectResourceModel, client *api.ClientWithResponses, dbPass string) diag.Diagnostics {
 	httpResp, err := client.V1UpdateDatabasePasswordWithResponse(ctx, plan.Id.ValueString(), api.V1UpdatePasswordBody{
-		Password: plan.DatabasePassword.ValueString(),
+		Password: dbPass,
 	})
 	if err != nil {
 		msg := fmt.Sprintf("Unable to update database password, got error: %s", err)
@@ -485,4 +526,26 @@ func updateDatabasePassword(ctx context.Context, plan *ProjectResourceModel, cli
 	}
 
 	return nil
+}
+
+// databasePasswordChanged reports whether the project password must be pushed to
+// the API. A write-only value is absent from state, so the _wo path is driven by
+// its version counter instead of by comparing the secret itself.
+func databasePasswordChanged(plan, state *ProjectResourceModel) bool {
+	if !plan.DatabasePasswordWoVersion.IsNull() {
+		return !plan.DatabasePasswordWoVersion.Equal(state.DatabasePasswordWoVersion)
+	}
+	return !plan.DatabasePassword.Equal(state.DatabasePassword)
+}
+
+// resolveDatabasePassword returns the password to send to the API. Write-only
+// attributes are nulled out in plan and state by the framework, so the _wo value
+// can only be read from config.
+func resolveDatabasePassword(ctx context.Context, cfg tfsdk.Config, data *ProjectResourceModel) (string, diag.Diagnostics) {
+	if !data.DatabasePassword.IsNull() {
+		return data.DatabasePassword.ValueString(), nil
+	}
+	var wo types.String
+	diags := cfg.GetAttribute(ctx, path.Root("database_password_wo"), &wo)
+	return wo.ValueString(), diags
 }
