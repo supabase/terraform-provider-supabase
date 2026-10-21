@@ -117,8 +117,8 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 					"`security_captcha_secret`, `external_apple_secret`, `external_azure_secret`, `external_bitbucket_secret`, `external_discord_secret`, `external_facebook_secret`, " +
 					"`external_figma_secret`, `external_github_secret`, `external_gitlab_secret`, `external_google_secret`, `external_kakao_secret`, `external_keycloak_secret`, " +
 					"`external_linkedin_oidc_secret`, `external_notion_secret`, `external_slack_oidc_secret`, `external_slack_secret`, `external_spotify_secret`, `external_twitch_secret`, " +
-					"`external_twitter_secret`, `external_workos_secret`, `external_x_secret`, `external_zoom_secret`, `hook_custom_access_token_secrets`, `hook_mfa_verification_attempt_secrets`, " +
-					"`hook_password_verification_attempt_secrets`, `hook_send_email_secrets`, `hook_send_sms_secrets`.",
+					"`external_twitter_secret`, `external_workos_secret`, `external_x_secret`, `external_zoom_secret`, `hook_after_user_created_secrets`, `hook_before_user_created_secrets`, " +
+					"`hook_custom_access_token_secrets`, `hook_mfa_verification_attempt_secrets`, `hook_password_verification_attempt_secrets`, `hook_send_email_secrets`, `hook_send_sms_secrets`.",
 				Optional: true,
 			},
 			"api": schema.StringAttribute{
@@ -792,6 +792,8 @@ func copySensitiveFields(source api.UpdateAuthConfigBody, target *api.UpdateAuth
 	target.ExternalZoomSecret = source.ExternalZoomSecret
 	target.ExternalXSecret = source.ExternalXSecret
 	// Hook provider secrets
+	target.HookAfterUserCreatedSecrets = source.HookAfterUserCreatedSecrets
+	target.HookBeforeUserCreatedSecrets = source.HookBeforeUserCreatedSecrets
 	target.HookCustomAccessTokenSecrets = source.HookCustomAccessTokenSecrets
 	target.HookMfaVerificationAttemptSecrets = source.HookMfaVerificationAttemptSecrets
 	target.HookPasswordVerificationAttemptSecrets = source.HookPasswordVerificationAttemptSecrets
