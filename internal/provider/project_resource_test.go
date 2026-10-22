@@ -360,6 +360,82 @@ func TestAccProjectResource(t *testing.T) {
 	})
 }
 
+// TestAccProjectResource_NanoInstanceSize covers projects on the nano compute
+// size, which is the base tier rather than an addon: the billing addons
+// endpoint returns no compute_instance addon for them.
+func TestAccProjectResource_NanoInstanceSize(t *testing.T) {
+	defer gock.OffAll()
+	gock.New(defaultApiEndpoint).
+		Post(projectsApiPath).
+		Reply(http.StatusCreated).
+		JSON(api.V1ProjectResponse{
+			Id:   testProjectRef,
+			Name: "foo",
+		})
+	gock.New(defaultApiEndpoint).
+		Put(legacyApiKeysApiPath).
+		MatchParam("enabled", "false").
+		Reply(http.StatusOK)
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Persist().
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:             testProjectRef,
+			Name:           "foo",
+			OrganizationId: "continued-brown-smelt",
+			Region:         "us-east-1",
+			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	gock.New(defaultApiEndpoint).
+		Get(legacyApiKeysApiPath).
+		Persist().
+		Reply(http.StatusOK).
+		JSON(map[string]any{"enabled": false})
+	gock.New(defaultApiEndpoint).
+		Get(billingApiPath).
+		Persist().
+		Reply(http.StatusOK).
+		JSON(map[string]any{
+			"selected_addons":  []map[string]any{},
+			"available_addons": []map[string]any{},
+		})
+	gock.New(defaultApiEndpoint).
+		Delete(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectRefResponse{
+			Id:   1,
+			Ref:  testProjectRef,
+			Name: "foo",
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: projectResourceConfig(ProjectResourceModel{
+					OrganizationId:   types.StringValue("continued-brown-smelt"),
+					Name:             types.StringValue("foo"),
+					DatabasePassword: types.StringValue("barbaz"),
+					Region:           types.StringValue("us-east-1"),
+					InstanceSize:     types.StringValue("nano"),
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
+					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "nano"),
+				),
+			},
+			{
+				ResourceName:            "supabase_project.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"database_password"},
+			},
+		},
+	})
+}
+
 func projectResourceConfig(p ProjectResourceModel) string {
 	rv := fmt.Sprintf(`resource "supabase_project" "test" {
   organization_id         = "%s"

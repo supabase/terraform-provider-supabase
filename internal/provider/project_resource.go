@@ -335,7 +335,9 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 	data.OrganizationId = types.StringValue(project.OrganizationId)
 	data.Name = types.StringValue(project.Name)
 	data.Region = types.StringValue(project.Region)
-	data.InstanceSize = types.StringNull()
+	// Nano is the base compute size rather than an addon, so a project
+	// without a compute_instance addon runs on nano.
+	data.InstanceSize = types.StringValue(string(api.V1CreateProjectBodyDesiredInstanceSizeNano))
 
 	legacyKeysResp, err := client.V1GetProjectLegacyApiKeysWithResponse(ctx, project.Id)
 	if err != nil {
