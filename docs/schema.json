@@ -64,15 +64,17 @@
                   "attributes": {
                     "role": {
                       "type": "string",
-                      "description": "Role of the secret JWT template",
+                      "description": "Postgres role that requests made with the key run as, such as a custom role created in a migration. A new key uses `service_role` when this is not set. Only secret keys accept a role. Changing a configured role replaces the key; removing it from configuration keeps the current role.",
                       "description_kind": "markdown",
+                      "optional": true,
                       "computed": true
                     }
                   },
                   "nesting_mode": "single"
                 },
-                "description": "Secret JWT template",
+                "description": "JWT template of a secret API key. Requests made with the key use the Postgres `role` set here.",
                 "description_kind": "markdown",
+                "optional": true,
                 "computed": true
               },
               "type": {
