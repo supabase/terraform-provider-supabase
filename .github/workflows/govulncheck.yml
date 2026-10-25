@@ -1,0 +1,30 @@
+# Checks source for known vulnerabilities.
+name: Vulnerability Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  # Weekly, to catch advisories published between changes.
+  schedule:
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOVULNCHECK_VERSION: v1.9.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ".go-version"
+          cache: true
+      - run: go run golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION} ./...
