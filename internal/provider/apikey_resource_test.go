@@ -885,6 +885,64 @@ func TestNullableDescription(t *testing.T) {
 	}
 }
 
+// An imported key keeps its live description when configuration leaves
+// description unset. Before description was Computed, the plan cleared it, the
+// PATCH omitted the field, the API kept the old value and apply failed with
+// "Provider produced inconsistent result".
+func TestAccApiKeyResource_ImportKeepsDescription(t *testing.T) {
+	defer gock.OffAll()
+
+	gock.New(defaultApiEndpoint).
+		Get(apiKeyApiPath).
+		Persist().
+		Reply(http.StatusOK).
+		JSON(api.ApiKeyResponse{
+			Id:          nullable.NewNullableWithValue(testApiKeyUUID),
+			Name:        "test",
+			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
+			ApiKey:      nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+			Description: nullable.NewNullableWithValue("Minted out of band"),
+		})
+	mockApiKeyRoles(map[string]string{testApiKeyUUID: "app_reader"})
+	gock.New(defaultApiEndpoint).
+		Delete(apiKeyApiPath).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:             testAccApikeyResourceConfigCustomRoleNoDescription,
+				ResourceName:       "supabase_apikey.new",
+				ImportState:        true,
+				ImportStateId:      testProjectRef + "/" + testApiKeyUUID,
+				ImportStatePersist: true,
+			},
+			{
+				Config: testAccApikeyResourceConfigCustomRoleNoDescription,
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_apikey.new", "description", "Minted out of band"),
+					resource.TestCheckResourceAttr("supabase_apikey.new", "secret_jwt_template.role", "app_reader"),
+				),
+			},
+		},
+	})
+}
+
+const testAccApikeyResourceConfigCustomRoleNoDescription = `
+resource "supabase_apikey" "new" {
+  project_ref = "` + testProjectRef + `"
+  name        = "test"
+  secret_jwt_template = {
+    role = "app_reader"
+  }
+}
+`
+
 func TestResolveAPIKeyImportID(t *testing.T) {
 	knownID := uuid.New()
 	otherID := uuid.New()

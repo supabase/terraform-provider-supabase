@@ -48,7 +48,7 @@ The role must already exist in the project's database. Changing a configured rol
 
 ### Optional
 
-- `description` (String) Description of the API key
+- `description` (String) Description of the API key. When not set, the key keeps its current description.
 - `secret_jwt_template` (Attributes) JWT template of a secret API key. Requests made with the key use the Postgres `role` set here. (see [below for nested schema](#nestedatt--secret_jwt_template))
 
 ### Read-Only

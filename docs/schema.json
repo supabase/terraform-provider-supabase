@@ -37,9 +37,10 @@
               },
               "description": {
                 "type": "string",
-                "description": "Description of the API key",
+                "description": "Description of the API key. When not set, the key keeps its current description.",
                 "description_kind": "markdown",
-                "optional": true
+                "optional": true,
+                "computed": true
               },
               "id": {
                 "type": "string",

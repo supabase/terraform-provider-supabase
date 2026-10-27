@@ -108,8 +108,12 @@ func (d *APIKeyResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Description of the API key",
+				MarkdownDescription: "Description of the API key. When not set, the key keeps its current description.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"type": schema.StringAttribute{
 				MarkdownDescription: "Type of the API key",
