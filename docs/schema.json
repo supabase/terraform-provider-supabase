@@ -577,6 +577,46 @@
             "description": "Third-party auth resource",
             "description_kind": "markdown"
           }
+        },
+        "supabase_vault_secret": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "description": {
+                "type": "string",
+                "description": "Optional description stored with the secret. A blank description is treated as unset.",
+                "description_kind": "markdown",
+                "optional": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Vault secret UUID returned by `vault.create_secret`.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "name": {
+                "type": "string",
+                "description": "Unique secret name. Changing this updates the existing secret in place.",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID. Changing this recreates the secret.",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "value": {
+                "type": "string",
+                "description": "Plaintext secret passed to `vault.create_secret` and `vault.update_secret`. Stored in Terraform state and refreshed from `vault.decrypted_secrets`.",
+                "description_kind": "markdown",
+                "required": true,
+                "sensitive": true
+              }
+            },
+            "description": "Manages a secret in Supabase Vault. Create and update run `vault.create_secret` and `vault.update_secret` through the Management API database query endpoint, following `UpsertVaultSecrets` in the Supabase CLI package. Destroy deletes the `vault.secrets` row. Vault's SQL API exposes create and update only.",
+            "description_kind": "markdown"
+          }
         }
       },
       "data_source_schemas": {

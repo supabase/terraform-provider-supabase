@@ -20,6 +20,8 @@ const (
 	storageConfigApiPath       = projectApiPath + "/config/storage"
 	sslEnforcementApiPath      = projectApiPath + "/ssl-enforcement"
 	secretsApiPath             = projectApiPath + "/secrets"
+	dbQueryApiPath             = projectApiPath + "/database/query"
+	testVaultSecretUUID        = "7095d222-efe5-4cd5-b5c6-5755b451e223" //nolint:gosec
 
 	// A branch ref resolves on /v1/branches/{ref} but returns 404 on /v1/projects/{ref}.
 	testBranchRef           = "zyxwvutsrqponmlkjihg" //nolint:gosec
