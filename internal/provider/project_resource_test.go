@@ -516,16 +516,16 @@ func TestAccProjectResource_Timeouts(t *testing.T) {
 	})
 }
 
-func projectResourceWriteOnlyConfig(name, password string, woVersion int64) string {
+func projectResourceWriteOnlyConfig(password string, woVersion int64) string {
 	return fmt.Sprintf(`resource "supabase_project" "test" {
   organization_id              = "continued-brown-smelt"
-  name                         = "%s"
+  name                         = "foo"
   database_password_wo         = "%s"
   database_password_wo_version = %d
   region                       = "us-east-1"
   instance_size                = "micro"
 }
-`, name, password, woVersion)
+`, password, woVersion)
 }
 
 // matchJSONField asserts one field of a request body, so a mock can prove the
@@ -617,7 +617,7 @@ func TestAccProjectResource_WriteOnlyPassword(t *testing.T) {
 		},
 		Steps: []resource.TestStep{
 			{
-				Config: projectResourceWriteOnlyConfig("foo", "barbaz", 1),
+				Config: projectResourceWriteOnlyConfig("barbaz", 1),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password_wo_version", "1"),
@@ -628,7 +628,7 @@ func TestAccProjectResource_WriteOnlyPassword(t *testing.T) {
 				),
 			},
 			{
-				Config: projectResourceWriteOnlyConfig("foo", "barbaz", 2),
+				Config: projectResourceWriteOnlyConfig("barbaz", 2),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password_wo_version", "2"),
 					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password_wo"),
@@ -692,7 +692,7 @@ func TestAccProjectResource_PasswordMigration(t *testing.T) {
 				Check:  resource.TestCheckResourceAttr("supabase_project.test", "database_password", "inline-initial"),
 			},
 			{
-				Config: projectResourceWriteOnlyConfig("foo", "write-only-migrated", 1),
+				Config: projectResourceWriteOnlyConfig("write-only-migrated", 1),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					checkMockDone("migration", migrate, true),
 					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password"),
@@ -701,12 +701,12 @@ func TestAccProjectResource_PasswordMigration(t *testing.T) {
 				),
 			},
 			{
-				Config:      projectResourceWriteOnlyConfig("foo", "write-only-rotated", 2),
+				Config:      projectResourceWriteOnlyConfig("write-only-rotated", 2),
 				ExpectError: regexp.MustCompile(`rotation denied`),
 			},
 			{
 				// Same version as the failed apply: it must still send the PATCH.
-				Config: projectResourceWriteOnlyConfig("foo", "write-only-rotated", 2),
+				Config: projectResourceWriteOnlyConfig("write-only-rotated", 2),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					checkMockDone("failed rotation", failedRotation, true),
 					checkMockDone("rotation retry", retry, true),
