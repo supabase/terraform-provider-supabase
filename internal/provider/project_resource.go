@@ -91,7 +91,8 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 				},
 			},
 			"database_password_wo": schema.StringAttribute{
-				MarkdownDescription: "Write-only password for the project database, for example `ephemeral.random_password.db.result`. " +
+				MarkdownDescription: "Write-only password for the project database. Use a stable, retrievable secret source, " +
+					"such as an ephemeral secret-manager read. Save generated passwords in a secret manager so clients can retrieve them. " +
 					"Exactly one of `database_password` or `database_password_wo` must be set. Unlike `database_password` " +
 					"this value is never persisted to Terraform state. Must be paired with `database_password_wo_version`, " +
 					"which is what triggers a rotation.",
@@ -105,7 +106,9 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 			},
 			"database_password_wo_version": schema.Int64Attribute{
 				MarkdownDescription: "Version counter for `database_password_wo`. Increment it to rotate the database password. " +
-					"A write-only value is absent from state, so this counter is what the provider compares to detect a rotation.",
+					"A write-only value is absent from state, so this counter is what the provider compares to detect a rotation. " +
+					"Switching from `database_password` or applying write-only configuration after import sends the configured " +
+					"password to the API on the next apply. Use the existing password to avoid disrupting clients.",
 				Optional: true,
 				Validators: []validator.Int64{
 					int64validator.AlsoRequires(path.MatchRoot("database_password_wo")),

@@ -516,16 +516,16 @@ func TestAccProjectResource_Timeouts(t *testing.T) {
 	})
 }
 
-func projectResourceWriteOnlyConfig(name string, woVersion int64) string {
+func projectResourceWriteOnlyConfig(name, password string, woVersion int64) string {
 	return fmt.Sprintf(`resource "supabase_project" "test" {
   organization_id              = "continued-brown-smelt"
   name                         = "%s"
-  database_password_wo         = "barbaz"
+  database_password_wo         = "%s"
   database_password_wo_version = %d
   region                       = "us-east-1"
   instance_size                = "micro"
 }
-`, name, woVersion)
+`, name, password, woVersion)
 }
 
 // matchJSONField asserts one field of a request body, so a mock can prove the
@@ -617,7 +617,7 @@ func TestAccProjectResource_WriteOnlyPassword(t *testing.T) {
 		},
 		Steps: []resource.TestStep{
 			{
-				Config: projectResourceWriteOnlyConfig("foo", 1),
+				Config: projectResourceWriteOnlyConfig("foo", "barbaz", 1),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password_wo_version", "1"),
@@ -628,11 +628,100 @@ func TestAccProjectResource_WriteOnlyPassword(t *testing.T) {
 				),
 			},
 			{
-				Config: projectResourceWriteOnlyConfig("foo", 2),
+				Config: projectResourceWriteOnlyConfig("foo", "barbaz", 2),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("supabase_project.test", "database_password_wo_version", "2"),
 					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password_wo"),
 					checkMockDone("password rotation", rotatePassword, true),
+				),
+			},
+		},
+	})
+}
+
+// Migration must send the configured password and remove the old state secret.
+// A failed rotation must leave the version unchanged so the next apply retries.
+func TestAccProjectResource_PasswordMigration(t *testing.T) {
+	defer gock.OffAll()
+	gock.New(defaultApiEndpoint).
+		Post(projectsApiPath).
+		AddMatcher(matchJSONField("db_pass", "inline-initial")).
+		Reply(http.StatusCreated).
+		JSON(api.V1ProjectResponse{Id: testProjectRef, Name: "foo"})
+	migrate := gock.New(defaultApiEndpoint).
+		Patch(dbPasswordApiPath).
+		AddMatcher(matchJSONField("password", "write-only-migrated")).
+		Reply(http.StatusOK)
+	failedRotation := gock.New(defaultApiEndpoint).
+		Patch(dbPasswordApiPath).
+		AddMatcher(matchJSONField("password", "write-only-rotated")).
+		Reply(http.StatusForbidden).
+		JSON(map[string]string{"message": "rotation denied"})
+	retry := gock.New(defaultApiEndpoint).
+		Patch(dbPasswordApiPath).
+		AddMatcher(matchJSONField("password", "write-only-rotated")).
+		Reply(http.StatusOK)
+	inline := gock.New(defaultApiEndpoint).
+		Patch(dbPasswordApiPath).
+		AddMatcher(matchJSONField("password", "inline-final")).
+		Reply(http.StatusOK)
+	gock.New(defaultApiEndpoint).
+		Delete(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{})
+	persistProjectReadMocks()
+
+	inlineConfig := func(password string) string {
+		return fmt.Sprintf(`resource "supabase_project" "test" {
+  organization_id   = "continued-brown-smelt"
+  name              = "foo"
+  region            = "us-east-1"
+  instance_size     = "micro"
+  database_password = "%s"
+}`, password)
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_11_0),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: inlineConfig("inline-initial"),
+				Check:  resource.TestCheckResourceAttr("supabase_project.test", "database_password", "inline-initial"),
+			},
+			{
+				Config: projectResourceWriteOnlyConfig("foo", "write-only-migrated", 1),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					checkMockDone("migration", migrate, true),
+					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password"),
+					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password_wo"),
+					resource.TestCheckResourceAttr("supabase_project.test", "database_password_wo_version", "1"),
+				),
+			},
+			{
+				Config:      projectResourceWriteOnlyConfig("foo", "write-only-rotated", 2),
+				ExpectError: regexp.MustCompile(`rotation denied`),
+			},
+			{
+				// Same version as the failed apply: it must still send the PATCH.
+				Config: projectResourceWriteOnlyConfig("foo", "write-only-rotated", 2),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					checkMockDone("failed rotation", failedRotation, true),
+					checkMockDone("rotation retry", retry, true),
+					resource.TestCheckResourceAttr("supabase_project.test", "database_password_wo_version", "2"),
+					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password"),
+					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password_wo"),
+				),
+			},
+			{
+				Config: inlineConfig("inline-final"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					checkMockDone("inline migration", inline, true),
+					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "inline-final"),
+					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password_wo"),
+					resource.TestCheckNoResourceAttr("supabase_project.test", "database_password_wo_version"),
 				),
 			},
 		},
@@ -685,6 +774,17 @@ func TestAccProjectResource_PasswordExactlyOneOf(t *testing.T) {
   region               = "us-east-1"
   database_password_wo = "barbaz"
 }`,
+				ExpectError: regexp.MustCompile(`Invalid Attribute Combination`),
+			},
+			{
+				Config: `resource "supabase_project" "test" {
+  organization_id              = "continued-brown-smelt"
+  name                         = "foo"
+  region                       = "us-east-1"
+  database_password            = "barbaz"
+  database_password_wo_version = 1
+}`,
+				PlanOnly:    true,
 				ExpectError: regexp.MustCompile(`Invalid Attribute Combination`),
 			},
 		},
