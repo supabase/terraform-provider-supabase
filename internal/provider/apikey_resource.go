@@ -467,7 +467,7 @@ func createApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 	httpResp, err := client.V1CreateProjectApiKeyWithResponse(ctx, plan.ProjectRef.ValueString(), &api.V1CreateProjectApiKeyParams{Reveal: reveal}, api.CreateApiKeyBody{
 		Name:              plan.Name.ValueString(),
 		Type:              api.CreateApiKeyBodyTypeSecret,
-		Description:       nullable.Nullable[string]{},
+		Description:       nullableDescription(plan.Description),
 		SecretJwtTemplate: nullable.NewNullableWithValue(map[string]interface{}{"role": "service_role"}),
 	})
 	if err != nil {
@@ -503,16 +503,9 @@ func updateApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 		secretJwtTemplate = nullable.Nullable[map[string]interface{}]{}
 	}
 
-	var description nullable.Nullable[string]
-	if plan.Description.IsNull() || plan.Description.IsUnknown() {
-		description = nullable.Nullable[string]{}
-	} else {
-		description = nullable.NewNullableWithValue(plan.Description.ValueString())
-	}
-
 	httpResp, err := client.V1UpdateProjectApiKeyWithResponse(ctx, plan.ProjectRef.ValueString(), uuid.MustParse(plan.Id.ValueString()), &api.V1UpdateProjectApiKeyParams{Reveal: Ptr(true)}, api.UpdateApiKeyBody{
 		Name:              plan.Name.ValueStringPointer(),
-		Description:       description,
+		Description:       nullableDescription(plan.Description),
 		SecretJwtTemplate: secretJwtTemplate,
 	})
 	if err != nil {
@@ -527,6 +520,13 @@ func updateApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 	plan.Description = NullableToString(httpResp.JSON200.Description)
 
 	return readApiKeyDatabase(ctx, plan, client)
+}
+
+func nullableDescription(description types.String) nullable.Nullable[string] {
+	if description.IsNull() || description.IsUnknown() {
+		return nullable.Nullable[string]{}
+	}
+	return nullable.NewNullableWithValue(description.ValueString())
 }
 
 func deleteApiKey(ctx context.Context, state *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {

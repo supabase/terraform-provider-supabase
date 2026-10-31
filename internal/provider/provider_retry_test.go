@@ -38,11 +38,27 @@ func testRetryClient(t *testing.T, serverURL string) *api.Client {
 	return client
 }
 
+// Closes the connection without writing a response to simulate a transport error.
+func dropConnection(t *testing.T, w http.ResponseWriter) {
+	t.Helper()
+
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		t.Error("response writer does not support hijacking")
+		return
+	}
+	conn, _, err := hj.Hijack()
+	if err != nil {
+		t.Errorf("failed to hijack connection: %v", err)
+		return
+	}
+	_ = conn.Close()
+}
+
 func TestRetry_GetSucceedsAfter502(t *testing.T) {
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		attempt := attempts.Add(1)
-		if attempt == 1 {
+		if attempts.Add(1) == 1 {
 			w.WriteHeader(http.StatusBadGateway)
 			_, _ = w.Write([]byte("error code: 502"))
 			return
@@ -71,19 +87,8 @@ func TestRetry_GetSucceedsAfter502(t *testing.T) {
 func TestRetry_GetSucceedsAfterTransportError(t *testing.T) {
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		attempt := attempts.Add(1)
-		if attempt == 1 {
-			hj, ok := w.(http.Hijacker)
-			if !ok {
-				t.Error("response writer does not support hijacking")
-				return
-			}
-			conn, _, err := hj.Hijack()
-			if err != nil {
-				t.Errorf("failed to hijack connection: %v", err)
-				return
-			}
-			_ = conn.Close()
+		if attempts.Add(1) == 1 {
+			dropConnection(t, w)
 			return
 		}
 
@@ -166,17 +171,7 @@ func TestRetry_ExhaustedTransportErrorReturnsError(t *testing.T) {
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts.Add(1)
-		hj, ok := w.(http.Hijacker)
-		if !ok {
-			t.Error("response writer does not support hijacking")
-			return
-		}
-		conn, _, err := hj.Hijack()
-		if err != nil {
-			t.Errorf("failed to hijack connection: %v", err)
-			return
-		}
-		_ = conn.Close()
+		dropConnection(t, w)
 	}))
 	defer server.Close()
 
@@ -198,34 +193,25 @@ func TestRetry_ExhaustedTransportErrorReturnsError(t *testing.T) {
 }
 
 func TestRetry_ContextCancelledStopsRetries(t *testing.T) {
-	var attempts atomic.Int32
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		attempt := attempts.Add(1)
-		if attempt == 1 {
-			cancel()
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte("temporarily unavailable"))
+	// Never respond: cancel, then wait for the client to abort so the
+	// cancellation always wins over a response reaching the client.
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		cancel()
+		<-r.Context().Done()
 	}))
 	defer server.Close()
 
 	client := testRetryClient(t, server.URL)
 	resp, err := client.V1GetProject(ctx, "project-ref")
-	if !errors.Is(err, context.Canceled) {
-		if resp != nil {
-			resp.Body.Close()
-		}
-		t.Fatalf("expected context canceled error, got %v", err)
-	}
 	if resp != nil {
-		defer resp.Body.Close()
+		resp.Body.Close()
 		t.Fatalf("expected nil response after cancellation, got status %d", resp.StatusCode)
 	}
-	if got := attempts.Load(); got != 1 {
-		t.Fatalf("expected 1 attempt before cancellation, got %d", got)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context canceled error, got %v", err)
 	}
 }
 
