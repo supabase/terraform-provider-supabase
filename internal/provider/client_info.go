@@ -29,9 +29,6 @@ func userAgentValue(providerVersion, terraformVersion string) string {
 // Terraform, and the Go toolchain is fixed by the release build, so it can be
 // recovered from the provider version. runtime-version is the Terraform core
 // version, and is omitted when core did not report one.
-//
-// "terraform" is not yet listed as a runtime value in the "Standard SDK
-// headers" document; it needs a row there before this ships.
 func clientInfoValue(providerVersion, terraformVersion string) string {
 	var b strings.Builder
 	b.WriteString(clientName + "/" + providerVersion)
