@@ -186,6 +186,148 @@
             "description_kind": "markdown"
           }
         },
+        "supabase_custom_hostname": {
+          "version": 0,
+          "block": {
+            "attributes": {
+              "activate": {
+                "type": "bool",
+                "description": "When true, the provider reverifies DNS and activates the hostname. Apply again while DNS propagates; the provider keeps planning an update until `status` is `5_services_reconfigured`. Setting this to false leaves an active hostname in place. Delete the resource to remove it. initialize, reverify, and delete allow 10 requests per minute. Each apply sends at most one request to each of those endpoints. See https://supabase.com/docs/reference/api/introduction#endpoint-exceptions.",
+                "description_kind": "markdown",
+                "optional": true,
+                "computed": true
+              },
+              "custom_hostname": {
+                "type": "string",
+                "description": "Hostname to serve the project from, such as `api.example.com`. Supabase custom domains support subdomains. Changing it re-initializes the hostname.",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "custom_origin_server": {
+                "type": "string",
+                "description": "CNAME target for the custom hostname. Point `custom_hostname` at this value.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "hostname_id": {
+                "type": "string",
+                "description": "Identifier of the custom hostname.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "hostname_status": {
+                "type": "string",
+                "description": "Status reported for the hostname record.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Project reference ID. A project has one custom hostname, so this matches `project_ref`.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "ownership_verification": {
+                "nested_type": {
+                  "attributes": {
+                    "name": {
+                      "type": "string",
+                      "description": "DNS record name",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "DNS record type",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "DNS record value",
+                      "description_kind": "markdown",
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "DNS record that proves ownership of the hostname.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "project_ref": {
+                "type": "string",
+                "description": "Project reference ID",
+                "description_kind": "markdown",
+                "required": true
+              },
+              "ssl": {
+                "nested_type": {
+                  "attributes": {
+                    "status": {
+                      "type": "string",
+                      "description": "Certificate status",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "validation_errors": {
+                      "type": [
+                        "list",
+                        "string"
+                      ],
+                      "description": "Certificate validation error messages",
+                      "description_kind": "markdown",
+                      "computed": true
+                    },
+                    "validation_records": {
+                      "nested_type": {
+                        "attributes": {
+                          "txt_name": {
+                            "type": "string",
+                            "description": "TXT record name",
+                            "description_kind": "markdown",
+                            "computed": true
+                          },
+                          "txt_value": {
+                            "type": "string",
+                            "description": "TXT record value",
+                            "description_kind": "markdown",
+                            "computed": true
+                          }
+                        },
+                        "nesting_mode": "list"
+                      },
+                      "description": "DNS TXT records required to issue the certificate.",
+                      "description_kind": "markdown",
+                      "computed": true
+                    }
+                  },
+                  "nesting_mode": "single"
+                },
+                "description": "Certificate validation details for the custom hostname.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "status": {
+                "type": "string",
+                "description": "Supabase custom hostname setup status: `1_not_started`, `2_initiated`, `3_challenge_verified`, `4_origin_setup_completed`, or `5_services_reconfigured`.",
+                "description_kind": "markdown",
+                "computed": true
+              },
+              "verification_errors": {
+                "type": [
+                  "list",
+                  "string"
+                ],
+                "description": "Errors from the latest hostname verification.",
+                "description_kind": "markdown",
+                "computed": true
+              }
+            },
+            "description": "Custom hostname for a Supabase project. The Management API marks this feature as beta.",
+            "description_kind": "markdown"
+          }
+        },
         "supabase_edge_function": {
           "version": 0,
           "block": {
