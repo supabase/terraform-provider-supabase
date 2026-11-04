@@ -2,13 +2,16 @@ package provider
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -1070,6 +1073,120 @@ resource "supabase_edge_function_secrets" "test" {
 				Config:             testConfig,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestValidateSecretNames_DuplicateNames(test *testing.T) {
+	for _, values := range [][2]string{
+		{"first-value", "second-value"},
+		{"second-value", "first-value"},
+	} {
+		test.Run(values[0], func(test *testing.T) {
+			diagnostics := validateSecretNames([]SecretModel{
+				{Name: types.StringValue("API_KEY"), Value: types.StringValue(values[0])},
+				{Name: types.StringValue("API_KEY"), Value: types.StringValue(values[1])},
+			})
+			if !diagnostics.HasError() || len(diagnostics) != 1 {
+				test.Fatalf("expected one duplicate-name error, got %v", diagnostics)
+			}
+			diagnostic := diagnostics[0]
+			if diagnostic.Summary() != "Duplicate Secret Name" || !strings.Contains(diagnostic.Detail(), "API_KEY") {
+				test.Fatalf("unexpected diagnostic: %v", diagnostic)
+			}
+			for _, value := range values {
+				if strings.Contains(diagnostic.Detail(), value) || strings.Contains(diagnostic.Summary(), value) {
+					test.Fatal("duplicate-name diagnostic must not expose secret values")
+				}
+			}
+		})
+	}
+}
+
+func TestValidateSecretNames_DistinctOrUnknownNames(test *testing.T) {
+	cases := []struct {
+		name  string
+		names []types.String
+	}{
+		{name: "empty"},
+		{name: "distinct", names: []types.String{types.StringValue("API_KEY"), types.StringValue("DATABASE_URL")}},
+		{name: "unknown", names: []types.String{types.StringUnknown(), types.StringUnknown(), types.StringNull(), types.StringValue("API_KEY")}},
+	}
+	for _, testCase := range cases {
+		test.Run(testCase.name, func(test *testing.T) {
+			var secrets []SecretModel
+			for _, name := range testCase.names {
+				secrets = append(secrets, SecretModel{Name: name, Value: types.StringUnknown()})
+			}
+			if diagnostics := validateSecretNames(secrets); diagnostics.HasError() {
+				test.Fatalf("unexpected name validation error: %v", diagnostics)
+			}
+		})
+	}
+}
+
+func TestCreateOrUpdateEdgeFunctionSecrets_RejectsDuplicateNames(test *testing.T) {
+	ctx := context.Background()
+	secrets, diagnostics := types.SetValueFrom(ctx, types.ObjectType{AttrTypes: SecretModel{}.AttributeTypes()}, []SecretModel{
+		{Name: types.StringValue("API_KEY"), Value: types.StringValue("first-value")},
+		{Name: types.StringValue("API_KEY"), Value: types.StringValue("second-value")},
+	})
+	if diagnostics.HasError() {
+		test.Fatalf("cannot construct the test secrets: %v", diagnostics)
+	}
+	data := EdgeFunctionSecretsResourceModel{ProjectRef: types.StringValue(testProjectRef), Secrets: secrets}
+	diagnostics = createOrUpdateEdgeFunctionSecrets(ctx, &data, nil)
+	if len(diagnostics) != 1 || diagnostics[0].Summary() != "Duplicate Secret Name" {
+		test.Fatalf("expected duplicate-name rejection before using the API client, got %v", diagnostics)
+	}
+}
+
+func TestAccEdgeFunctionSecretsResource_DuplicateNames(test *testing.T) {
+	testresource.Test(test, testresource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(test) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []testresource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{ name = "API_KEY", value = "first-value" },
+		{ name = "API_KEY", value = "second-value" }
+	]
+}
+`, testProjectRef),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+				ExpectError:        regexp.MustCompile("Duplicate Secret Name"),
+			},
+		},
+	})
+}
+
+func TestAccEdgeFunctionSecretsResource_DuplicateNamesWithUnknownValue(test *testing.T) {
+	testresource.Test(test, testresource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(test) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []testresource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "terraform_data" "secret" {
+	input = "second-value"
+}
+
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{ name = "API_KEY", value = "first-value" },
+		{ name = "API_KEY", value = terraform_data.secret.output }
+	]
+}
+`, testProjectRef),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+				ExpectError:        regexp.MustCompile("Duplicate Secret Name"),
 			},
 		},
 	})
