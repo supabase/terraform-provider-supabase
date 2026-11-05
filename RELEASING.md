@@ -18,10 +18,10 @@ Replace the following:
 
 The command prints a link where you can polish the notes, and you can also edit them with `gh release edit`. If you'd rather draft the release on the [new release page](https://github.com/supabase/terraform-provider-supabase/releases/new), keep the release title identical to the tag name, because GoReleaser finds the draft by its title.
 
-Drafting a release doesn't create the git tag, so you create and push it yourself. To push the tag, run the following commands:
+Drafting a release doesn't create the git tag, so you create and push it yourself. Make it an annotated tag, which records who created it and when. To create the tag and push it, run the following commands:
 
 ```shell
-git tag <version>
+git tag -a <version> -m "<version>"
 git push origin <version>
 ```
 
