@@ -74,7 +74,9 @@ Affected fields: `smtp_pass`, `sms_twilio_auth_token`, `sms_twilio_verify_auth_t
 - `network` (String) Network settings as serialised JSON
 - `pooler` (String) Pooler settings as serialised JSON
 - `ssl_enforcement` (Boolean) Enforce SSL on all database connections. See the [SSL enforcement API](https://api.supabase.com/api/v1#tag/database/put/v1/projects/%7Bref%7D/ssl-enforcement).
-- `storage` (String) Storage settings as serialised JSON
+- `storage` (String) Storage settings as serialised JSON.
+
+~> `migrationVersion`, `capabilities` and `databasePoolMode` are read-only and managed by Supabase. They are never written to state and setting them has no effect.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
