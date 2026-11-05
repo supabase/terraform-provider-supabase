@@ -41,7 +41,7 @@ Everyone taking part in this project follows the [Supabase code of conduct](http
 
 ## Setting up
 
-To work on the provider, you need [Go](https://go.dev/doc/install) 1.21 or later. You don't have to match the exact version in [`go.mod`](go.mod), because Go downloads it for you the first time you build.
+To work on the provider, you need the [Go](https://go.dev/doc/install) version pinned in [`.go-version`](.go-version). [Go version policy](#go-version-policy) explains how that version is chosen.
 
 You also need a few other tools:
 
@@ -53,6 +53,16 @@ You also need a few other tools:
 Use the latest releases of Terraform and golangci-lint, because CI uses them too, and older versions can produce slightly different results.
 
 To see every task the Makefile offers, run `make` without any arguments.
+
+### Go version policy
+
+This provider is built with the Go version pinned in `.go-version`, which trails the latest Go release by one major version (the `y` in Go's `x.y.z`).
+When a new Go major release ships, we move to the previous one; for example, when 1.28 is released we move to 1.27.
+Within the pinned series we adopt patch releases as they are released.
+
+Currently, this means that Go **1.26** is the supported version for developing and building this project.
+
+The `go` directive in `go.mod` is only the minimum language version and may be lower than the pinned version.
 
 ## Working on the provider
 
