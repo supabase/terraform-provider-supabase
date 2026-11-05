@@ -12,6 +12,8 @@ The docs generator, [tfplugindocs](https://github.com/hashicorp/terraform-plugin
 
 The generator ignores any other `.tf` file, so you can keep extra configurations here without them showing up in the docs.
 
+To see how a generated page will look on the Terraform Registry, paste it from `docs/` into the [Terraform doc preview tool](https://registry.terraform.io/tools/doc-preview).
+
 ## How the tests use them
 
 [`examples.go`](examples.go) embeds the example files as Go strings, and tests in `internal/provider/` use those strings as their Terraform configuration. When you add an example, embed it in `examples.go` too and use it in at least one test, so a broken example fails the build instead of reaching the docs.
