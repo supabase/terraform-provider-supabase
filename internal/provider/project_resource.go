@@ -160,8 +160,16 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	tflog.Trace(ctx, "create project")
-	resp.Diagnostics.Append(createProject(ctx, &data, r.client, createTimeout)...)
+	resp.Diagnostics.Append(createProject(ctx, &data, r.client)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// set so resource is properly tainted if next steps fail
+	resp.State.SetAttribute(ctx, path.Root("id"), data.Id.ValueString())
+
+	// Wait for project to be fully provisioned
+	if diags := waitForProjectActive(ctx, data.Id.ValueString(), r.client, createTimeout); diags.HasError() {
 		return
 	}
 
@@ -271,7 +279,7 @@ func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportSt
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
+func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	regionSelection := api.V1CreateProjectBodyRegionSelection0{
 		Type: api.Specific,
 		Code: api.V1CreateProjectBodyRegionSelection0Code(data.Region.ValueString()),
@@ -306,11 +314,6 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 	}
 
 	data.Id = types.StringValue(httpResp.JSON201.Id)
-
-	// Wait for project to be fully provisioned
-	if diags := waitForProjectActive(ctx, data.Id.ValueString(), client, timeout); diags.HasError() {
-		return diags
-	}
 
 	return nil
 }
