@@ -2030,3 +2030,114 @@ resource "supabase_settings" "branch" {
 		},
 	})
 }
+
+func TestReadOnlyStorageWarning(t *testing.T) {
+	if w := readOnlyStorageWarning(jsontypes.NewNormalizedValue(`{"fileSizeLimit":52428800,"features":{"s3Protocol":{"enabled":true}}}`)); w != nil {
+		t.Errorf("unexpected warning: %v", w)
+	}
+	if w := readOnlyStorageWarning(jsontypes.NewNormalizedNull()); w != nil {
+		t.Errorf("unexpected warning for null: %v", w)
+	}
+	if w := readOnlyStorageWarning(jsontypes.NewNormalizedUnknown()); w != nil {
+		t.Errorf("unexpected warning for unknown: %v", w)
+	}
+	w := readOnlyStorageWarning(jsontypes.NewNormalizedValue(`{"fileSizeLimit":52428800,"migrationVersion":"lifecycle-writer-coordination","capabilities":{"list_v2":true,"iceberg_catalog":true,"object_versioning":true}}`))
+	if w == nil {
+		t.Fatal("expected warning")
+	}
+	if !strings.Contains(w.Detail(), "capabilities, migrationVersion") {
+		t.Errorf("detail missing keys: %s", w.Detail())
+	}
+}
+
+func TestReadStorageConfigReadOnlyKeys(t *testing.T) {
+	// Captured from GET /v1/projects/{ref}/config/storage on staging.
+	var apiResponse api.StorageConfigResponse
+	const apiPayload = `{"fileSizeLimit":52428800,"features":{"imageTransformation":{"enabled":true},"s3Protocol":{"enabled":true},"purgeCache":{"enabled":true},"icebergCatalog":{"enabled":true,"maxNamespaces":10,"maxTables":10,"maxCatalogs":2},"vectorBuckets":{"enabled":false,"maxBuckets":10,"maxIndexes":5}},"capabilities":{"list_v2":true,"iceberg_catalog":true,"object_versioning":true},"external":{"upstreamTarget":"canary"},"migrationVersion":"lifecycle-writer-coordination"}`
+	if err := json.Unmarshal([]byte(apiPayload), &apiResponse); err != nil {
+		t.Fatal(err)
+	}
+	// Import: null state must not pick up read-only keys.
+	prev := jsontypes.NewNormalizedNull()
+	got, err := parseConfig(prev, apiResponse)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = restoreReadOnlyStorageKeys(prev, got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := map[string]any{}
+	if err := json.Unmarshal([]byte(got.ValueString()), &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range readOnlyStorageKeys {
+		if _, ok := m[k]; ok {
+			t.Errorf("read-only key %q leaked into state", k)
+		}
+	}
+	if m["fileSizeLimit"] != float64(52428800) {
+		t.Errorf("fileSizeLimit lost: %v", m)
+	}
+	// Refresh: a user-set value is kept as planned, others are untouched.
+	prev = jsontypes.NewNormalizedValue(`{"fileSizeLimit":52428800,"migrationVersion":"revoke-grants-to-unused-operations"}`)
+	got, err = parseConfig(prev, apiResponse)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = restoreReadOnlyStorageKeys(prev, got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = map[string]any{}
+	if err := json.Unmarshal([]byte(got.ValueString()), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["migrationVersion"] != "revoke-grants-to-unused-operations" {
+		t.Errorf("migrationVersion = %v, want the planned value", m["migrationVersion"])
+	}
+	if _, ok := m["databasePoolMode"]; ok {
+		t.Error("databasePoolMode should not be in state")
+	}
+}
+
+// Some projects return databasePoolMode as null (a legacy internal Storage flag).
+func TestReadStorageConfigNullDatabasePoolMode(t *testing.T) {
+	var apiResponse api.StorageConfigResponse
+	const apiPayload = `{"fileSizeLimit":52428800,"features":{"imageTransformation":{"enabled":true},"s3Protocol":{"enabled":true},"icebergCatalog":{"enabled":true,"maxNamespaces":10,"maxTables":10,"maxCatalogs":2},"vectorBuckets":{"enabled":false,"maxBuckets":10,"maxIndexes":5}},"capabilities":{"list_v2":true,"iceberg_catalog":true,"object_versioning":true},"external":{"upstreamTarget":"canary"},"databasePoolMode":null,"migrationVersion":"lifecycle-writer-coordination"}`
+	if err := json.Unmarshal([]byte(apiPayload), &apiResponse); err != nil {
+		t.Fatal(err)
+	}
+	for name, prev := range map[string]jsontypes.Normalized{
+		"import":       jsontypes.NewNormalizedNull(),
+		"refresh":      jsontypes.NewNormalizedValue(`{"fileSizeLimit":52428800}`),
+		"user-set-key": jsontypes.NewNormalizedValue(`{"fileSizeLimit":52428800,"databasePoolMode":null}`),
+	} {
+		got, err := parseConfig(prev, apiResponse)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err = restoreReadOnlyStorageKeys(prev, got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := map[string]any{}
+		if err := json.Unmarshal([]byte(got.ValueString()), &m); err != nil {
+			t.Fatal(err)
+		}
+		v, ok := m["databasePoolMode"]
+		if name == "user-set-key" {
+			// A user-set key is preserved exactly as planned.
+			if !ok || v != nil {
+				t.Errorf("%s: databasePoolMode = %v (present=%v), want preserved null", name, v, ok)
+			}
+		} else if ok {
+			t.Errorf("%s: databasePoolMode leaked into state: %v", name, v)
+		}
+		for _, k := range []string{"migrationVersion", "capabilities"} {
+			if _, ok := m[k]; ok {
+				t.Errorf("%s: read-only key %q leaked into state", name, k)
+			}
+		}
+	}
+}
