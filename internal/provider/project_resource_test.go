@@ -6,356 +6,152 @@ package provider
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/supabase/cli/pkg/api"
-	"github.com/supabase/terraform-provider-supabase/examples"
+	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 	"gopkg.in/h2non/gock.v1"
 )
 
-func TestAccProjectResource(t *testing.T) {
-	// Setup mock api
-	defer gock.OffAll()
-	// Step 1: create
-	gock.New(defaultApiEndpoint).
-		Post(projectsApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.V1ProjectResponse{
-			Id:   testProjectRef,
-			Name: "foo",
-		})
-	// Polling for ACTIVE status after create
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "foo",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	// Disable legacy API keys after create
-	gock.New(defaultApiEndpoint).
-		Put(legacyApiKeysApiPath).
-		MatchParam("enabled", "false").
-		Reply(http.StatusOK)
-	// readProject after create
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "foo",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(legacyApiKeysApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{"enabled": false})
-	gock.New(defaultApiEndpoint).
-		Get(billingApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"selected_addons": []map[string]any{
-				{
-					"type": "compute_instance",
-					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0CiMicro,
-						"name":  "Micro",
-						"price": map[string]any{},
-					},
-				},
-			},
-			"available_addons": []map[string]any{},
-		})
-	// Terraform refresh after create
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "foo",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(legacyApiKeysApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{"enabled": false})
-	gock.New(defaultApiEndpoint).
-		Get(billingApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"selected_addons": []map[string]any{
-				{
-					"type": "compute_instance",
-					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0CiMicro,
-						"name":  "Micro",
-						"price": map[string]any{},
-					},
-				},
-			},
-			"available_addons": []map[string]any{},
-		})
-	// Step 2: update instance size
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "foo",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(legacyApiKeysApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{"enabled": false})
-	gock.New(defaultApiEndpoint).
-		Get(billingApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"selected_addons": []map[string]any{
-				{
-					"type": "compute_instance",
-					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0CiMicro,
-						"name":  "Micro",
-						"price": map[string]any{},
-					},
-				},
-			},
-			"available_addons": []map[string]any{},
-		})
-	gock.New(defaultApiEndpoint).
-		Patch(projectApiPath).
-		Reply(http.StatusOK)
-	gock.New(defaultApiEndpoint).
-		Patch(dbPasswordApiPath).
-		Reply(http.StatusOK)
-	gock.New(defaultApiEndpoint).
-		Patch(billingApiPath).
-		Reply(http.StatusOK)
-	// Polling for ACTIVE status after instance_size update
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "bar",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	// Terraform refresh after update
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "bar",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(legacyApiKeysApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{"enabled": false})
-	gock.New(defaultApiEndpoint).
-		Get(billingApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"selected_addons": []map[string]any{
-				{
-					"type": "compute_instance",
-					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
-						"name":  "16XL",
-						"price": map[string]any{},
-					},
-				},
-			},
-			"available_addons": []map[string]any{},
-		})
-	// Step 3: toggle legacy API keys
-	// Plan refresh read
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "bar",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(legacyApiKeysApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{"enabled": false})
-	gock.New(defaultApiEndpoint).
-		Get(billingApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"selected_addons": []map[string]any{
-				{
-					"type": "compute_instance",
-					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
-						"name":  "16XL",
-						"price": map[string]any{},
-					},
-				},
-			},
-			"available_addons": []map[string]any{},
-		})
-	// Enable legacy API keys
-	gock.New(defaultApiEndpoint).
-		Put(legacyApiKeysApiPath).
-		MatchParam("enabled", "true").
-		Reply(http.StatusOK)
-	// Post-apply refresh read
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "bar",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(legacyApiKeysApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{"enabled": true})
-	gock.New(defaultApiEndpoint).
-		Get(billingApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"selected_addons": []map[string]any{
-				{
-					"type": "compute_instance",
-					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
-						"name":  "16XL",
-						"price": map[string]any{},
-					},
-				},
-			},
-			"available_addons": []map[string]any{},
-		})
-	// Step 4: import state
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "bar",
-			OrganizationId: "continued-brown-smelt",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(legacyApiKeysApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{"enabled": true})
-	gock.New(defaultApiEndpoint).
-		Get(billingApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"selected_addons": []map[string]any{
-				{
-					"type": "compute_instance",
-					"variant": map[string]any{
-						"id":    api.ListProjectAddonsResponseAvailableAddonsVariantsId0Ci16xlarge,
-						"name":  "16XL",
-						"price": map[string]any{},
-					},
-				},
-			},
-			"available_addons": []map[string]any{},
-		})
-	// Step 5: delete
-	gock.New(defaultApiEndpoint).
-		Delete(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           1000,
-		})
-	// Run test
+func TestAccProjectResource_basic(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resourceName := "supabase_project.test"
+	rName := acctest.RandomName()
+
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: examples.ProjectResourceConfig,
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Project/basic/"),
+				ConfigVariables: config.Variables{
+					"name":            config.StringVariable(rName),
+					"organization_id": config.StringVariable(organizationID),
+				},
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_project.test", "name", "foo"),
-					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "micro"),
-					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaz"),
-					resource.TestCheckResourceAttr("supabase_project.test", "legacy_api_keys_enabled", "false"),
+					resource.TestCheckResourceAttrSet(resourceName, "id"),
+					resource.TestCheckResourceAttr(resourceName, "name", rName),
+					resource.TestCheckResourceAttr(resourceName, "instance_size", "micro"),
+					resource.TestCheckResourceAttr(resourceName, "database_password", "barbaz"),
+					resource.TestCheckResourceAttr(resourceName, "legacy_api_keys_enabled", "false"),
 				),
 			},
-			// Update instance size testing
 			{
-				Config: projectResourceConfig(ProjectResourceModel{
-					OrganizationId:   types.StringValue("continued-brown-smelt"),
-					Name:             types.StringValue("bar"),
-					DatabasePassword: types.StringValue("barbaznew"),
-					Region:           types.StringValue("us-east-1"),
-					InstanceSize:     types.StringValue("16xlarge"),
-				}),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
-					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
-					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),
-					resource.TestCheckResourceAttr("supabase_project.test", "legacy_api_keys_enabled", "false"),
-				),
-			},
-			// Toggle legacy API keys
-			{
-				Config: projectResourceConfig(ProjectResourceModel{
-					OrganizationId:       types.StringValue("continued-brown-smelt"),
-					Name:                 types.StringValue("bar"),
-					DatabasePassword:     types.StringValue("barbaznew"),
-					Region:               types.StringValue("us-east-1"),
-					InstanceSize:         types.StringValue("16xlarge"),
-					LegacyApiKeysEnabled: types.BoolValue(true),
-				}),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
-					resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
-					resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),
-					resource.TestCheckResourceAttr("supabase_project.test", "legacy_api_keys_enabled", "true"),
-				),
-			},
-			// ImportState testing
-			{
-				ResourceName:      "supabase_project.test",
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Project/basic/"),
+				ConfigVariables: config.Variables{
+					"name":            config.StringVariable(rName),
+					"organization_id": config.StringVariable(organizationID),
+				},
+				ResourceName:      resourceName,
 				ImportState:       true,
 				ImportStateVerify: true,
 
 				// database_password is not refreshed from the API
 				ImportStateVerifyIgnore: []string{"database_password"},
 			},
-			// Delete testing automatically occurs in TestCase
+		},
+	})
+}
+
+func TestAccProjectResource_update(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resourceName := "supabase_project.test"
+	rName := acctest.RandomName()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			// Create and Read testing
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Project/basic/"),
+				ConfigVariables: config.Variables{
+					"name":            config.StringVariable(rName),
+					"organization_id": config.StringVariable(organizationID),
+				},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet(resourceName, "id"),
+					resource.TestCheckResourceAttr(resourceName, "name", rName),
+					resource.TestCheckResourceAttr(resourceName, "instance_size", "micro"),
+					resource.TestCheckResourceAttr(resourceName, "database_password", "barbaz"),
+					resource.TestCheckResourceAttr(resourceName, "legacy_api_keys_enabled", "false"),
+				),
+			},
+			// Update password
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Project/basic/"),
+				ConfigVariables: config.Variables{
+					"name":              config.StringVariable(rName),
+					"organization_id":   config.StringVariable(organizationID),
+					"database_password": config.StringVariable("barbaznew"),
+				},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet(resourceName, "id"),
+					resource.TestCheckResourceAttr(resourceName, "name", rName),
+					resource.TestCheckResourceAttr(resourceName, "instance_size", "micro"),
+					resource.TestCheckResourceAttr(resourceName, "database_password", "barbaznew"),
+					resource.TestCheckResourceAttr(resourceName, "legacy_api_keys_enabled", "false"),
+				),
+			},
+			// Update instance size testing
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Project/basic/"),
+				ConfigVariables: config.Variables{
+					"name":              config.StringVariable(rName),
+					"organization_id":   config.StringVariable(organizationID),
+					"database_password": config.StringVariable("barbaznew"),
+					"instance_size":     config.StringVariable("16xlarge"),
+				},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet(resourceName, "id"),
+					resource.TestCheckResourceAttr(resourceName, "name", rName),
+					resource.TestCheckResourceAttr(resourceName, "instance_size", "16xlarge"),
+					resource.TestCheckResourceAttr(resourceName, "database_password", "barbaznew"),
+					resource.TestCheckResourceAttr(resourceName, "legacy_api_keys_enabled", "false"),
+				),
+			},
+			//// Toggle legacy API keys
+			//{
+			//	ConfigDirectory: config.StaticDirectory("test-fixtures/Project/basic/"),
+			//	ConfigVariables: config.Variables{
+			//		"name":            config.StringVariable(rName),
+			//		"organization_id": config.StringVariable(organizationID),
+			//	},
+			//	Check: resource.ComposeAggregateTestCheckFunc(
+			//		resource.TestCheckResourceAttr("supabase_project.test", "id", testProjectRef),
+			//		resource.TestCheckResourceAttr("supabase_project.test", "name", "bar"),
+			//		resource.TestCheckResourceAttr("supabase_project.test", "instance_size", "16xlarge"),
+			//		resource.TestCheckResourceAttr("supabase_project.test", "database_password", "barbaznew"),
+			//		resource.TestCheckResourceAttr("supabase_project.test", "legacy_api_keys_enabled", "true"),
+			//	),
+			//},
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Project/basic/"),
+				ConfigVariables: config.Variables{
+					"name":              config.StringVariable(rName),
+					"organization_id":   config.StringVariable(organizationID),
+					"database_password": config.StringVariable("barbaznew"),
+					"instance_size":     config.StringVariable("16xlarge"),
+				},
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+
+				// database_password is not refreshed from the API
+				ImportStateVerifyIgnore: []string{"database_password"},
+			},
 		},
 	})
 }

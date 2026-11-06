@@ -165,6 +165,14 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	// set so resource is properly tainted if next steps fail
+	resp.State.SetAttribute(ctx, path.Root("id"), data.Id.ValueString())
+
+	// Wait for project to be fully provisioned
+	if diags := waitForProjectActive(ctx, data.Id.ValueString(), r.client, createTimeout); diags.HasError() {
+		return
+	}
+
 	if !data.LegacyApiKeysEnabled.IsNull() && !data.LegacyApiKeysEnabled.IsUnknown() {
 		resp.Diagnostics.Append(updateLegacyAPIKeysEnabled(ctx, &data, r.client)...)
 		if resp.Diagnostics.HasError() {
@@ -306,11 +314,6 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 	}
 
 	data.Id = types.StringValue(httpResp.JSON201.Id)
-
-	// Wait for project to be fully provisioned
-	if diags := waitForProjectActive(ctx, data.Id.ValueString(), client, timeout); diags.HasError() {
-		return diags
-	}
 
 	return nil
 }
