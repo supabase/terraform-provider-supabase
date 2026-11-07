@@ -169,7 +169,8 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	resp.State.SetAttribute(ctx, path.Root("id"), data.Id.ValueString())
 
 	// Wait for project to be fully provisioned
-	if diags := waitForProjectActive(ctx, data.Id.ValueString(), r.client, createTimeout); diags.HasError() {
+	resp.Diagnostics.Append(waitForProjectActive(ctx, data.Id.ValueString(), r.client, createTimeout)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
