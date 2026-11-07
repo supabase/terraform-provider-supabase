@@ -50,6 +50,10 @@ To compile the provider, run `go install`. This will build the provider and put 
 
 To generate or update documentation, run `go generate`.
 
+The Management API client in `internal/gen/api` is generated too. See
+[internal/openapi/README.md](internal/openapi/README.md) for how to refresh the OpenAPI
+snapshots and regenerate it.
+
 In order to run the full suite of Acceptance tests, run `make testacc`.
 
 _Note:_ Acceptance tests create real resources, and often cost money to run.

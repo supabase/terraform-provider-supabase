@@ -40,6 +40,7 @@ linters:
       - legacy
       - std-error-handling
     paths:
+      - ^internal/gen/
       - third_party$
       - builtin$
       - examples$
@@ -50,6 +51,7 @@ formatters:
   exclusions:
     generated: lax
     paths:
+      - ^internal/gen/
       - third_party$
       - builtin$
       - examples$

@@ -58,3 +58,18 @@ generate-docs:
 # Runs all generate targets
 .PHONY: generate
 generate: generate-docs generate-json
+
+SUPABASE_API_URL ?= https://api.supabase.com
+API_SPEC_V1 ?= $(SUPABASE_API_URL)/api/v1-yaml
+API_SPEC_V2 ?= $(SUPABASE_API_URL)/api/v2-yaml
+
+# Refresh the committed Management API OpenAPI snapshots and regenerate the client.
+#   make update-api-spec                                                  production
+#   make update-api-spec SUPABASE_API_URL=https://api.supabase.green      staging
+#   make update-api-spec SUPABASE_API_URL=http://127.0.0.1:8080           a branch of the API running locally
+#   make update-api-spec API_SPEC_V1=file:///path/v1.yaml API_SPEC_V2=file:///path/v2.yaml
+.PHONY: update-api-spec
+update-api-spec:
+	curl -fsSL "$(API_SPEC_V1)" -o internal/openapi/v1-openapi.yaml
+	curl -fsSL "$(API_SPEC_V2)" -o internal/openapi/v2-openapi.yaml
+	go generate ./internal/openapi/...

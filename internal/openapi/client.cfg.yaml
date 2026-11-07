@@ -1,0 +1,9 @@
+package: api
+generate:
+  client: true
+compatibility:
+  always-prefix-enum-values: true
+output-options:
+  overlay:
+    path: overlay.yaml
+output: ../gen/api/client.gen.go
