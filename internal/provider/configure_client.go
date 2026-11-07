@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 // extractClient extracts the API client from provider data.

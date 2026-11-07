@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -441,7 +441,7 @@ func createOrUpdateEdgeFunctionSecrets(ctx context.Context, data *EdgeFunctionSe
 // Returns (secrets, diagnostics) where:
 // - secrets is the list from the API (nil if error or not found)
 // - diagnostics contains any errors encountered.
-func fetchEdgeFunctionSecrets(ctx context.Context, projectRef string, client *api.ClientWithResponses) (*[]api.SecretResponse, diag.Diagnostics) {
+func fetchEdgeFunctionSecrets(ctx context.Context, projectRef string, client *api.ClientWithResponses) (*[]api.SecretResponseOutput, diag.Diagnostics) {
 	httpResp, err := client.V1ListAllSecretsWithResponse(ctx, projectRef)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read edge function secrets, got error: %s", err)

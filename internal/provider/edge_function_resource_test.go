@@ -18,7 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -89,11 +89,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
+		JSON(api.DeployFunctionResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
+			Status:    api.DeployFunctionResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: &createdAt,
 			UpdatedAt: &updatedAt,
@@ -103,11 +103,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -117,11 +117,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -192,11 +192,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
+		JSON(api.DeployFunctionResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
+			Status:    api.DeployFunctionResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: &createdAt,
 			UpdatedAt: &updatedAt,
@@ -205,11 +205,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -218,11 +218,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -231,11 +231,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
+		JSON(api.DeployFunctionResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
+			Status:    api.DeployFunctionResponseOutputStatusACTIVE,
 			Version:   2,
 			CreatedAt: &createdAt,
 			UpdatedAt: &updatedAt2,
@@ -244,11 +244,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   2,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567999,
@@ -257,11 +257,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   2,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567999,
@@ -318,11 +318,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
+		JSON(api.DeployFunctionResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
+			Status:    api.DeployFunctionResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: &createdAt,
 			UpdatedAt: &updatedAt,
@@ -331,11 +331,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -344,11 +344,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -357,11 +357,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -370,11 +370,11 @@ resource "supabase_edge_function" "foo" {
 	gock.New(defaultApiEndpoint).
 		Get(functionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -440,11 +440,11 @@ resource "supabase_edge_function" "test" {
 	gock.New(defaultApiEndpoint).
 		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
+		JSON(api.DeployFunctionResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
+			Status:    api.DeployFunctionResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: &createdAt,
 			UpdatedAt: &updatedAt,
@@ -453,11 +453,11 @@ resource "supabase_edge_function" "test" {
 	gock.New(defaultApiEndpoint).
 		Get(helloWorldFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:             testFunctionID,
 			Slug:           functionSlug,
 			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
+			Status:         api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:        1,
 			CreatedAt:      1234567890,
 			UpdatedAt:      1234567890,
@@ -467,11 +467,11 @@ resource "supabase_edge_function" "test" {
 	gock.New(defaultApiEndpoint).
 		Get(helloWorldFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:             testFunctionID,
 			Slug:           functionSlug,
 			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
+			Status:         api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:        1,
 			CreatedAt:      1234567890,
 			UpdatedAt:      1234567890,
@@ -481,11 +481,11 @@ resource "supabase_edge_function" "test" {
 	gock.New(defaultApiEndpoint).
 		Get(helloWorldFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:             testFunctionID,
 			Slug:           functionSlug,
 			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
+			Status:         api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:        1,
 			CreatedAt:      1234567890,
 			UpdatedAt:      1234567890,
@@ -499,11 +499,11 @@ resource "supabase_edge_function" "test" {
 	gock.New(defaultApiEndpoint).
 		Get(helloWorldFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:             testFunctionID,
 			Slug:           functionSlug,
 			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
+			Status:         api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:        1,
 			CreatedAt:      1234567890,
 			UpdatedAt:      1234567890,
@@ -585,11 +585,11 @@ resource "supabase_edge_function" "fallback" {
 	gock.New(defaultApiEndpoint).
 		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
+		JSON(api.DeployFunctionResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
+			Status:    api.DeployFunctionResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: &createdAt,
 			UpdatedAt: &updatedAt,
@@ -598,11 +598,11 @@ resource "supabase_edge_function" "fallback" {
 	gock.New(defaultApiEndpoint).
 		Get(fallbackFuncFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -611,11 +611,11 @@ resource "supabase_edge_function" "fallback" {
 	gock.New(defaultApiEndpoint).
 		Get(fallbackFuncFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -624,11 +624,11 @@ resource "supabase_edge_function" "fallback" {
 	gock.New(defaultApiEndpoint).
 		Get(fallbackFuncFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -642,11 +642,11 @@ resource "supabase_edge_function" "fallback" {
 	gock.New(defaultApiEndpoint).
 		Get(fallbackFuncFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -721,11 +721,11 @@ resource "supabase_edge_function" "collision" {
 	gock.New(defaultApiEndpoint).
 		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
+		JSON(api.DeployFunctionResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
+			Status:    api.DeployFunctionResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: &createdAt,
 			UpdatedAt: &updatedAt,
@@ -734,11 +734,11 @@ resource "supabase_edge_function" "collision" {
 	gock.New(defaultApiEndpoint).
 		Get(collisionFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:             testFunctionID,
 			Slug:           functionSlug,
 			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
+			Status:         api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:        1,
 			CreatedAt:      1234567890,
 			UpdatedAt:      1234567890,
@@ -748,11 +748,11 @@ resource "supabase_edge_function" "collision" {
 	gock.New(defaultApiEndpoint).
 		Get(collisionFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:             testFunctionID,
 			Slug:           functionSlug,
 			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
+			Status:         api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:        1,
 			CreatedAt:      1234567890,
 			UpdatedAt:      1234567890,
@@ -762,11 +762,11 @@ resource "supabase_edge_function" "collision" {
 	gock.New(defaultApiEndpoint).
 		Get(collisionFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:             testFunctionID,
 			Slug:           functionSlug,
 			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
+			Status:         api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:        1,
 			CreatedAt:      1234567890,
 			UpdatedAt:      1234567890,
@@ -780,11 +780,11 @@ resource "supabase_edge_function" "collision" {
 	gock.New(defaultApiEndpoint).
 		Get(collisionFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:             testFunctionID,
 			Slug:           functionSlug,
 			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
+			Status:         api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:        1,
 			CreatedAt:      1234567890,
 			UpdatedAt:      1234567890,
@@ -924,11 +924,11 @@ resource "supabase_edge_function" "dotdot" {
 	gock.New(defaultApiEndpoint).
 		Post(deployFunctionApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
+		JSON(api.DeployFunctionResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
+			Status:    api.DeployFunctionResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: &createdAt,
 			UpdatedAt: &updatedAt,
@@ -937,11 +937,11 @@ resource "supabase_edge_function" "dotdot" {
 	gock.New(defaultApiEndpoint).
 		Get(dotDotEpFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -950,11 +950,11 @@ resource "supabase_edge_function" "dotdot" {
 	gock.New(defaultApiEndpoint).
 		Get(dotDotEpFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -963,11 +963,11 @@ resource "supabase_edge_function" "dotdot" {
 	gock.New(defaultApiEndpoint).
 		Get(dotDotEpFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,
@@ -980,11 +980,11 @@ resource "supabase_edge_function" "dotdot" {
 	gock.New(defaultApiEndpoint).
 		Get(dotDotEpFunctionApiPath).
 		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
+		JSON(api.FunctionSlugResponseOutput{
 			Id:        testFunctionID,
 			Slug:      functionSlug,
 			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
+			Status:    api.FunctionSlugResponseOutputStatusACTIVE,
 			Version:   1,
 			CreatedAt: 1234567890,
 			UpdatedAt: 1234567890,

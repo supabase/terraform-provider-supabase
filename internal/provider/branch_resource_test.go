@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -31,11 +31,11 @@ func TestAccBranchResource(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(branchesApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.BranchResponse{})
+		JSON([]api.BranchResponseOutput{})
 	gock.New(defaultApiEndpoint).
 		Post(branchesApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.BranchResponse{
+		JSON(api.BranchResponseOutput{
 			Id:               uuid.New(),
 			ParentProjectRef: testProjectRef,
 			IsDefault:        true,
@@ -43,7 +43,7 @@ func TestAccBranchResource(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Post(branchesApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.BranchResponse{
+		JSON(api.BranchResponseOutput{
 			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("main"),
@@ -52,15 +52,15 @@ func TestAccBranchResource(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(branchApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchDetailResponse{})
+		JSON(api.BranchDetailResponseOutput{})
 	gock.New(defaultApiEndpoint).
 		Get(branchApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchDetailResponse{})
+		JSON(api.BranchDetailResponseOutput{})
 	gock.New(defaultApiEndpoint).
 		Get(branchesApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.BranchResponse{{
+		JSON([]api.BranchResponseOutput{{
 			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("main"),
@@ -69,20 +69,20 @@ func TestAccBranchResource(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(branchApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchDetailResponse{})
+		JSON(api.BranchDetailResponseOutput{})
 	gock.New(defaultApiEndpoint).
 		Get(branchApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchDetailResponse{})
+		JSON(api.BranchDetailResponseOutput{})
 	// Step 3: update and read
 	gock.New(defaultApiEndpoint).
 		Get(branchApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchDetailResponse{})
+		JSON(api.BranchDetailResponseOutput{})
 	gock.New(defaultApiEndpoint).
 		Get(branchesApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.BranchResponse{{
+		JSON([]api.BranchResponseOutput{{
 			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("main"),
@@ -90,7 +90,7 @@ func TestAccBranchResource(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Patch(branchApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchResponse{
+		JSON(api.BranchResponseOutput{
 			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("develop"),
@@ -99,11 +99,11 @@ func TestAccBranchResource(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(branchApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchDetailResponse{})
+		JSON(api.BranchDetailResponseOutput{})
 	gock.New(defaultApiEndpoint).
 		Get(branchesApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.BranchResponse{{
+		JSON([]api.BranchResponseOutput{{
 			Id:               uuid.MustParse(testBranchUUID),
 			ParentProjectRef: testProjectRef,
 			GitBranch:        Ptr("develop"),
@@ -116,7 +116,7 @@ func TestAccBranchResource(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Patch(branchApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchResponse{})
+		JSON(api.BranchResponseOutput{})
 	gock.New(defaultApiEndpoint).
 		Delete(branchApiPath).
 		Reply(http.StatusOK)

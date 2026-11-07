@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -99,7 +99,7 @@ func (d *BranchDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	}
 	// Create an empty array if branching is disabled
 	if httpResp.StatusCode() == http.StatusUnprocessableEntity {
-		httpResp.JSON200 = &[]api.BranchResponse{}
+		httpResp.JSON200 = &[]api.BranchResponseOutput{}
 	}
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read branch, got status %d: %s", httpResp.StatusCode(), httpResp.Body)

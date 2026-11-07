@@ -13,8 +13,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/oapi-codegen/nullable"
-	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -47,44 +47,44 @@ func TestAccApiKeyResource(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(apiKeysApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.ApiKeyResponse{
+		JSON([]api.ApiKeyResponseOutput{
 			{
 				Name:   "anon",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeLegacy),
 				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
 			},
 			{
 				Name:   "service_role",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeLegacy),
 				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
 			},
 		})
 	gock.New(defaultApiEndpoint).
 		Post(apiKeysApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.ApiKeyResponse{
+		JSON(api.ApiKeyResponseOutput{
 			Id:     nullable.NewNullableWithValue(uuid.New().String()),
 			Name:   "default",
-			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
+			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypePublishable),
 			ApiKey: nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 		})
 	gock.New(defaultApiEndpoint).
 		Post(apiKeysApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.ApiKeyResponse{
+		JSON(api.ApiKeyResponseOutput{
 			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
 			Name:   "test",
-			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
+			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret),
 			ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 		})
 	gock.New(defaultApiEndpoint).
 		Get(apiKeyApiPath).
 		Persist().
 		Reply(http.StatusOK).
-		JSON(api.ApiKeyResponse{
+		JSON(api.ApiKeyResponseOutput{
 			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
 			Name:   "test",
-			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
+			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret),
 			ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 			SecretJwtTemplate: nullable.NewNullableWithValue(map[string]interface{}{
 				"role": "service_role",
@@ -146,25 +146,25 @@ func TestAccApiKeyResource_WithDescription(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(apiKeysApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.ApiKeyResponse{
+		JSON([]api.ApiKeyResponseOutput{
 			{
 				Name:   "anon",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeLegacy),
 				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
 			},
 			{
 				Name:   "service_role",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeLegacy),
 				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
 			},
 		})
 	gock.New(defaultApiEndpoint).
 		Post(apiKeysApiPath).
 		Reply(http.StatusCreated).
-		JSON(api.ApiKeyResponse{
+		JSON(api.ApiKeyResponseOutput{
 			Id:     nullable.NewNullableWithValue(uuid.New().String()),
 			Name:   "default",
-			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
+			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypePublishable),
 			ApiKey: nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 		})
 	gock.New(defaultApiEndpoint).
@@ -176,10 +176,10 @@ func TestAccApiKeyResource_WithDescription(t *testing.T) {
 			"secret_jwt_template": map[string]any{"role": "service_role"},
 		})).
 		Reply(http.StatusCreated).
-		JSON(api.ApiKeyResponse{
+		JSON(api.ApiKeyResponseOutput{
 			Id:          nullable.NewNullableWithValue(testApiKeyUUID),
 			Name:        "test",
-			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
+			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret),
 			ApiKey:      nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 			Description: nullable.NewNullableWithValue("Service key for test"),
 		})
@@ -187,10 +187,10 @@ func TestAccApiKeyResource_WithDescription(t *testing.T) {
 		Get(apiKeyApiPath).
 		Persist().
 		Reply(http.StatusOK).
-		JSON(api.ApiKeyResponse{
+		JSON(api.ApiKeyResponseOutput{
 			Id:          nullable.NewNullableWithValue(testApiKeyUUID),
 			Name:        "test",
-			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
+			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret),
 			ApiKey:      nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 			Description: nullable.NewNullableWithValue("Service key for test"),
 			SecretJwtTemplate: nullable.NewNullableWithValue(map[string]interface{}{
@@ -254,7 +254,7 @@ func TestResolveAPIKeyImportID(t *testing.T) {
 			id:   testProjectRef + "/mykey",
 			mock: func() {
 				gock.New(defaultApiEndpoint).Get(apiKeysApiPath).Reply(http.StatusOK).
-					JSON([]api.ApiKeyResponse{{Id: nullable.NewNullableWithValue(knownID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret)}})
+					JSON([]api.ApiKeyResponseOutput{{Id: nullable.NewNullableWithValue(knownID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret)}})
 			},
 			expectProjectRef: testProjectRef,
 			expectKeyID:      knownID.String(),
@@ -264,9 +264,9 @@ func TestResolveAPIKeyImportID(t *testing.T) {
 			id:   testProjectRef + "/mykey/secret",
 			mock: func() {
 				gock.New(defaultApiEndpoint).Get(apiKeysApiPath).Reply(http.StatusOK).
-					JSON([]api.ApiKeyResponse{
-						{Id: nullable.NewNullableWithValue(otherID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable)},
-						{Id: nullable.NewNullableWithValue(knownID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret)},
+					JSON([]api.ApiKeyResponseOutput{
+						{Id: nullable.NewNullableWithValue(otherID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypePublishable)},
+						{Id: nullable.NewNullableWithValue(knownID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret)},
 					})
 			},
 			expectProjectRef: testProjectRef,
@@ -277,9 +277,9 @@ func TestResolveAPIKeyImportID(t *testing.T) {
 			id:   testProjectRef + "/mykey",
 			mock: func() {
 				gock.New(defaultApiEndpoint).Get(apiKeysApiPath).Reply(http.StatusOK).
-					JSON([]api.ApiKeyResponse{
-						{Id: nullable.NewNullableWithValue(knownID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable)},
-						{Id: nullable.NewNullableWithValue(otherID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret)},
+					JSON([]api.ApiKeyResponseOutput{
+						{Id: nullable.NewNullableWithValue(knownID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypePublishable)},
+						{Id: nullable.NewNullableWithValue(otherID.String()), Name: "mykey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret)},
 					})
 			},
 			expectErrorSummary: "Ambiguous Import Identifier",
@@ -289,9 +289,9 @@ func TestResolveAPIKeyImportID(t *testing.T) {
 			id:   testProjectRef + "/mykey",
 			mock: func() {
 				gock.New(defaultApiEndpoint).Get(apiKeysApiPath).Reply(http.StatusOK).
-					JSON([]api.ApiKeyResponse{
-						{Id: nullable.NewNullableWithValue(knownID.String()), Name: "knownkey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable)},
-						{Id: nullable.NewNullableWithValue(otherID.String()), Name: "otherkey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret)},
+					JSON([]api.ApiKeyResponseOutput{
+						{Id: nullable.NewNullableWithValue(knownID.String()), Name: "knownkey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypePublishable)},
+						{Id: nullable.NewNullableWithValue(otherID.String()), Name: "otherkey", Type: nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret)},
 					})
 			},
 			expectErrorSummary: "Import Error",

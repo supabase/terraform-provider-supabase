@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -21,7 +21,7 @@ func TestAccBranchDataSource(t *testing.T) {
 		Get(branchesApiPath).
 		Times(3).
 		Reply(http.StatusOK).
-		JSON([]api.BranchResponse{{Id: uuid.New()}})
+		JSON([]api.BranchResponseOutput{{Id: uuid.New()}})
 	// Run test
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },

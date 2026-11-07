@@ -26,7 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -524,7 +524,7 @@ func updateDatabaseConfig(ctx context.Context, plan *SettingsResourceModel, clie
 }
 
 // decodeDatabaseConfig decodes a postgres config API response as a generic JSON
-// object instead of the generated api.PostgresConfigResponse struct.
+// object instead of the generated api.PostgresConfigResponseOutput struct.
 //
 // The generated request and response structs only know the parameters that
 // existed when the API client was generated, and encoding/json silently drops
@@ -660,7 +660,7 @@ var requestOnlyConfigKeys = map[string]bool{
 //
 // databasePoolMode is a legacy internal Storage flag. It is absent from the
 // public OpenAPI spec and recent responses omit it. However, the API client
-// used here (github.com/supabase/cli/pkg/api, generated from the Management API
+// used here (github.com/supabase/terraform-provider-supabase/internal/gen/api, generated from the Management API
 // spec in the supabase/cli repo, not in this repository) is pinned to a version
 // whose StorageConfigResponse still has a plain string DatabasePoolMode field.
 // A missing or null value therefore decodes to "" and would leak into state on
@@ -811,7 +811,7 @@ type LocalAuthConfig struct {
 
 // convertAuthResponse converts AuthConfigResponse to UpdateAuthConfigBody using JSON marshaling.
 // This ensures we use consistent JSON tags (with omitempty) for marshaling.
-func convertAuthResponse(ctx context.Context, resp *api.AuthConfigResponse) api.UpdateAuthConfigBody {
+func convertAuthResponse(ctx context.Context, resp *api.AuthConfigResponseOutput) api.UpdateAuthConfigBody {
 	// Marshal the response to JSON and unmarshal into UpdateAuthConfigBody
 	// This handles field mapping and type conversions automatically
 	data, err := json.Marshal(resp)
