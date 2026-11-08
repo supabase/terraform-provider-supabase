@@ -1192,6 +1192,41 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
+func TestAccEdgeFunctionSecretsResource_DuplicateNamesResolvedAtApply(test *testing.T) {
+	// Both names are unknown in the initial plan and only collide once terraform_data
+	// is applied. Terraform re-plans the resource at that point, so the duplicate is
+	// still rejected before any secrets are written. No API mocks are registered, so
+	// any request would show up as unmatched.
+	defer gock.OffAll()
+
+	testresource.Test(test, testresource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(test) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []testresource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "terraform_data" "name" {
+	input = "API_KEY"
+}
+
+resource "supabase_edge_function_secrets" "test" {
+	project_ref = "%s"
+	secrets = [
+		{ name = terraform_data.name.output, value = "first-value" },
+		{ name = terraform_data.name.output, value = "second-value" }
+	]
+}
+`, testProjectRef),
+				ExpectError: regexp.MustCompile("Duplicate Secret Name"),
+			},
+		},
+	})
+
+	if gock.HasUnmatchedRequest() {
+		test.Fatalf("expected no API calls, got %d", len(gock.GetUnmatchedRequests()))
+	}
+}
+
 func TestSecretDigestsPlanModifier_ComputesDigests(t *testing.T) {
 	// Verify that the plan modifier correctly computes digests from
 	// known secret values during the plan phase, WITHOUT reading from the API.
