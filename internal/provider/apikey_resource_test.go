@@ -5,216 +5,22 @@ package provider
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
+	"os"
 	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/oapi-codegen/nullable"
 	"github.com/supabase/cli/pkg/api"
-	"github.com/supabase/terraform-provider-supabase/examples"
+	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 	"gopkg.in/h2non/gock.v1"
 )
-
-const testAccApikeyResourceConfig = `
-resource "supabase_apikey" "new" {
-  project_ref = "` + testProjectRef + `"
-  name        = "test"
-}
-`
-
-const testAccApikeyResourceConfigWithDescription = `
-resource "supabase_apikey" "new" {
-  project_ref = "` + testProjectRef + `"
-  name        = "test"
-  description = "Service key for test"
-}
-`
-
-const testAccApikeyResourceConfigInvalidName = `
-resource "supabase_apikey" "new" {
-  project_ref = "` + testProjectRef + `"
-  name        = "Invalid-Name-123" # Contains capital letters and hyphens
-}
-`
-
-func TestAccApiKeyResource(t *testing.T) {
-	// Setup mock api
-	defer gock.OffAll()
-	// Step 1: create
-	gock.New(defaultApiEndpoint).
-		Get(apiKeysApiPath).
-		Reply(http.StatusOK).
-		JSON([]api.ApiKeyResponse{
-			{
-				Name:   "anon",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
-				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
-			},
-			{
-				Name:   "service_role",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
-				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Post(apiKeysApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.ApiKeyResponse{
-			Id:     nullable.NewNullableWithValue(uuid.New().String()),
-			Name:   "default",
-			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
-			ApiKey: nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-		})
-	gock.New(defaultApiEndpoint).
-		Post(apiKeysApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.ApiKeyResponse{
-			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
-			Name:   "test",
-			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
-			ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(apiKeyApiPath).
-		Persist().
-		Reply(http.StatusOK).
-		JSON(api.ApiKeyResponse{
-			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
-			Name:   "test",
-			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
-			ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-			SecretJwtTemplate: nullable.NewNullableWithValue(map[string]interface{}{
-				"role": "service_role",
-			}),
-		})
-	gock.New(defaultApiEndpoint).
-		Delete(apiKeyApiPath).
-		Reply(http.StatusOK)
-
-	// Run test
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			// Create and Read testing
-			{
-				Config: examples.ApiKeyResourceConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_apikey.new", "id", testApiKeyUUID),
-				),
-			},
-			// ImportState testing
-			{
-				ResourceName:            "supabase_apikey.new",
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"name", "project_ref"},
-				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, testApiKeyUUID),
-			},
-			// Update and Read testing
-			{
-				Config: testAccApikeyResourceConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_apikey.new", "name", "test"),
-					resource.TestCheckResourceAttr("supabase_apikey.new", "project_ref", testProjectRef),
-				),
-			},
-			// Delete testing automatically occurs in TestCase
-		},
-	})
-}
-
-func TestAccApiKeyResource_InvalidName(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config:      testAccApikeyResourceConfigInvalidName,
-				ExpectError: regexp.MustCompile(`Name must start with a lowercase letter or an underscore`),
-			},
-		},
-	})
-}
-
-func TestAccApiKeyResource_WithDescription(t *testing.T) {
-	defer gock.OffAll()
-
-	gock.New(defaultApiEndpoint).
-		Get(apiKeysApiPath).
-		Reply(http.StatusOK).
-		JSON([]api.ApiKeyResponse{
-			{
-				Name:   "anon",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
-				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
-			},
-			{
-				Name:   "service_role",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
-				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Post(apiKeysApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.ApiKeyResponse{
-			Id:     nullable.NewNullableWithValue(uuid.New().String()),
-			Name:   "default",
-			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
-			ApiKey: nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-		})
-	gock.New(defaultApiEndpoint).
-		Post(apiKeysApiPath).
-		AddMatcher(matchJSONBody(t, map[string]any{
-			"name":                "test",
-			"type":                "secret",
-			"description":         "Service key for test",
-			"secret_jwt_template": map[string]any{"role": "service_role"},
-		})).
-		Reply(http.StatusCreated).
-		JSON(api.ApiKeyResponse{
-			Id:          nullable.NewNullableWithValue(testApiKeyUUID),
-			Name:        "test",
-			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
-			ApiKey:      nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-			Description: nullable.NewNullableWithValue("Service key for test"),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(apiKeyApiPath).
-		Persist().
-		Reply(http.StatusOK).
-		JSON(api.ApiKeyResponse{
-			Id:          nullable.NewNullableWithValue(testApiKeyUUID),
-			Name:        "test",
-			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
-			ApiKey:      nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-			Description: nullable.NewNullableWithValue("Service key for test"),
-			SecretJwtTemplate: nullable.NewNullableWithValue(map[string]interface{}{
-				"role": "service_role",
-			}),
-		})
-	gock.New(defaultApiEndpoint).
-		Delete(apiKeyApiPath).
-		Reply(http.StatusOK)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccApikeyResourceConfigWithDescription,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_apikey.new", "id", testApiKeyUUID),
-					resource.TestCheckResourceAttr("supabase_apikey.new", "description", "Service key for test"),
-				),
-			},
-		},
-	})
-}
 
 func TestNullableDescription(t *testing.T) {
 	t.Parallel()
@@ -342,4 +148,148 @@ func TestResolveAPIKeyImportID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testAccApiKeyImportStateID(projectResource, apiKeyResource string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		project, ok := s.RootModule().Resources[projectResource]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", projectResource)
+		}
+		key, ok := s.RootModule().Resources[apiKeyResource]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", apiKeyResource)
+		}
+		return fmt.Sprintf("%s/%s", project.Primary.ID, key.Primary.ID), nil
+	}
+}
+
+func testAccApiKeyLiveVariables(organizationID, projectName, name string, extra config.Variables) config.Variables {
+	vars := config.Variables{
+		"organization_id": config.StringVariable(organizationID),
+		"project_name":    config.StringVariable(projectName),
+		"name":            config.StringVariable(name),
+	}
+	maps.Copy(vars, extra)
+	return vars
+}
+
+func TestAccApiKeyResource_basic(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectResourceName := "supabase_project.test"
+	resourceName := "supabase_apikey.test"
+	projectName := acctest.RandomName()
+	keyName := "test_key"
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			// Create and Read testing
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
+				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet(resourceName, "id"),
+					resource.TestCheckResourceAttrPair(resourceName, "project_ref", projectResourceName, "id"),
+					resource.TestCheckResourceAttr(resourceName, "name", keyName),
+					resource.TestCheckResourceAttr(resourceName, "type", "secret"),
+					resource.TestCheckResourceAttrSet(resourceName, "api_key"),
+					resource.TestCheckResourceAttr(resourceName, "secret_jwt_template.role", "service_role"),
+					resource.TestCheckNoResourceAttr(resourceName, "description"),
+				),
+			},
+			// ImportState testing
+			{
+				ConfigDirectory:   config.StaticDirectory("test-fixtures/ApiKey/basic/"),
+				ConfigVariables:   testAccApiKeyLiveVariables(organizationID, projectName, keyName, nil),
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: testAccApiKeyImportStateID(projectResourceName, resourceName),
+			},
+		},
+	})
+}
+
+func TestAccApiKeyResource_update(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectResourceName := "supabase_project.test"
+	resourceName := "supabase_apikey.test"
+	projectName := acctest.RandomName()
+	keyName := "test_key"
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			// Create without description
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
+				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet(resourceName, "id"),
+					resource.TestCheckResourceAttr(resourceName, "name", keyName),
+					resource.TestCheckNoResourceAttr(resourceName, "description"),
+				),
+			},
+			// Add description
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
+				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, config.Variables{
+					"description": config.StringVariable("Service key for test"),
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet(resourceName, "id"),
+					resource.TestCheckResourceAttr(resourceName, "name", keyName),
+					resource.TestCheckResourceAttr(resourceName, "description", "Service key for test"),
+				),
+			},
+			// Update description
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
+				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, config.Variables{
+					"description": config.StringVariable("Updated description"),
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "description", "Updated description"),
+				),
+			},
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
+				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, config.Variables{
+					"description": config.StringVariable("Updated description"),
+				}),
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: testAccApiKeyImportStateID(projectResourceName, resourceName),
+			},
+		},
+	})
+}
+
+func TestAccApiKeyResource_invalidName(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
+				ConfigVariables: testAccApiKeyLiveVariables(organizationID, acctest.RandomName(), "Invalid-Name-123", nil),
+				// Terraform wraps long diagnostics across lines, so whitespace is matched with \s+.
+				ExpectError: regexp.MustCompile(`Name\s+must\s+start\s+with\s+a\s+lowercase\s+letter`),
+			},
+		},
+	})
 }
