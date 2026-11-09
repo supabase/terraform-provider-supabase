@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/oapi-codegen/nullable"
 	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
@@ -40,6 +41,40 @@ resource "supabase_apikey" "new" {
 }
 `
 
+const testAccApikeyResourceConfigPublishable = `
+resource "supabase_apikey" "web" {
+  project_ref = "` + testProjectRef + `"
+  name        = "web_client"
+  type        = "publishable"
+  description = "Web client"
+}
+`
+
+const testAccApikeyResourceConfigPublishableWithoutType = `
+resource "supabase_apikey" "web" {
+  project_ref = "` + testProjectRef + `"
+  name        = "web_client"
+  description = "Web client"
+}
+`
+
+const testAccApikeyResourceConfigPublishableToSecret = `
+resource "supabase_apikey" "web" {
+  project_ref = "` + testProjectRef + `"
+  name        = "web_client"
+  type        = "secret"
+  description = "Web client"
+}
+`
+
+const testAccApikeyResourceConfigInvalidType = `
+resource "supabase_apikey" "new" {
+  project_ref = "` + testProjectRef + `"
+  name        = "test"
+  type        = "legacy"
+}
+`
+
 func TestAccApiKeyResource(t *testing.T) {
 	// Setup mock api
 	defer gock.OffAll()
@@ -61,6 +96,7 @@ func TestAccApiKeyResource(t *testing.T) {
 		})
 	gock.New(defaultApiEndpoint).
 		Post(apiKeysApiPath).
+		JSON(map[string]any{"name": "default", "type": "publishable"}).
 		Reply(http.StatusCreated).
 		JSON(api.ApiKeyResponse{
 			Id:     nullable.NewNullableWithValue(uuid.New().String()),
@@ -70,6 +106,7 @@ func TestAccApiKeyResource(t *testing.T) {
 		})
 	gock.New(defaultApiEndpoint).
 		Post(apiKeysApiPath).
+		JSON(map[string]any{"name": "test", "type": "secret", "secret_jwt_template": map[string]any{"role": "service_role"}}).
 		Reply(http.StatusCreated).
 		JSON(api.ApiKeyResponse{
 			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
@@ -123,6 +160,79 @@ func TestAccApiKeyResource(t *testing.T) {
 				),
 			},
 			// Delete testing automatically occurs in TestCase
+		},
+	})
+}
+
+func TestAccApiKeyResource_Publishable(t *testing.T) {
+	defer gock.OffAll()
+	// No mock lists the project's keys: a publishable key must not create a default key first.
+	gock.New(defaultApiEndpoint).
+		Post(apiKeysApiPath).
+		JSON(map[string]any{"name": "web_client", "type": "publishable", "description": "Web client"}).
+		Reply(http.StatusCreated).
+		JSON(api.ApiKeyResponse{
+			Id:     nullable.NewNullableWithValue(testApiKeyUUID),
+			Name:   "web_client",
+			Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
+			ApiKey: nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+		})
+	gock.New(defaultApiEndpoint).
+		Get(apiKeyApiPath).
+		Persist().
+		Reply(http.StatusOK).
+		JSON(api.ApiKeyResponse{
+			Id:          nullable.NewNullableWithValue(testApiKeyUUID),
+			Name:        "web_client",
+			Type:        nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
+			Description: nullable.NewNullableWithValue("Web client"),
+			ApiKey:      nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+		})
+	gock.New(defaultApiEndpoint).
+		Delete(apiKeyApiPath).
+		Reply(http.StatusOK)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccApikeyResourceConfigPublishable,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("supabase_apikey.web", "id", testApiKeyUUID),
+					resource.TestCheckResourceAttr("supabase_apikey.web", "type", "publishable"),
+					resource.TestCheckResourceAttr("supabase_apikey.web", "description", "Web client"),
+					resource.TestCheckNoResourceAttr("supabase_apikey.web", "secret_jwt_template.role"),
+				),
+			},
+			// Removing `type` from config keeps the key, as for a key that was imported.
+			{
+				Config:   testAccApikeyResourceConfigPublishableWithoutType,
+				PlanOnly: true,
+			},
+			{
+				Config:             testAccApikeyResourceConfigPublishableToSecret,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPreRefresh: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("supabase_apikey.web", plancheck.ResourceActionReplace),
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestAccApiKeyResource_InvalidType(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccApikeyResourceConfigInvalidType,
+				ExpectError: regexp.MustCompile(`value must be one of`),
+			},
 		},
 	})
 }
