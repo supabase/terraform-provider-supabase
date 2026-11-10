@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
@@ -196,6 +197,11 @@ func TestAccApiKeyResource_basic(t *testing.T) {
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
 				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, nil),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
 					statecheck.CompareValuePairs(
@@ -243,6 +249,11 @@ func TestAccApiKeyResource_update(t *testing.T) {
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
 				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, nil),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(keyName)),
@@ -255,6 +266,11 @@ func TestAccApiKeyResource_update(t *testing.T) {
 				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, config.Variables{
 					"description": config.StringVariable("Service key for test"),
 				}),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
+					},
+				},
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(keyName)),
@@ -267,6 +283,11 @@ func TestAccApiKeyResource_update(t *testing.T) {
 				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, config.Variables{
 					"description": config.StringVariable("Updated description"),
 				}),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
+					},
+				},
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("description"), knownvalue.StringExact("Updated description")),
 				},
