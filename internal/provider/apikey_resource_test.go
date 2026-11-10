@@ -13,9 +13,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/compare"
 	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/oapi-codegen/nullable"
 	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/internal/acctest"
@@ -192,15 +196,21 @@ func TestAccApiKeyResource_basic(t *testing.T) {
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
 				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, nil),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet(resourceName, "id"),
-					resource.TestCheckResourceAttrPair(resourceName, "project_ref", projectResourceName, "id"),
-					resource.TestCheckResourceAttr(resourceName, "name", keyName),
-					resource.TestCheckResourceAttr(resourceName, "type", "secret"),
-					resource.TestCheckResourceAttrSet(resourceName, "api_key"),
-					resource.TestCheckResourceAttr(resourceName, "secret_jwt_template.role", "service_role"),
-					resource.TestCheckNoResourceAttr(resourceName, "description"),
-				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.CompareValuePairs(
+						resourceName, tfjsonpath.New("project_ref"),
+						projectResourceName, tfjsonpath.New("id"),
+						compare.ValuesSame(),
+					),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(keyName)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("type"), knownvalue.StringExact("secret")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("api_key"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("secret_jwt_template"), knownvalue.ObjectExact(map[string]knownvalue.Check{
+						"role": knownvalue.Null(),
+					})),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("description"), knownvalue.Null()),
+				},
 			},
 			// ImportState testing
 			{
@@ -233,11 +243,11 @@ func TestAccApiKeyResource_update(t *testing.T) {
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
 				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, nil),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet(resourceName, "id"),
-					resource.TestCheckResourceAttr(resourceName, "name", keyName),
-					resource.TestCheckNoResourceAttr(resourceName, "description"),
-				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(keyName)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("description"), knownvalue.Null()),
+				},
 			},
 			// Add description
 			{
@@ -245,11 +255,11 @@ func TestAccApiKeyResource_update(t *testing.T) {
 				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, config.Variables{
 					"description": config.StringVariable("Service key for test"),
 				}),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet(resourceName, "id"),
-					resource.TestCheckResourceAttr(resourceName, "name", keyName),
-					resource.TestCheckResourceAttr(resourceName, "description", "Service key for test"),
-				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(keyName)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("description"), knownvalue.StringExact("Service key for test")),
+				},
 			},
 			// Update description
 			{
@@ -257,9 +267,9 @@ func TestAccApiKeyResource_update(t *testing.T) {
 				ConfigVariables: testAccApiKeyLiveVariables(organizationID, projectName, keyName, config.Variables{
 					"description": config.StringVariable("Updated description"),
 				}),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(resourceName, "description", "Updated description"),
-				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("description"), knownvalue.StringExact("Updated description")),
+				},
 			},
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKey/basic/"),
