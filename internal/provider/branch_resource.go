@@ -193,8 +193,15 @@ func (r *BranchResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	resp.Diagnostics.Append(readBranch(ctx, &data, r.client)...)
+	found, diags := readBranch(ctx, &data, r.client)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// If the branch was deleted out-of-band, remove it from state
+	if !found {
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -262,11 +269,12 @@ func updateBranch(ctx context.Context, plan *BranchResourceModel, client *api.Cl
 	return nil
 }
 
-func readBranch(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	if diags := readBranchDatabase(ctx, state, client); diags.HasError() {
-		return diags
+func readBranch(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
+	found, diags := readBranchDatabaseFound(ctx, state, client)
+	if !found || diags.HasError() {
+		return found, diags
 	}
-	return readBranchPersistent(ctx, state, client)
+	return true, readBranchPersistent(ctx, state, client)
 }
 
 func readBranchPersistent(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
@@ -292,14 +300,27 @@ func readBranchPersistent(ctx context.Context, state *BranchResourceModel, clien
 }
 
 func readBranchDatabase(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	found, diags := readBranchDatabaseFound(ctx, state, client)
+	if !found && !diags.HasError() {
+		msg := fmt.Sprintf("Unable to read branch database, got status %d", http.StatusNotFound)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return diags
+}
+
+// readBranchDatabaseFound reports false (without an error) when the branch no longer exists.
+func readBranchDatabaseFound(ctx context.Context, state *BranchResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
 	httpResp, err := client.V1GetABranchConfigWithResponse(ctx, state.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read branch database, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.StatusCode() == http.StatusNotFound {
+		return false, nil
 	}
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read branch database, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	database := BranchDatabaseModel{
@@ -312,9 +333,9 @@ func readBranchDatabase(ctx context.Context, state *BranchResourceModel, client 
 		Version:   types.StringValue(httpResp.JSON200.PostgresVersion),
 		Status:    types.StringValue(string(httpResp.JSON200.Status)),
 	}
-	db, diag := types.ObjectValueFrom(ctx, database.AttributeTypes(), database)
+	db, diags := types.ObjectValueFrom(ctx, database.AttributeTypes(), database)
 	state.Database = db
-	return diag
+	return !diags.HasError(), diags
 }
 
 func createBranch(ctx context.Context, plan *BranchResourceModel, client *api.ClientWithResponses) diag.Diagnostics {

@@ -173,8 +173,15 @@ func (r *APIKeyResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	resp.Diagnostics.Append(readApiKey(ctx, &data, r.client)...)
+	found, diags := readApiKeyFound(ctx, &data, r.client)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// If the key was deleted out-of-band, remove it from state
+	if !found {
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -360,19 +367,28 @@ func (r *APIKeyResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	resp.Diagnostics.Append(deleteApiKey(ctx, &data, r.client)...)
 }
 
-func readApiKey(ctx context.Context, state *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	return readApiKeyDatabase(ctx, state, client)
+func readApiKeyDatabase(ctx context.Context, state *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	found, diags := readApiKeyFound(ctx, state, client)
+	if !found && !diags.HasError() {
+		msg := fmt.Sprintf("Unable to read apiKey database, got status %d", http.StatusNotFound)
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	return diags
 }
 
-func readApiKeyDatabase(ctx context.Context, state *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+// readApiKeyFound reports false (without an error) when the key no longer exists.
+func readApiKeyFound(ctx context.Context, state *ApiKeyResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
 	httpResp, err := client.V1GetProjectApiKeyWithResponse(ctx, state.ProjectRef.ValueString(), uuid.MustParse(state.Id.ValueString()), &api.V1GetProjectApiKeyParams{Reveal: Ptr(true)})
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read apiKey database, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.StatusCode() == http.StatusNotFound {
+		return false, nil
 	}
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read apiKey database, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	idValue := NullableToString(httpResp.JSON200.Id)
@@ -399,7 +415,7 @@ func readApiKeyDatabase(ctx context.Context, state *ApiKeyResourceModel, client 
 			"role": types.StringValue(roleValue),
 		})
 		if diags.HasError() {
-			return diags
+			return false, diags
 		}
 		secretJwtTemplate = obj
 	} else {
@@ -407,7 +423,7 @@ func readApiKeyDatabase(ctx context.Context, state *ApiKeyResourceModel, client 
 			"role": types.StringNull(),
 		})
 		if diags.HasError() {
-			return diags
+			return false, diags
 		}
 		secretJwtTemplate = obj
 	}
@@ -419,7 +435,7 @@ func readApiKeyDatabase(ctx context.Context, state *ApiKeyResourceModel, client 
 	state.Type = database.Type
 	state.Description = database.Description
 	state.SecretJwtTemplate = database.SecretJwtTemplate
-	return nil
+	return true, nil
 }
 
 func createApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
