@@ -229,13 +229,14 @@ func TestWaitForServicesActive_AllHealthy(t *testing.T) {
 	}
 }
 
-func TestWaitForServicesActive_UnhealthyFails(t *testing.T) {
+func TestWaitForServicesActive_UnhealthyFailsAfterTimeout(t *testing.T) {
 	defer gock.OffAll()
 	gock.InterceptClient(http.DefaultClient)
 	defer gock.RestoreClient(http.DefaultClient)
 
 	gock.New(defaultApiEndpoint).
 		Get(postgrestApiPath).
+		Persist().
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbSchema:          "public,storage,graphql_public",
@@ -245,21 +246,33 @@ func TestWaitForServicesActive_UnhealthyFails(t *testing.T) {
 
 	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
+		Persist().
 		Reply(http.StatusOK).
 		JSON([]api.V1ServiceHealthResponse{
-			{Name: api.V1ServiceHealthResponseNameDb, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "fatal"}`)},
+			{Name: api.V1ServiceHealthResponseNameDb, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Service health check failed"}`)},
 			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
 		})
 
-	client, err := api.NewClientWithResponses(defaultApiEndpoint)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
+	const timeout = time.Minute
 
-	diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
-	if !diags.HasError() {
-		t.Error("Expected error for unhealthy service, got success")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		client, err := api.NewClientWithResponses(defaultApiEndpoint)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		start := time.Now()
+		diags := waitForServicesActive(t.Context(), testProjectRef, client, timeout)
+		if !diags.HasError() {
+			t.Fatal("Expected error for unhealthy service, got success")
+		}
+		if elapsed := time.Since(start); elapsed < timeout {
+			t.Errorf("Expected polling until timeout %s, gave up after %s", timeout, elapsed)
+		}
+		if detail := diags.Errors()[0].Detail(); !strings.Contains(detail, "unhealthy service db: Service health check failed") {
+			t.Errorf("Expected error to surface the unhealthy service reason, got: %s", detail)
+		}
+	})
 }
 
 func TestIsDataApiDisabled_EmptySchema(t *testing.T) {
@@ -462,6 +475,10 @@ func TestWaitForServicesActive_TransientErrorsKeepsPolling(t *testing.T) {
 		{
 			{Name: api.V1ServiceHealthResponseNamePooler, Status: api.ACTIVEHEALTHY, Healthy: true},
 			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Failed to retrieve project's auth service health"}`)},
+		},
+		{
+			{Name: api.V1ServiceHealthResponseNamePooler, Status: api.ACTIVEHEALTHY, Healthy: true},
+			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Service health check failed"}`)},
 		},
 		{
 			{Name: api.V1ServiceHealthResponseNamePooler, Status: api.ACTIVEHEALTHY, Healthy: true},
