@@ -32,7 +32,7 @@ func TestAccBranchDataSource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Read testing
 			{
-				ConfigDirectory: config.StaticDirectory("test-fixtures/Branch/basic/"),
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Branch/datasource/"),
 				ConfigVariables: config.Variables{
 					"organization_id": config.StringVariable(organizationID),
 					"project_name":    config.StringVariable(acctest.RandomName()),

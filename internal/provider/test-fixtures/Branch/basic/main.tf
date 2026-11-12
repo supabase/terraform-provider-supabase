@@ -1,12 +1,7 @@
-data "supabase_branch" "test" {
-  parent_project_ref = supabase_project.test.id
-  depends_on         = [supabase_branch.test]
-}
-
 resource "supabase_branch" "test" {
   parent_project_ref = supabase_project.test.id
   git_branch         = var.git_branch
-  persistent         = true
+  persistent         = var.persistent
 }
 
 resource "supabase_project" "test" {
@@ -27,4 +22,8 @@ variable "project_name" {
 
 variable "git_branch" {
   nullable = false
+}
+
+variable "persistent" {
+  default = false
 }
