@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -125,16 +125,16 @@ func (d *APIKeysDataSource) Read(ctx context.Context, req datasource.ReadRequest
 			keyType := key.Type.MustGet()
 
 			switch keyType {
-			case api.ApiKeyResponseTypeLegacy:
+			case api.ApiKeyResponseOutputTypeLegacy:
 				if key.Name == "anon" {
 					data.AnonKey = NullableToString(key.ApiKey)
 				}
 				if key.Name == "service_role" {
 					data.ServiceRoleKey = NullableToString(key.ApiKey)
 				}
-			case api.ApiKeyResponseTypePublishable:
+			case api.ApiKeyResponseOutputTypePublishable:
 				data.PublishableKey = NullableToString(key.ApiKey)
-			case api.ApiKeyResponseTypeSecret:
+			case api.ApiKeyResponseOutputTypeSecret:
 				obj, diags := types.ObjectValue(objectType.AttrTypes, map[string]attr.Value{
 					"name":    types.StringValue(key.Name),
 					"api_key": NullableToString(key.ApiKey),

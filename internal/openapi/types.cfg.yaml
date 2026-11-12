@@ -1,0 +1,10 @@
+package: api
+generate:
+  models: true
+compatibility:
+  always-prefix-enum-values: true
+output-options:
+  nullable-type: true
+  overlay:
+    path: overlay.yaml
+output: ../gen/api/types.gen.go

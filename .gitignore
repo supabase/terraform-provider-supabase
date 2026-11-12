@@ -35,3 +35,6 @@ website/vendor
 
 # Keep windows files with windows line endings
 *.winfile eol=crlf
+
+# Intermediate produced by go generate in internal/openapi; the committed inputs are the snapshots.
+internal/openapi/openapi.merged.yaml

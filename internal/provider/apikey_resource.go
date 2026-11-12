@@ -24,7 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/oapi-codegen/nullable"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -303,9 +303,9 @@ func importAPIKeyByNameAndType(ctx context.Context, client *api.ClientWithRespon
 		)
 	}
 
-	apiKeyType := api.ApiKeyResponseType(keyType)
+	apiKeyType := api.ApiKeyResponseOutputType(keyType)
 	switch apiKeyType {
-	case api.ApiKeyResponseTypePublishable, api.ApiKeyResponseTypeSecret:
+	case api.ApiKeyResponseOutputTypePublishable, api.ApiKeyResponseOutputTypeSecret:
 	default:
 		return "", diag.NewErrorDiagnostic(
 			"Unexpected Import Identifier",
@@ -438,7 +438,7 @@ func createApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 			if key.Name == "default" {
 				if key.Type.IsSpecified() && !key.Type.IsNull() {
 					keyType := key.Type.MustGet()
-					if keyType == api.ApiKeyResponseTypePublishable {
+					if keyType == api.ApiKeyResponseOutputTypePublishable {
 						hasDefaultPublishable = true
 					}
 				}
@@ -497,7 +497,7 @@ func createApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 
 func updateApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	var secretJwtTemplate nullable.Nullable[map[string]interface{}]
-	if plan.Type.ValueString() == string(api.ApiKeyResponseTypeSecret) {
+	if plan.Type.ValueString() == string(api.ApiKeyResponseOutputTypeSecret) {
 		secretJwtTemplate = nullable.NewNullableWithValue(map[string]interface{}{"role": "service_role"})
 	} else {
 		secretJwtTemplate = nullable.Nullable[map[string]interface{}]{}

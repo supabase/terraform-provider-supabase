@@ -9,8 +9,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/oapi-codegen/nullable"
-	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/examples"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -21,30 +21,30 @@ func TestAccProjectAPIKeysDataSource(t *testing.T) {
 		Get(apiKeysApiPath).
 		Times(3).
 		Reply(http.StatusOK).
-		JSON([]api.ApiKeyResponse{
+		JSON([]api.ApiKeyResponseOutput{
 			{
 				Name:   "anon",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeLegacy),
 				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
 			},
 			{
 				Name:   "service_role",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeLegacy),
 				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
 			},
 			{
 				Name:   "publishable",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypePublishable),
 				ApiKey: nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 			},
 			{
 				Name:   "secret",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret),
 				ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
 			},
 			{
 				Name:   "other_secret",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
+				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseOutputTypeSecret),
 				ApiKey: nullable.NewNullableWithValue("sb_secret_eybcCI6kNiIsiR5UCJ9VGpzI1IciOJhJIXIn"),
 			},
 		})

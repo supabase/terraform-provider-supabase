@@ -22,7 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -281,7 +281,7 @@ func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportSt
 
 func createProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
 	regionSelection := api.V1CreateProjectBodyRegionSelection0{
-		Type: api.Specific,
+		Type: api.V1CreateProjectBodyRegionSelection0TypeSpecific,
 		Code: api.V1CreateProjectBodyRegionSelection0Code(data.Region.ValueString()),
 	}
 
@@ -370,11 +370,11 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 	}
 
 	for _, addon := range addonsResp.JSON200.SelectedAddons {
-		if addon.Type != api.ListProjectAddonsResponseSelectedAddonsTypeComputeInstance {
+		if addon.Type != api.ListProjectAddonsResponseOutputSelectedAddonsTypeComputeInstance {
 			continue
 		}
 
-		val, err := addon.Variant.Id.AsListProjectAddonsResponseSelectedAddonsVariantId0()
+		val, err := addon.Variant.Id.AsListProjectAddonsResponseOutputSelectedAddonsVariantId0()
 		if err != nil {
 			msg := fmt.Sprintf("Unable to read compute instance addon, got error: %s", err)
 			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}

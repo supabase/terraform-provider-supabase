@@ -11,7 +11,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -23,12 +23,12 @@ func TestWaitForProjectActive_TerminalState(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
 		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
+		JSON(api.V1ProjectWithDatabaseResponseOutput{
 			Id:             testProjectRef,
 			Name:           "Test Project",
 			OrganizationId: "test-org",
 			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusINITFAILED,
+			Status:         api.V1ProjectWithDatabaseResponseOutputStatusINITFAILED,
 		})
 
 	client, err := api.NewClientWithResponses(defaultApiEndpoint)
@@ -57,9 +57,9 @@ func TestWaitForProjectActive_BranchRefFallsBackToBranchesEndpoint(t *testing.T)
 	gock.New(defaultApiEndpoint).
 		Get(branchRefApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchDetailResponse{
+		JSON(api.BranchDetailResponseOutput{
 			Ref:    testBranchRef,
-			Status: api.BranchDetailResponseStatusACTIVEHEALTHY,
+			Status: api.BranchDetailResponseOutputStatusACTIVEHEALTHY,
 		})
 
 	client, err := api.NewClientWithResponses(defaultApiEndpoint)
@@ -78,9 +78,9 @@ func TestWaitForProjectActive_BranchRefPollsUntilActive(t *testing.T) {
 	gock.InterceptClient(http.DefaultClient)
 	defer gock.RestoreClient(http.DefaultClient)
 
-	for _, status := range []api.BranchDetailResponseStatus{
-		api.BranchDetailResponseStatusCOMINGUP,
-		api.BranchDetailResponseStatusACTIVEHEALTHY,
+	for _, status := range []api.BranchDetailResponseOutputStatus{
+		api.BranchDetailResponseOutputStatusCOMINGUP,
+		api.BranchDetailResponseOutputStatusACTIVEHEALTHY,
 	} {
 		gock.New(defaultApiEndpoint).
 			Get(branchProjectApiPath).
@@ -89,7 +89,7 @@ func TestWaitForProjectActive_BranchRefPollsUntilActive(t *testing.T) {
 		gock.New(defaultApiEndpoint).
 			Get(branchRefApiPath).
 			Reply(http.StatusOK).
-			JSON(api.BranchDetailResponse{
+			JSON(api.BranchDetailResponseOutput{
 				Ref:    testBranchRef,
 				Status: status,
 			})
@@ -121,9 +121,9 @@ func TestWaitForProjectActive_BranchRefTerminalState(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(branchRefApiPath).
 		Reply(http.StatusOK).
-		JSON(api.BranchDetailResponse{
+		JSON(api.BranchDetailResponseOutput{
 			Ref:    testBranchRef,
-			Status: api.BranchDetailResponseStatusINITFAILED,
+			Status: api.BranchDetailResponseOutputStatusINITFAILED,
 		})
 
 	client, err := api.NewClientWithResponses(defaultApiEndpoint)
@@ -204,7 +204,7 @@ func TestWaitForServicesActive_AllHealthy(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(postgrestApiPath).
 		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponseOutput{
 			DbSchema:          "public,storage,graphql_public",
 			DbExtraSearchPath: "public,extensions",
 			MaxRows:           1000,
@@ -213,9 +213,9 @@ func TestWaitForServicesActive_AllHealthy(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.V1ServiceHealthResponse{
-			{Name: api.V1ServiceHealthResponseNameDb, Status: api.ACTIVEHEALTHY, Healthy: true},
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		JSON([]api.V1ServiceHealthResponseOutput{
+			{Name: api.V1ServiceHealthResponseOutputNameDb, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
 		})
 
 	client, err := api.NewClientWithResponses(defaultApiEndpoint)
@@ -237,7 +237,7 @@ func TestWaitForServicesActive_UnhealthyFails(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(postgrestApiPath).
 		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponseOutput{
 			DbSchema:          "public,storage,graphql_public",
 			DbExtraSearchPath: "public,extensions",
 			MaxRows:           1000,
@@ -246,9 +246,9 @@ func TestWaitForServicesActive_UnhealthyFails(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.V1ServiceHealthResponse{
-			{Name: api.V1ServiceHealthResponseNameDb, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "fatal"}`)},
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		JSON([]api.V1ServiceHealthResponseOutput{
+			{Name: api.V1ServiceHealthResponseOutputNameDb, Status: api.V1ServiceHealthResponseOutputStatusUNHEALTHY, Healthy: false, Error: Ptr(`{"error": "fatal"}`)},
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
 		})
 
 	client, err := api.NewClientWithResponses(defaultApiEndpoint)
@@ -270,7 +270,7 @@ func TestIsDataApiDisabled_EmptySchema(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(postgrestApiPath).
 		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponseOutput{
 			DbSchema:          "",
 			DbExtraSearchPath: "public,extensions",
 			MaxRows:           1000,
@@ -298,7 +298,7 @@ func TestIsDataApiDisabled_NonEmptySchema(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(postgrestApiPath).
 		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponseOutput{
 			DbSchema:          "public,storage,graphql_public",
 			DbExtraSearchPath: "public,extensions",
 			MaxRows:           1000,
@@ -350,9 +350,9 @@ func TestWaitForServicesActive_ContinuesWhenPostgrestConfigFails(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.V1ServiceHealthResponse{
-			{Name: api.V1ServiceHealthResponseNameDb, Status: api.ACTIVEHEALTHY, Healthy: true},
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		JSON([]api.V1ServiceHealthResponseOutput{
+			{Name: api.V1ServiceHealthResponseOutputNameDb, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
 		})
 
 	client, err := api.NewClientWithResponses(defaultApiEndpoint)
@@ -375,7 +375,7 @@ func TestWaitForServicesActive_SkipsRestWhenDataApiDisabled(t *testing.T) {
 	gock.New(defaultApiEndpoint).
 		Get(postgrestApiPath).
 		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponseOutput{
 			DbSchema:          "",
 			DbExtraSearchPath: "public,extensions",
 			MaxRows:           1000,
@@ -391,9 +391,9 @@ func TestWaitForServicesActive_SkipsRestWhenDataApiDisabled(t *testing.T) {
 			return true, nil
 		}).
 		Reply(http.StatusOK).
-		JSON([]api.V1ServiceHealthResponse{
-			{Name: api.V1ServiceHealthResponseNameDb, Status: api.ACTIVEHEALTHY, Healthy: true},
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		JSON([]api.V1ServiceHealthResponseOutput{
+			{Name: api.V1ServiceHealthResponseOutputNameDb, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
 		})
 
 	client, err := api.NewClientWithResponses(defaultApiEndpoint)
@@ -424,8 +424,8 @@ func TestWaitForAuthServiceActive_ChecksOnlyAuth(t *testing.T) {
 			return true, nil
 		}).
 		Reply(http.StatusOK).
-		JSON([]api.V1ServiceHealthResponse{
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		JSON([]api.V1ServiceHealthResponseOutput{
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
 		})
 
 	client, err := api.NewClientWithResponses(defaultApiEndpoint)
@@ -450,22 +450,22 @@ func TestWaitForServicesActive_TransientErrorsKeepsPolling(t *testing.T) {
 	gock.InterceptClient(http.DefaultClient)
 	defer gock.RestoreClient(http.DefaultClient)
 
-	responses := [][]api.V1ServiceHealthResponse{
+	responses := [][]api.V1ServiceHealthResponseOutput{
 		{
-			{Name: api.V1ServiceHealthResponseNamePooler, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "not found"}`)},
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.COMINGUP},
+			{Name: api.V1ServiceHealthResponseOutputNamePooler, Status: api.V1ServiceHealthResponseOutputStatusUNHEALTHY, Healthy: false, Error: Ptr(`{"error": "not found"}`)},
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusCOMINGUP},
 		},
 		{
-			{Name: api.V1ServiceHealthResponseNamePooler, Status: api.COMINGUP},
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.COMINGUP},
+			{Name: api.V1ServiceHealthResponseOutputNamePooler, Status: api.V1ServiceHealthResponseOutputStatusCOMINGUP},
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusCOMINGUP},
 		},
 		{
-			{Name: api.V1ServiceHealthResponseNamePooler, Status: api.ACTIVEHEALTHY, Healthy: true},
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Failed to retrieve project's auth service health"}`)},
+			{Name: api.V1ServiceHealthResponseOutputNamePooler, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusUNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Failed to retrieve project's auth service health"}`)},
 		},
 		{
-			{Name: api.V1ServiceHealthResponseNamePooler, Status: api.ACTIVEHEALTHY, Healthy: true},
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+			{Name: api.V1ServiceHealthResponseOutputNamePooler, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
 		},
 	}
 
@@ -473,7 +473,7 @@ func TestWaitForServicesActive_TransientErrorsKeepsPolling(t *testing.T) {
 		Get(postgrestApiPath).
 		Persist().
 		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
+		JSON(api.V1PostgrestConfigResponseOutput{
 			DbSchema:          "public,storage,graphql_public",
 			DbExtraSearchPath: "public,extensions",
 			MaxRows:           1000,

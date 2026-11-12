@@ -26,7 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/oapi-codegen/nullable"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 var (
@@ -520,7 +520,7 @@ func buildThirdPartyAuthCreateBody(data *ThirdPartyAuthResourceModel) (api.V1Cre
 	return body, nil
 }
 
-func setThirdPartyAuthState(data *ThirdPartyAuthResourceModel, tpa api.ThirdPartyAuth) diag.Diagnostics {
+func setThirdPartyAuthState(data *ThirdPartyAuthResourceModel, tpa api.ThirdPartyAuthOutput) diag.Diagnostics {
 	var err error
 
 	data.Id = types.StringValue(tpa.Id.String())

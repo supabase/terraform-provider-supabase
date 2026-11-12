@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -56,7 +56,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{
 				Name:  "API_KEY",
 				Value: apiKeyDigest,
@@ -145,7 +145,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: digestV1},
 			{Name: "DATABASE_URL", Value: dbUrlDigest},
 		})
@@ -160,7 +160,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: digestV2},
 			{Name: "DATABASE_URL", Value: dbUrlDigest},
 		})
@@ -243,7 +243,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "KEY_A", Value: keyADigest},
 			{Name: "KEY_B", Value: keyBDigest},
 		})
@@ -289,7 +289,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "KEY_B", Value: keyBDigest},
 		})
 
@@ -340,7 +340,7 @@ func TestAccEdgeFunctionSecretsResource_Import(t *testing.T) {
 	apiKeyDigest := computeSecretDigest(apiKeyPlain)
 	dbUrlDigest := computeSecretDigest(dbUrlPlain)
 
-	secretsResponse := []api.SecretResponse{
+	secretsResponse := []api.SecretResponseOutput{
 		{Name: "API_KEY", Value: apiKeyDigest},
 		{Name: "DATABASE_URL", Value: dbUrlDigest},
 	}
@@ -407,7 +407,7 @@ func TestAccEdgeFunctionSecretsResource_CreateImport(t *testing.T) {
 	apiKeyDigest := computeSecretDigest(apiKeyPlain)
 	dbUrlDigest := computeSecretDigest(dbUrlPlain)
 
-	secretsResponse := []api.SecretResponse{
+	secretsResponse := []api.SecretResponseOutput{
 		{Name: "API_KEY", Value: apiKeyDigest},
 		{Name: "DATABASE_URL", Value: dbUrlDigest},
 	}
@@ -532,7 +532,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
@@ -541,7 +541,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: driftedDigest},
 		})
 
@@ -555,7 +555,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
@@ -616,7 +616,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(3).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{})
+		JSON([]api.SecretResponseOutput{})
 
 	// Teardown: delete is a no-op (no secret names to send), so no HTTP call expected.
 
@@ -752,7 +752,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
@@ -822,7 +822,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{
 				Name:  "API_KEY",
 				Value: apiKeyDigest,
@@ -952,7 +952,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
@@ -1027,7 +1027,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 			{Name: "MANAGEMENT_API_URL", Value: managementApiUrlDigest}, // Pre-existing, unmanaged
 		})
@@ -1037,7 +1037,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(1).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 			{Name: "MANAGEMENT_API_URL", Value: managementApiUrlDigest},
 		})
@@ -1112,7 +1112,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 			{Name: "DATABASE_URL", Value: dbUrlDigest},
 		})
@@ -1182,7 +1182,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(secretsApiPath).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
@@ -1217,7 +1217,7 @@ func TestAccEdgeFunctionSecretsResource_ImportThenRefresh(t *testing.T) {
 	apiKeyDigest := computeSecretDigest(apiKeyPlain)
 	dbUrlDigest := computeSecretDigest(dbUrlPlain)
 
-	secretsResponse := []api.SecretResponse{
+	secretsResponse := []api.SecretResponseOutput{
 		{Name: "API_KEY", Value: apiKeyDigest},
 		{Name: "DATABASE_URL", Value: dbUrlDigest},
 	}
@@ -1360,7 +1360,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRefA)).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 
@@ -1379,7 +1379,7 @@ resource "supabase_edge_function_secrets" "test" {
 		Get(fmt.Sprintf("/v1/projects/%s/secrets", projectRefB)).
 		Times(2).
 		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
+		JSON([]api.SecretResponseOutput{
 			{Name: "API_KEY", Value: apiKeyDigest},
 		})
 

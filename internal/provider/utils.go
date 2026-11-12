@@ -15,7 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/oapi-codegen/nullable"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 func Ptr[T any](v T) *T {
@@ -34,13 +34,13 @@ func NullableToString[T ~string](n nullable.Nullable[T]) tftypes.String {
 
 const defaultWaitTimeout = 5 * time.Minute
 
-var terminalProjectStatuses = []api.V1ProjectWithDatabaseResponseStatus{
-	api.V1ProjectWithDatabaseResponseStatusGOINGDOWN,
-	api.V1ProjectWithDatabaseResponseStatusINITFAILED,
-	api.V1ProjectWithDatabaseResponseStatusREMOVED,
-	api.V1ProjectWithDatabaseResponseStatusINACTIVE,
-	api.V1ProjectWithDatabaseResponseStatusPAUSEFAILED,
-	api.V1ProjectWithDatabaseResponseStatusRESTOREFAILED,
+var terminalProjectStatuses = []api.V1ProjectWithDatabaseResponseOutputStatus{
+	api.V1ProjectWithDatabaseResponseOutputStatusGOINGDOWN,
+	api.V1ProjectWithDatabaseResponseOutputStatusINITFAILED,
+	api.V1ProjectWithDatabaseResponseOutputStatusREMOVED,
+	api.V1ProjectWithDatabaseResponseOutputStatusINACTIVE,
+	api.V1ProjectWithDatabaseResponseOutputStatusPAUSEFAILED,
+	api.V1ProjectWithDatabaseResponseOutputStatusRESTOREFAILED,
 }
 
 // fails fast on terminal states (GOING_DOWN, INIT_FAILED, REMOVED, etc.) and
@@ -48,17 +48,17 @@ var terminalProjectStatuses = []api.V1ProjectWithDatabaseResponseStatus{
 func waitForProjectActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
 	stateConf := &retry.StateChangeConf{
 		Pending: []string{
-			string(api.V1ProjectWithDatabaseResponseStatusACTIVEUNHEALTHY),
-			string(api.V1ProjectWithDatabaseResponseStatusRESTORING),
-			string(api.V1ProjectWithDatabaseResponseStatusCOMINGUP),
-			string(api.V1ProjectWithDatabaseResponseStatusUPGRADING),
-			string(api.V1ProjectWithDatabaseResponseStatusPAUSING),
-			string(api.V1ProjectWithDatabaseResponseStatusRESIZING),
-			string(api.V1ProjectWithDatabaseResponseStatusRESTARTING),
-			string(api.V1ProjectWithDatabaseResponseStatusUNKNOWN),
+			string(api.V1ProjectWithDatabaseResponseOutputStatusACTIVEUNHEALTHY),
+			string(api.V1ProjectWithDatabaseResponseOutputStatusRESTORING),
+			string(api.V1ProjectWithDatabaseResponseOutputStatusCOMINGUP),
+			string(api.V1ProjectWithDatabaseResponseOutputStatusUPGRADING),
+			string(api.V1ProjectWithDatabaseResponseOutputStatusPAUSING),
+			string(api.V1ProjectWithDatabaseResponseOutputStatusRESIZING),
+			string(api.V1ProjectWithDatabaseResponseOutputStatusRESTARTING),
+			string(api.V1ProjectWithDatabaseResponseOutputStatusUNKNOWN),
 		},
 		Target: []string{
-			string(api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY),
+			string(api.V1ProjectWithDatabaseResponseOutputStatusACTIVEHEALTHY),
 		},
 		Refresh: func() (any, string, error) {
 			httpResp, err := client.V1GetProjectWithResponse(ctx, projectRef)
@@ -121,7 +121,7 @@ func refreshBranchStatus(ctx context.Context, projectRef string, client *api.Cli
 		"status":     status,
 	})
 
-	if slices.Contains(terminalProjectStatuses, api.V1ProjectWithDatabaseResponseStatus(status)) {
+	if slices.Contains(terminalProjectStatuses, api.V1ProjectWithDatabaseResponseOutputStatus(status)) {
 		return nil, "", fmt.Errorf("branch %s in terminal state: %s", projectRef, status)
 	}
 
@@ -212,7 +212,7 @@ func waitForProjectServicesActive(
 
 			for _, v := range *resp.JSON200 {
 				switch v.Status {
-				case api.UNHEALTHY:
+				case api.V1ServiceHealthResponseOutputStatusUNHEALTHY:
 					err := errorFromServiceErrorDescription(v.Name, v.Error)
 					// errFailedToRetrieveHealth is always transient; poll again to get more information
 					if errors.Is(err, errFailedToRetrieveHealth) {
@@ -225,7 +225,7 @@ func waitForProjectServicesActive(
 					}
 					// pooler reports UNHEALTHY: "not found" for the first couple of seconds of provisioning,
 					// so we treat it as COMINGUP
-					if retryPoolerNotFound && v.Name == api.V1ServiceHealthResponseNamePooler && errors.Is(err, errServiceNotFound) {
+					if retryPoolerNotFound && v.Name == api.V1ServiceHealthResponseOutputNamePooler && errors.Is(err, errServiceNotFound) {
 						tflog.Debug(ctx, "Retrying a recoverable error", map[string]any{
 							"error":  err,
 							"status": v,
@@ -234,7 +234,7 @@ func waitForProjectServicesActive(
 						continue
 					}
 					errs = append(errs, err)
-				case api.COMINGUP:
+				case api.V1ServiceHealthResponseOutputStatusCOMINGUP:
 					comingupCount++
 				}
 			}
@@ -265,7 +265,7 @@ var (
 	errFailedToRetrieveHealth = errors.New("failed to retrieve health information for the service")
 )
 
-func errorFromServiceErrorDescription(service api.V1ServiceHealthResponseName, desc *string) error {
+func errorFromServiceErrorDescription(service api.V1ServiceHealthResponseOutputName, desc *string) error {
 	if desc == nil {
 		return fmt.Errorf("unhealthy service %s: unknown reason", service)
 	}

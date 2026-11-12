@@ -19,7 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/oapi-codegen/nullable"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -33,10 +33,10 @@ func thirdPartyAuthUUID(t *testing.T, value string) uuid.UUID {
 	return parsed
 }
 
-func oidcThirdPartyAuthResponse(t *testing.T, issuerURL string) api.ThirdPartyAuth {
+func oidcThirdPartyAuthResponse(t *testing.T, issuerURL string) api.ThirdPartyAuthOutput {
 	t.Helper()
 
-	return api.ThirdPartyAuth{
+	return api.ThirdPartyAuthOutput{
 		Id:            thirdPartyAuthUUID(t, testThirdPartyAuthUUID),
 		Type:          "oidc",
 		OidcIssuerUrl: nullable.NewNullableWithValue(issuerURL),
@@ -58,10 +58,10 @@ func oidcThirdPartyAuthResponse(t *testing.T, issuerURL string) api.ThirdPartyAu
 	}
 }
 
-func jwksURLThirdPartyAuthResponse(t *testing.T, id string, jwksURL string) api.ThirdPartyAuth {
+func jwksURLThirdPartyAuthResponse(t *testing.T, id string, jwksURL string) api.ThirdPartyAuthOutput {
 	t.Helper()
 
-	return api.ThirdPartyAuth{
+	return api.ThirdPartyAuthOutput{
 		Id:            thirdPartyAuthUUID(t, id),
 		Type:          "jwks_url",
 		OidcIssuerUrl: nullable.NewNullNullable[string](),
@@ -83,10 +83,10 @@ func jwksURLThirdPartyAuthResponse(t *testing.T, id string, jwksURL string) api.
 	}
 }
 
-func customJWKSThirdPartyAuthResponse(t *testing.T, customJWKS map[string]any) api.ThirdPartyAuth {
+func customJWKSThirdPartyAuthResponse(t *testing.T, customJWKS map[string]any) api.ThirdPartyAuthOutput {
 	t.Helper()
 
-	return api.ThirdPartyAuth{
+	return api.ThirdPartyAuthOutput{
 		Id:            thirdPartyAuthUUID(t, testThirdPartyAuthUUID),
 		Type:          "custom_jwks",
 		OidcIssuerUrl: nullable.NewNullNullable[string](),
@@ -125,18 +125,18 @@ func mockThirdPartyAuthCreateReadiness() {
 	gock.New(defaultApiEndpoint).
 		Get(projectApiPath).
 		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
+		JSON(api.V1ProjectWithDatabaseResponseOutput{
 			Id:             testProjectRef,
 			Name:           "test",
 			OrganizationId: "test-org",
 			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+			Status:         api.V1ProjectWithDatabaseResponseOutputStatusACTIVEHEALTHY,
 		})
 	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
 		Reply(http.StatusOK).
-		JSON([]api.V1ServiceHealthResponse{
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		JSON([]api.V1ServiceHealthResponseOutput{
+			{Name: api.V1ServiceHealthResponseOutputNameAuth, Status: api.V1ServiceHealthResponseOutputStatusACTIVEHEALTHY, Healthy: true},
 		})
 }
 
@@ -549,7 +549,7 @@ func TestSetThirdPartyAuthState_CustomJWKSRejectsPrivateMaterial(t *testing.T) {
 	data := &ThirdPartyAuthResourceModel{
 		ProjectRef: types.StringValue(testProjectRef),
 	}
-	diags := setThirdPartyAuthState(data, api.ThirdPartyAuth{
+	diags := setThirdPartyAuthState(data, api.ThirdPartyAuthOutput{
 		Id:   thirdPartyAuthUUID(t, testThirdPartyAuthUUID),
 		Type: "custom_jwks",
 		CustomJwks: nullable.NewNullableWithValue[interface{}](map[string]any{
@@ -579,7 +579,7 @@ func TestSetThirdPartyAuthState_ResolvedJWKSRejectsPrivateMaterial(t *testing.T)
 	data := &ThirdPartyAuthResourceModel{
 		ProjectRef: types.StringValue(testProjectRef),
 	}
-	diags := setThirdPartyAuthState(data, api.ThirdPartyAuth{
+	diags := setThirdPartyAuthState(data, api.ThirdPartyAuthOutput{
 		Id:         thirdPartyAuthUUID(t, testThirdPartyAuthUUID),
 		Type:       "oidc",
 		CustomJwks: nullable.NewNullNullable[interface{}](),

@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/gen/api"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -87,7 +87,7 @@ func (d *PoolerDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 
 	url := map[string]string{}
 	for _, pooler := range *httpResp.JSON200 {
-		if pooler.DatabaseType == api.SupavisorConfigResponseDatabaseTypePRIMARY {
+		if pooler.DatabaseType == api.SupavisorConfigResponseOutputDatabaseTypePRIMARY {
 			url[string(pooler.PoolMode)] = pooler.ConnectionString
 		}
 	}
