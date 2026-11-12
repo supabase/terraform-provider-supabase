@@ -4,68 +4,84 @@
 package provider
 
 import (
-	"net/http"
+	"context"
+	"fmt"
+	"os"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-testing/compare"
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/oapi-codegen/nullable"
-	"github.com/supabase/cli/pkg/api"
-	"github.com/supabase/terraform-provider-supabase/examples"
-	"gopkg.in/h2non/gock.v1"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 )
 
-func TestAccProjectAPIKeysDataSource(t *testing.T) {
-	// Setup mock api
-	defer gock.OffAll()
-	gock.New(defaultApiEndpoint).
-		Get(apiKeysApiPath).
-		Times(3).
-		Reply(http.StatusOK).
-		JSON([]api.ApiKeyResponse{
-			{
-				Name:   "anon",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
-				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
-			},
-			{
-				Name:   "service_role",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeLegacy),
-				ApiKey: nullable.NewNullableWithValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
-			},
-			{
-				Name:   "publishable",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypePublishable),
-				ApiKey: nullable.NewNullableWithValue("sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-			},
-			{
-				Name:   "secret",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
-				ApiKey: nullable.NewNullableWithValue("sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-			},
-			{
-				Name:   "other_secret",
-				Type:   nullable.NewNullableWithValue(api.ApiKeyResponseTypeSecret),
-				ApiKey: nullable.NewNullableWithValue("sb_secret_eybcCI6kNiIsiR5UCJ9VGpzI1IciOJhJIXIn"),
-			},
-		})
+// expectSecretKeyMatchesResource verifies that the data source's secret_keys
+// list contains an entry with the given name whose api_key equals the
+// api_key of the managed supabase_apikey resource.
+type expectSecretKeyMatchesResource struct {
+	dataSource string
+	resource   string
+	keyName    string
+}
+
+func (e expectSecretKeyMatchesResource) CheckState(ctx context.Context, req statecheck.CheckStateRequest, resp *statecheck.CheckStateResponse) {
+	var resourceKey, dataSourceKey any
+	var entries []any
+	for _, r := range req.State.Values.RootModule.Resources {
+		switch r.Address {
+		case e.resource:
+			resourceKey = r.AttributeValues["api_key"]
+		case e.dataSource:
+			entries, _ = r.AttributeValues["secret_keys"].([]any)
+		}
+	}
+	for _, entry := range entries {
+		m, ok := entry.(map[string]any)
+		if ok && m["name"] == e.keyName {
+			dataSourceKey = m["api_key"]
+		}
+	}
+	if resourceKey == nil || dataSourceKey == nil {
+		resp.Error = fmt.Errorf("secret key %q not found (resource=%v, data source=%v)", e.keyName, resourceKey != nil, dataSourceKey != nil)
+		return
+	}
+	if resourceKey != dataSourceKey {
+		resp.Error = fmt.Errorf("api_key mismatch between %s and %s secret_keys entry %q", e.resource, e.dataSource, e.keyName)
+	}
+}
+
+func TestAccApiKeysDataSource(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectResourceName := "supabase_project.test"
+	resourceName := "supabase_apikey.test"
+	dataSourceName := "data.supabase_apikeys.test"
+	keyName := "test_key"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Read testing
 			{
-				Config: examples.APIKeysDataSourceConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "anon_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.anon"),
-					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "service_role_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service_role"),
-					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "publishable_key", "sb_publishable_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "secret_keys.#", "2"),
-					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "secret_keys.0.name", "secret"),
-					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "secret_keys.0.api_key", "sb_secret_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "secret_keys.1.name", "other_secret"),
-					resource.TestCheckResourceAttr("data.supabase_apikeys.production", "secret_keys.1.api_key", "sb_secret_eybcCI6kNiIsiR5UCJ9VGpzI1IciOJhJIXIn"),
-				),
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ApiKeys/basic/"),
+				ConfigVariables: testAccApiKeyLiveVariables(organizationID, acctest.RandomName(), keyName, nil),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.CompareValuePairs(
+						dataSourceName, tfjsonpath.New("project_ref"),
+						projectResourceName, tfjsonpath.New("id"),
+						compare.ValuesSame(),
+					),
+					statecheck.ExpectKnownValue(dataSourceName, tfjsonpath.New("anon_key"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(dataSourceName, tfjsonpath.New("service_role_key"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(dataSourceName, tfjsonpath.New("publishable_key"), knownvalue.NotNull()),
+					expectSecretKeyMatchesResource{dataSource: dataSourceName, resource: resourceName, keyName: keyName},
+				},
 			},
 		},
 	})
