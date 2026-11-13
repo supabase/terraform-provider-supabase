@@ -31,6 +31,7 @@ import (
 var (
 	_ resource.Resource                = &APIKeyResource{}
 	_ resource.ResourceWithImportState = &APIKeyResource{}
+	_ resource.ResourceWithModifyPlan  = &APIKeyResource{}
 )
 
 func NewApiKeyResource() resource.Resource {
@@ -40,10 +41,6 @@ func NewApiKeyResource() resource.Resource {
 // APIKeysDataSource defines the data source implementation.
 type APIKeyResource struct {
 	client *api.ClientWithResponses
-}
-
-var secretJwtTemplateAttrTypes = map[string]attr.Type{
-	"role": types.StringType,
 }
 
 type ApiKeyDatabaseModel struct {
@@ -60,6 +57,13 @@ func (m ApiKeyDatabaseModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"role": types.StringType,
 	}
+}
+
+// Role a new secret key uses when secret_jwt_template.role is not configured.
+const defaultSecretJwtRole = "service_role"
+
+var secretJwtTemplateAttrTypes = map[string]attr.Type{
+	"role": types.StringType,
 }
 
 // APIKeysDataSourceModel describes the data source data model.
@@ -104,8 +108,12 @@ func (d *APIKeyResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Description of the API key",
+				MarkdownDescription: "Description of the API key. When not set, the key keeps its current description.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"type": schema.StringAttribute{
 				MarkdownDescription: "Type of the API key",
@@ -120,20 +128,70 @@ func (d *APIKeyResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				Sensitive:           true,
 			},
 			"secret_jwt_template": schema.SingleNestedAttribute{
-				MarkdownDescription: "Secret JWT template",
+				MarkdownDescription: "JWT template of a secret API key. Requests made with the key use the Postgres `role` set here.",
+				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.Object{
 					objectplanmodifier.UseStateForUnknown(),
 				},
 				Attributes: map[string]schema.Attribute{
 					"role": schema.StringAttribute{
-						MarkdownDescription: "Role of the secret JWT template",
+						MarkdownDescription: "Postgres role that requests made with the key run as, such as a custom role created in a migration. A new key uses `" + defaultSecretJwtRole + "` when this is not set. Only secret keys accept a role. Changing a configured role replaces the key; removing it from configuration keeps the current role.",
+						Optional:            true,
 						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.LengthAtLeast(1),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.RequiresReplaceIf(
+								requiresReplaceSecretJwtRole,
+								"Changing a configured role replaces the key.",
+								"Changing a configured role replaces the key.",
+							),
+						},
 					},
 				},
 			},
 		},
 	}
+}
+
+// Only a configured role that differs from a known role replaces the key. A key imported without a
+// role in config keeps its role, and a key whose role isn't in state yet (state written by an
+// earlier provider version, not refreshed since) isn't replaced on that alone.
+func requiresReplaceSecretJwtRole(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+	resp.RequiresReplace = !req.ConfigValue.IsNull() && !req.StateValue.IsNull()
+}
+
+// ModifyPlan rejects a role on a publishable key: the provider only creates secret keys, so
+// replacing an imported publishable key to apply a role would delete it.
+func (r *APIKeyResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var keyType types.String
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("type"), &keyType)...)
+	var configTemplate types.Object
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("secret_jwt_template"), &configTemplate)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := validateSecretJwtRoleForType(keyType, secretJwtRoleFromObject(configTemplate)); err != "" {
+		resp.Diagnostics.AddAttributeError(path.Root("secret_jwt_template").AtName("role"), "Invalid Attribute Configuration", err)
+	}
+}
+
+func validateSecretJwtRoleForType(keyType, configRole types.String) string {
+	if configRole.IsNull() || keyType.IsNull() || keyType.IsUnknown() {
+		return ""
+	}
+	if keyType.ValueString() == string(api.ApiKeyResponseTypeSecret) {
+		return ""
+	}
+	return fmt.Sprintf("secret_jwt_template.role can only be set on a secret API key, but this key is of type %q. Remove secret_jwt_template from the configuration.", keyType.ValueString())
 }
 
 func (d *APIKeyResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -173,8 +231,15 @@ func (r *APIKeyResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	resp.Diagnostics.Append(readApiKey(ctx, &data, r.client)...)
+	found, diags := readApiKey(ctx, &data, r.client)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// The key was deleted outside Terraform, so the next plan creates it again.
+	if !found {
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -250,8 +315,8 @@ Example: myprojectref/00000000-0000-0000-0000-000000000000`,
 		)
 	}
 
-	if uuid.Validate(keyRef) == nil {
-		return keyRef, nil
+	if id, err := uuid.Parse(keyRef); err == nil {
+		return id.String(), nil
 	}
 
 	httpResp, err := client.V1GetProjectApiKeysWithResponse(ctx, projectRef, &api.V1GetProjectApiKeysParams{})
@@ -360,66 +425,110 @@ func (r *APIKeyResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	resp.Diagnostics.Append(deleteApiKey(ctx, &data, r.client)...)
 }
 
-func readApiKey(ctx context.Context, state *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+func readApiKey(ctx context.Context, state *ApiKeyResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
 	return readApiKeyDatabase(ctx, state, client)
 }
 
-func readApiKeyDatabase(ctx context.Context, state *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+// The API answers 406 with this message for a key that doesn't exist.
+const apiKeyNotFoundMessage = "Failed to find API key"
+
+func isApiKeyNotFound(statusCode int, body []byte) bool {
+	switch statusCode {
+	case http.StatusNotFound:
+		return true
+	case http.StatusNotAcceptable:
+		return strings.Contains(string(body), apiKeyNotFoundMessage)
+	}
+	return false
+}
+
+func readApiKeyDatabase(ctx context.Context, state *ApiKeyResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
 	httpResp, err := client.V1GetProjectApiKeyWithResponse(ctx, state.ProjectRef.ValueString(), uuid.MustParse(state.Id.ValueString()), &api.V1GetProjectApiKeyParams{Reveal: Ptr(true)})
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read apiKey database, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if isApiKeyNotFound(httpResp.StatusCode(), httpResp.Body) {
+		tflog.Trace(ctx, fmt.Sprintf("api key not found: %s/%s", state.ProjectRef.ValueString(), state.Id.ValueString()))
+		return false, nil
 	}
 	if httpResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read apiKey database, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	idValue := NullableToString(httpResp.JSON200.Id)
-	apiKeyValue := NullableToString(httpResp.JSON200.ApiKey)
 	typeValue := NullableToString(httpResp.JSON200.Type)
-	descriptionValue := NullableToString(httpResp.JSON200.Description)
 
-	database := ApiKeyDatabaseModel{
-		Id:          idValue,
-		ApiKey:      apiKeyValue,
-		Name:        types.StringValue(httpResp.JSON200.Name),
-		Type:        typeValue,
-		Description: descriptionValue,
+	role := secretJwtRoleFromResponse(httpResp.JSON200.SecretJwtTemplate)
+	if typeValue.ValueString() == string(api.ApiKeyResponseTypeSecret) {
+		// Reading a single key doesn't return its JWT template, so the role comes from the list of keys.
+		listedRole, diags := readApiKeySecretJwtRole(ctx, state.ProjectRef.ValueString(), idValue.ValueString(), client)
+		if diags.HasError() {
+			return false, diags
+		}
+		if !listedRole.IsNull() {
+			role = listedRole
+		}
+	}
+	secretJwtTemplate, diags := types.ObjectValue(secretJwtTemplateAttrTypes, map[string]attr.Value{
+		"role": role,
+	})
+	if diags.HasError() {
+		return false, diags
 	}
 
-	var secretJwtTemplate types.Object
-	if httpResp.JSON200.SecretJwtTemplate.IsSpecified() && !httpResp.JSON200.SecretJwtTemplate.IsNull() {
-		templateMap := httpResp.JSON200.SecretJwtTemplate.MustGet()
-		roleValue := ""
-		if role, ok := templateMap["role"].(string); ok {
-			roleValue = role
-		}
-		obj, diags := types.ObjectValue(secretJwtTemplateAttrTypes, map[string]attr.Value{
-			"role": types.StringValue(roleValue),
-		})
-		if diags.HasError() {
-			return diags
-		}
-		secretJwtTemplate = obj
-	} else {
-		obj, diags := types.ObjectValue(secretJwtTemplateAttrTypes, map[string]attr.Value{
-			"role": types.StringNull(),
-		})
-		if diags.HasError() {
-			return diags
-		}
-		secretJwtTemplate = obj
+	state.Id = idValue
+	state.ApiKey = NullableToString(httpResp.JSON200.ApiKey)
+	state.Name = types.StringValue(httpResp.JSON200.Name)
+	state.Type = typeValue
+	state.Description = NullableToString(httpResp.JSON200.Description)
+	state.SecretJwtTemplate = secretJwtTemplate
+	return true, nil
+}
+
+func readApiKeySecretJwtRole(ctx context.Context, projectRef, apiKeyID string, client *api.ClientWithResponses) (types.String, diag.Diagnostics) {
+	httpResp, err := client.V1GetProjectApiKeysWithResponse(ctx, projectRef, &api.V1GetProjectApiKeysParams{Reveal: Ptr(false)})
+	if err != nil {
+		msg := fmt.Sprintf("Unable to read apiKeys, got error: %s", err)
+		return types.StringNull(), diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if httpResp.JSON200 == nil {
+		msg := fmt.Sprintf("Unable to read apiKeys, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
+		return types.StringNull(), diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	database.SecretJwtTemplate = secretJwtTemplate
-	state.Id = database.Id
-	state.ApiKey = database.ApiKey
-	state.Name = database.Name
-	state.Type = database.Type
-	state.Description = database.Description
-	state.SecretJwtTemplate = database.SecretJwtTemplate
-	return nil
+	for _, key := range *httpResp.JSON200 {
+		if key.Id.IsSpecified() && !key.Id.IsNull() && strings.EqualFold(key.Id.MustGet(), apiKeyID) {
+			return secretJwtRoleFromResponse(key.SecretJwtTemplate), nil
+		}
+	}
+	return types.StringNull(), nil
+}
+
+func secretJwtRoleFromResponse(template nullable.Nullable[map[string]interface{}]) types.String {
+	if !template.IsSpecified() || template.IsNull() {
+		return types.StringNull()
+	}
+	if role, ok := template.MustGet()["role"].(string); ok && role != "" {
+		return types.StringValue(role)
+	}
+	return types.StringNull()
+}
+
+// Returns the role set in the plan or state, unknown when the template itself is unknown.
+func secretJwtRoleFromObject(template types.Object) types.String {
+	if template.IsUnknown() {
+		return types.StringUnknown()
+	}
+	if template.IsNull() {
+		return types.StringNull()
+	}
+	role, ok := template.Attributes()["role"].(types.String)
+	if !ok {
+		return types.StringNull()
+	}
+	return role
 }
 
 func createApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
@@ -464,11 +573,16 @@ func createApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 	}
 
 	// 2. Create apiKey
+	role := defaultSecretJwtRole
+	if configured := secretJwtRoleFromObject(plan.SecretJwtTemplate); !configured.IsNull() && !configured.IsUnknown() {
+		role = configured.ValueString()
+	}
+
 	httpResp, err := client.V1CreateProjectApiKeyWithResponse(ctx, plan.ProjectRef.ValueString(), &api.V1CreateProjectApiKeyParams{Reveal: reveal}, api.CreateApiKeyBody{
 		Name:              plan.Name.ValueString(),
 		Type:              api.CreateApiKeyBodyTypeSecret,
 		Description:       nullableDescription(plan.Description),
-		SecretJwtTemplate: nullable.NewNullableWithValue(map[string]interface{}{"role": "service_role"}),
+		SecretJwtTemplate: nullable.NewNullableWithValue(map[string]interface{}{"role": role}),
 	})
 	if err != nil {
 		msg := fmt.Sprintf("Unable to create apiKey, got error: %s", err)
@@ -485,22 +599,52 @@ func createApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 	plan.Type = NullableToString(httpResp.JSON201.Type)
 
 	obj, diags := types.ObjectValue(secretJwtTemplateAttrTypes, map[string]attr.Value{
-		"role": types.StringValue("service_role"),
+		"role": types.StringValue(role),
 	})
 	if diags.HasError() {
 		return diags
 	}
 	plan.SecretJwtTemplate = obj
 
-	return readApiKeyDatabase(ctx, plan, client)
+	return readApiKeyAfterWrite(ctx, plan, client)
+}
+
+func readApiKeyAfterWrite(ctx context.Context, plan *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	planned := plan.SecretJwtTemplate
+	found, diags := readApiKeyDatabase(ctx, plan, client)
+	if diags.HasError() {
+		return diags
+	}
+	if !found {
+		msg := fmt.Sprintf("API key %s was not found after it was written", plan.Id.ValueString())
+		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	// State written by an earlier provider version has a null role, and a plan made without a refresh
+	// carries it over. Terraform requires the applied value to match that plan, so the role stays
+	// null until the next refresh reads it.
+	if !planned.IsUnknown() && secretJwtRoleFromObject(planned).IsNull() {
+		plan.SecretJwtTemplate = planned
+	}
+	return nil
 }
 
 func updateApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+	// A role change replaces the key, so an update sends the current role back unchanged
+	// and never rebinds a key with a custom role to service_role.
 	var secretJwtTemplate nullable.Nullable[map[string]interface{}]
 	if plan.Type.ValueString() == string(api.ApiKeyResponseTypeSecret) {
-		secretJwtTemplate = nullable.NewNullableWithValue(map[string]interface{}{"role": "service_role"})
-	} else {
-		secretJwtTemplate = nullable.Nullable[map[string]interface{}]{}
+		role := secretJwtRoleFromObject(plan.SecretJwtTemplate)
+		if role.IsNull() || role.IsUnknown() {
+			// State written by an earlier provider version has no role: send the key's current one.
+			currentRole, diags := readApiKeySecretJwtRole(ctx, plan.ProjectRef.ValueString(), plan.Id.ValueString(), client)
+			if diags.HasError() {
+				return diags
+			}
+			role = currentRole
+		}
+		if !role.IsNull() {
+			secretJwtTemplate = nullable.NewNullableWithValue(map[string]interface{}{"role": role.ValueString()})
+		}
 	}
 
 	httpResp, err := client.V1UpdateProjectApiKeyWithResponse(ctx, plan.ProjectRef.ValueString(), uuid.MustParse(plan.Id.ValueString()), &api.V1UpdateProjectApiKeyParams{Reveal: Ptr(true)}, api.UpdateApiKeyBody{
@@ -519,7 +663,7 @@ func updateApiKey(ctx context.Context, plan *ApiKeyResourceModel, client *api.Cl
 
 	plan.Description = NullableToString(httpResp.JSON200.Description)
 
-	return readApiKeyDatabase(ctx, plan, client)
+	return readApiKeyAfterWrite(ctx, plan, client)
 }
 
 func nullableDescription(description types.String) nullable.Nullable[string] {
@@ -534,6 +678,10 @@ func deleteApiKey(ctx context.Context, state *ApiKeyResourceModel, client *api.C
 	if err != nil {
 		msg := fmt.Sprintf("Unable to delete apiKey, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	}
+	if isApiKeyNotFound(httpResp.StatusCode(), httpResp.Body) {
+		tflog.Trace(ctx, fmt.Sprintf("api key already deleted: %s/%s", state.ProjectRef.ValueString(), state.Id.ValueString()))
+		return nil
 	}
 	if httpResp.StatusCode() != http.StatusOK {
 		msg := fmt.Sprintf("Unable to delete apiKey, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
