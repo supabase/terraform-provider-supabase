@@ -208,7 +208,7 @@ func TestAccSettingsResource_update(t *testing.T) {
 	updatedDatabase := map[string]any{"statement_timeout": "20s"}
 	updatedStorage := map[string]any{"fileSizeLimit": 41943040}
 
-	update := func(name string, settings map[string]map[string]any, checks ...statecheck.StateCheck) resource.TestStep {
+	update := func(settings map[string]map[string]any, checks ...statecheck.StateCheck) resource.TestStep {
 		return resource.TestStep{
 			ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
 			ConfigVariables: testAccSettingsLiveVariables(organizationID, projectName, settings),
@@ -237,46 +237,32 @@ func TestAccSettingsResource_update(t *testing.T) {
 				},
 			},
 			// Update api
-			update("api", map[string]map[string]any{
+			update(map[string]map[string]any{
 				"api": updatedAPI, "auth": auth, "database": database, "storage": storage,
 			},
 				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("api"), jsonSubsetCheck{updatedAPI}),
 				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("auth"), jsonSubsetCheck{auth}),
 			),
 			// Update auth
-			update("auth", map[string]map[string]any{
+			update(map[string]map[string]any{
 				"api": updatedAPI, "auth": updatedAuth, "database": database, "storage": storage,
 			},
 				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("auth"), jsonSubsetCheck{updatedAuth}),
 			),
 			// Update database
-			update("database", map[string]map[string]any{
+			update(map[string]map[string]any{
 				"api": updatedAPI, "auth": updatedAuth, "database": updatedDatabase, "storage": storage,
 			},
 				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("database"), jsonSubsetCheck{updatedDatabase}),
 			),
 			// Update storage
-			update("storage", map[string]map[string]any{
+			update(map[string]map[string]any{
 				"api": updatedAPI, "auth": updatedAuth, "database": updatedDatabase, "storage": updatedStorage,
 			},
 				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("storage"), jsonSubsetCheck{updatedStorage}),
 			),
 		},
 	})
-}
-
-func unmarshalStateAttr(state *terraform.InstanceState, attr string) (map[string]any, error) {
-	raw, ok := state.Attributes[attr]
-	if !ok {
-		return nil, fmt.Errorf("attribute %s not found in state with ID %s", attr, state.ID)
-	}
-
-	var out map[string]any
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, err
-	}
-
-	return out, nil
 }
 
 func TestAccSettingsResource_smtpPass(t *testing.T) {
@@ -952,61 +938,10 @@ resource "supabase_settings" "test" {
 	})
 }
 
-var testAccSettingsResourceConfig = fmt.Sprintf(`
-resource "supabase_settings" "production" {
-  project_ref = "%s"
-
-  database = jsonencode({
-    statement_timeout = "20s"
-  })
-
-  network = jsonencode({
-	restrictions = ["0.0.0.0/0"]
-  })
-
-  api = jsonencode({
-	db_schema            = "public,storage,graphql_public"
-    db_extra_search_path = "public,extensions"
-	max_rows             = 100
-  })
-
-  auth = jsonencode({
-    site_url = "http://localhost:3000"
-    jwt_exp  = 1800
-  })
-
-  storage = jsonencode({
-    fileSizeLimit = 52428800
-    features = {
-      imageTransformation = {
-        enabled = true
-      }
-      s3Protocol = {
-        enabled = false
-      }
-    }
-  })
-
-  # pooler = jsonencode({
-  #   default_pool_size         = 15
-  #   ignore_startup_parameters = ""
-  #   max_client_conn           = 200
-  #   pool_mode                 = "transaction"
-  # })
-}
-`, testProjectRef)
-
 var sslEnforcementEnabled = fmt.Sprintf(`
 resource "supabase_settings" "test" {
   project_ref     = %q
   ssl_enforcement = true
-}
-`, testProjectRef)
-
-var sslEnforcementDisabled = fmt.Sprintf(`
-resource "supabase_settings" "test" {
-  project_ref     = %q
-  ssl_enforcement = false
 }
 `, testProjectRef)
 

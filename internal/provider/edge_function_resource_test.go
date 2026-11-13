@@ -70,11 +70,13 @@ func mockMultipartBodyResponse(t *testing.T, projectRef, slug, entrypointPath st
 		Body(&buf)
 }
 
-func testAccEdgeFunctionLiveVariables(organizationID, projectName, slug, entrypoint string, name *string) config.Variables {
+const testAccEdgeFunctionSlug = "test-function"
+
+func testAccEdgeFunctionLiveVariables(organizationID, projectName, entrypoint string, name *string) config.Variables {
 	vars := config.Variables{
 		"organization_id": config.StringVariable(organizationID),
 		"project_name":    config.StringVariable(projectName),
-		"slug":            config.StringVariable(slug),
+		"slug":            config.StringVariable(testAccEdgeFunctionSlug),
 		"entrypoint":      config.StringVariable(entrypoint),
 	}
 	if name != nil {
@@ -83,9 +85,9 @@ func testAccEdgeFunctionLiveVariables(organizationID, projectName, slug, entrypo
 	return vars
 }
 
-func writeTestEntrypoint(t *testing.T, filename, body string) string {
+func writeTestEntrypoint(t *testing.T, body string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), filename)
+	path := filepath.Join(t.TempDir(), "index.ts")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("Failed to write entrypoint file: %v", err)
 	}
@@ -101,8 +103,8 @@ func TestAccEdgeFunctionResource_basic(t *testing.T) {
 	projectResourceName := "supabase_project.test"
 	resourceName := "supabase_edge_function.test"
 	projectName := acctest.RandomName()
-	slug := "test-function"
-	entrypoint := writeTestEntrypoint(t, "index.ts", `Deno.serve((req) => new Response("Hello"));`)
+	slug := testAccEdgeFunctionSlug
+	entrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Hello"));`)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
@@ -110,7 +112,7 @@ func TestAccEdgeFunctionResource_basic(t *testing.T) {
 			// Create and Read testing
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunction/basic/"),
-				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, slug, entrypoint, nil),
+				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, entrypoint, nil),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
@@ -150,9 +152,9 @@ func TestAccEdgeFunctionResource_update(t *testing.T) {
 
 	resourceName := "supabase_edge_function.test"
 	projectName := acctest.RandomName()
-	slug := "test-function"
-	entrypoint := writeTestEntrypoint(t, "index.ts", `Deno.serve((req) => new Response("Hello"));`)
-	updatedEntrypoint := writeTestEntrypoint(t, "index.ts", `Deno.serve((req) => new Response("Updated"));`)
+	slug := testAccEdgeFunctionSlug
+	entrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Hello"));`)
+	updatedEntrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Updated"));`)
 	updatedName := "Renamed function"
 
 	resource.Test(t, resource.TestCase{
@@ -161,7 +163,7 @@ func TestAccEdgeFunctionResource_update(t *testing.T) {
 			// Create
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunction/basic/"),
-				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, slug, entrypoint, nil),
+				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, entrypoint, nil),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
@@ -174,7 +176,7 @@ func TestAccEdgeFunctionResource_update(t *testing.T) {
 			// Update entrypoint (new source deploys a new version)
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunction/basic/"),
-				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, slug, updatedEntrypoint, nil),
+				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, updatedEntrypoint, nil),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
@@ -189,7 +191,7 @@ func TestAccEdgeFunctionResource_update(t *testing.T) {
 			// Update name
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunction/basic/"),
-				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, slug, updatedEntrypoint, &updatedName),
+				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, updatedEntrypoint, &updatedName),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
@@ -238,11 +240,11 @@ func TestAccEdgeFunctionResource_import(t *testing.T) {
 
 	projectResourceName := "supabase_project.test"
 	resourceName := "supabase_edge_function.test"
-	slug := "test-function"
+	slug := testAccEdgeFunctionSlug
 	entrypointContent := `Deno.serve((req) => new Response("Hello from import"));`
-	entrypoint := writeTestEntrypoint(t, "index.ts", entrypointContent)
+	entrypoint := writeTestEntrypoint(t, entrypointContent)
 	fixture := testAccEdgeFunctionFixtureDir(t)
-	vars := testAccEdgeFunctionLiveVariables(organizationID, acctest.RandomName(), slug, entrypoint, nil)
+	vars := testAccEdgeFunctionLiveVariables(organizationID, acctest.RandomName(), entrypoint, nil)
 
 	// chdir to a temp directory so downloaded files don't pollute the repo
 	t.Chdir(t.TempDir())
@@ -296,11 +298,11 @@ func TestAccEdgeFunctionResource_importWithExistingFiles(t *testing.T) {
 
 	projectResourceName := "supabase_project.test"
 	resourceName := "supabase_edge_function.test"
-	slug := "test-function"
+	slug := testAccEdgeFunctionSlug
 	originalContent := "// original content - must not be overwritten"
-	entrypoint := writeTestEntrypoint(t, "index.ts", `Deno.serve((req) => new Response("Downloaded"));`)
+	entrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Downloaded"));`)
 	fixture := testAccEdgeFunctionFixtureDir(t)
-	vars := testAccEdgeFunctionLiveVariables(organizationID, acctest.RandomName(), slug, entrypoint, nil)
+	vars := testAccEdgeFunctionLiveVariables(organizationID, acctest.RandomName(), entrypoint, nil)
 
 	t.Chdir(t.TempDir())
 
