@@ -1,4 +1,8 @@
-default: testacc
+default: help
+
+.PHONY: help
+help: ## Show this help
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 define MAINTF
 terraform {
@@ -22,14 +26,34 @@ endef
 export MAINTF
 export TERRAFORMRC
 
-# Run acceptance tests
+.PHONY: build
+build: ## Build the provider
+	go build .
+
+.PHONY: install
+install: ## Install the provider into your Go bin directory, for Terraform dev_overrides
+	go install .
+
+# Every test mocks the Management API, so TF_ACC=1 is safe and runs the
+# acceptance tests that would otherwise be skipped.
+.PHONY: test
+test: ## Run all tests (pass extra flags with TESTARGS, e.g. TESTARGS="-run TestAccApiKeyResource -v")
+	TF_ACC=1 go test ./... $(TESTARGS)
+
 .PHONY: testacc
-testacc:
+testacc: ## Run all tests verbosely
 	TF_ACC=1 go test ./... -v $(TESTARGS) -timeout 120m
 
-# Generate schema.json for documentation
+.PHONY: lint
+lint: ## Run golangci-lint
+	golangci-lint run
+
+.PHONY: check
+check: lint test generate ## Run everything to do before opening a pull request
+
 .PHONY: generate-json
-generate-json:
+generate-json: ## Regenerate docs/schema.json
+
 	@echo "Generating docs/schema.json"
 
 	@mkdir temp
@@ -50,11 +74,9 @@ generate-json:
 	@echo "Cleaning up"
 	@rm -r temp
 
-# Generate terraform docs
 .PHONY: generate-docs
-generate-docs:
+generate-docs: ## Regenerate the docs in docs/
 	@go generate ./...
 
-# Runs all generate targets
 .PHONY: generate
-generate: generate-docs generate-json
+generate: generate-docs generate-json ## Regenerate the docs and docs/schema.json
