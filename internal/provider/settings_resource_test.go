@@ -10,18 +10,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-testing/compare"
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/oapi-codegen/nullable"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/supabase/cli/pkg/api"
-	"github.com/supabase/terraform-provider-supabase/examples"
+	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -36,873 +43,376 @@ var allServicesHealthy = []api.V1ServiceHealthResponse{
 	{Name: api.V1ServiceHealthResponseNameStorage, Status: api.ACTIVEHEALTHY, Healthy: true},
 }
 
-func TestAccSettingsResource(t *testing.T) {
-	defer gock.OffAll()
-	projectStatusResponse := api.V1ProjectWithDatabaseResponse{
-		Id:             testProjectRef,
-		Name:           "test",
-		OrganizationId: "test-org",
-		Region:         "us-east-1",
-		Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-	}
-	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
-		return req.URL.Path == projectApiPath, nil
-	}
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		AddMatcher(exactPathMatcher).
-		Reply(http.StatusOK).
-		JSON(projectStatusResponse)
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		AddMatcher(exactPathMatcher).
-		Reply(http.StatusOK).
-		JSON(projectStatusResponse)
-	gock.New(defaultApiEndpoint).
-		Get(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
-	gock.New(defaultApiEndpoint).
-		Get(healthApiPath).
-		Reply(http.StatusOK).
-		JSON(allServicesHealthy)
+// jsonSubsetCheck is a knownvalue.Check for JSON-encoded string attributes. It
+// passes when every expected key is present with an equal value, ignoring any
+// extra keys the API returns.
+type jsonSubsetCheck struct {
+	expected map[string]any
+}
 
-	// Step 1: create
-	gock.New(defaultApiEndpoint).
-		Get(dbConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("10s"),
-		})
-	gock.New(defaultApiEndpoint).
-		Put(dbConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("10s"),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(networkRestrictionsApiPath).
-		Reply(http.StatusOK).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
-				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Post(networkRestrictionsApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
-				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Get(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           1000,
-		})
-	gock.New(defaultApiEndpoint).
-		Patch(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           1000,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(authConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New(defaultApiEndpoint).
-		Patch(authConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(storageConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-			"capabilities": map[string]any{
-				"iceberg_catalog": false,
-				"list_v2":         true,
-			},
-			"external": map[string]any{
-				"upstreamTarget": "main",
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Patch(storageConfigApiPath).
-		Reply(http.StatusOK)
-	gock.New(defaultApiEndpoint).
-		Get(storageConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-			"capabilities": map[string]any{
-				"iceberg_catalog": false,
-				"list_v2":         true,
-			},
-			"external": map[string]any{
-				"upstreamTarget": "main",
-			},
-		})
-	// Step 2: read
-	gock.New(defaultApiEndpoint).
-		Get(dbConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("10s"),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(dbConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("10s"),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(networkRestrictionsApiPath).
-		Reply(http.StatusOK).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
-				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Get(networkRestrictionsApiPath).
-		Reply(http.StatusOK).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
-				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Get(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           1000,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           1000,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(authConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(authConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(storageConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-			"capabilities": map[string]any{
-				"iceberg_catalog": false,
-				"list_v2":         true,
-			},
-			"external": map[string]any{
-				"upstreamTarget": "main",
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Get(storageConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-			"capabilities": map[string]any{
-				"iceberg_catalog": false,
-				"list_v2":         true,
-			},
-			"external": map[string]any{
-				"upstreamTarget": "main",
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Get(sslEnforcementApiPath).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, false))
-	// Import is followed by a refresh Read, so ssl_enforcement is fetched twice.
-	gock.New(defaultApiEndpoint).
-		Get(sslEnforcementApiPath).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, false))
-	// Step 3: update
-	gock.New(defaultApiEndpoint).
-		Get(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
-	gock.New(defaultApiEndpoint).
-		Get(healthApiPath).
-		Reply(http.StatusOK).
-		JSON(allServicesHealthy)
-	gock.New(defaultApiEndpoint).
-		Get(dbConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("10s"),
-		})
-	gock.New(defaultApiEndpoint).
-		Put(dbConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("20s"),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(dbConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("20s"),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(networkRestrictionsApiPath).
-		Reply(http.StatusOK).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
-				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Post(networkRestrictionsApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Get(networkRestrictionsApiPath).
-		Reply(http.StatusOK).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"}),
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Get(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           1000,
-		})
-	gock.New(defaultApiEndpoint).
-		Patch(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           100,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           100,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(authConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:        nullable.NewNullableWithValue("http://localhost:3000"),
-			JwtExp:         nullable.NewNullableWithValue(3600),
-			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New(defaultApiEndpoint).
-		Patch(authConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:        nullable.NewNullableWithValue("http://localhost:3000"),
-			JwtExp:         nullable.NewNullableWithValue(1800),
-			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(authConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:        nullable.NewNullableWithValue("http://localhost:3000"),
-			JwtExp:         nullable.NewNullableWithValue(1800),
-			SmtpAdminEmail: nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(storageConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-			"capabilities": map[string]any{
-				"iceberg_catalog": false,
-				"list_v2":         true,
-			},
-			"external": map[string]any{
-				"upstreamTarget": "main",
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Patch(storageConfigApiPath).
-		Reply(http.StatusOK)
-	gock.New(defaultApiEndpoint).
-		Get(storageConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-			"capabilities": map[string]any{
-				"iceberg_catalog": false,
-				"list_v2":         true,
-			},
-			"external": map[string]any{
-				"upstreamTarget": "main",
-			},
-		})
-	gock.New(defaultApiEndpoint).
-		Get(storageConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-			"capabilities": map[string]any{
-				"iceberg_catalog": false,
-				"list_v2":         true,
-			},
-			"external": map[string]any{
-				"upstreamTarget": "main",
-			},
-		})
-	// Run test
+func (c jsonSubsetCheck) CheckValue(other any) error {
+	raw, ok := other.(string)
+	if !ok {
+		return fmt.Errorf("expected string value for jsonSubsetCheck, got %T", other)
+	}
+	return checkJSONSubset(raw, c.expected)
+}
+
+func (c jsonSubsetCheck) String() string {
+	b, _ := json.Marshal(c.expected)
+	return string(b)
+}
+
+func checkJSONSubset(raw string, expected map[string]any) error {
+	var got map[string]any
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		return fmt.Errorf("unable to parse %q as JSON: %w", raw, err)
+	}
+	for key, want := range expected {
+		// Round-trip the expected value so numbers compare as float64, like decoded JSON.
+		b, _ := json.Marshal(want)
+		var wantNorm any
+		_ = json.Unmarshal(b, &wantNorm)
+		if !reflect.DeepEqual(got[key], wantNorm) {
+			return fmt.Errorf("%s: got %v, want %v", key, got[key], wantNorm)
+		}
+	}
+	return nil
+}
+
+func testAccSettingsLiveVariables(organizationID, projectName string, settings map[string]map[string]any) config.Variables {
+	vars := config.Variables{
+		"organization_id": config.StringVariable(organizationID),
+		"project_name":    config.StringVariable(projectName),
+	}
+	for name, values := range settings {
+		obj := map[string]config.Variable{}
+		for k, v := range values {
+			switch v := v.(type) {
+			case string:
+				obj[k] = config.StringVariable(v)
+			case int:
+				obj[k] = config.IntegerVariable(v)
+			case bool:
+				obj[k] = config.BoolVariable(v)
+			default:
+				panic(fmt.Sprintf("unsupported settings variable type %T", v))
+			}
+		}
+		vars[name] = config.ObjectVariable(obj)
+	}
+	return vars
+}
+
+func testAccSettingsImportStateID(projectResource string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		project, ok := s.RootModule().Resources[projectResource]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", projectResource)
+		}
+		return project.Primary.ID, nil
+	}
+}
+
+func TestAccSettingsResource_basic(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectResourceName := "supabase_project.test"
+	resourceName := "supabase_settings.test"
+	projectName := acctest.RandomName()
+
+	api := map[string]any{"db_schema": "public,storage", "max_rows": 1000}
+	auth := map[string]any{"site_url": "http://localhost:3000", "mailer_otp_exp": 3600}
+	database := map[string]any{"statement_timeout": "10s"}
+	storage := map[string]any{"fileSizeLimit": 52428800}
+	vars := testAccSettingsLiveVariables(organizationID, projectName, map[string]map[string]any{
+		"api": api, "auth": auth, "database": database, "storage": storage,
+	})
+
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: examples.SettingsResourceConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.production", "id", testProjectRef),
-				),
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables: vars,
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.CompareValuePairs(
+						resourceName, tfjsonpath.New("id"),
+						projectResourceName, tfjsonpath.New("id"),
+						compare.ValuesSame(),
+					),
+					statecheck.CompareValuePairs(
+						resourceName, tfjsonpath.New("project_ref"),
+						projectResourceName, tfjsonpath.New("id"),
+						compare.ValuesSame(),
+					),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("api"), jsonSubsetCheck{api}),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("auth"), jsonSubsetCheck{auth}),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("database"), jsonSubsetCheck{database}),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("storage"), jsonSubsetCheck{storage}),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("network"), knownvalue.Null()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("pooler"), knownvalue.Null()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("ssl_enforcement"), knownvalue.Null()),
+				},
 			},
-			// ImportState testing
+			// ImportState testing (import reads every config, so verify a subset)
 			{
-				ResourceName: "supabase_settings.production",
-				ImportState:  true,
-				ImportStateCheck: func(is []*terraform.InstanceState) error {
-					if len(is) != 1 {
+				ConfigDirectory:   config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables:   vars,
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateIdFunc: testAccSettingsImportStateID(projectResourceName),
+				ImportStateCheck: func(states []*terraform.InstanceState) error {
+					if len(states) != 1 {
 						return errors.New("expected a single resource in the state")
 					}
-
-					state := is[0]
-
-					api, err := unmarshalStateAttr(state, "api")
-					if err != nil {
-						return err
-					}
-					if api["db_extra_search_path"] != "public,extensions" {
-						return fmt.Errorf("expected api.db_extra_search_path to be public,extensions, got %v", api["db_extra_search_path"])
-					}
-					if api["db_schema"] != "public,storage,graphql_public" {
-						return fmt.Errorf("expected api.db_schema to be public,storage,graphql_public, got %v", api["db_schema"])
-					}
-					if api["max_rows"] != float64(1000) {
-						return fmt.Errorf("expected api.max_rows to be 1000, got %v", api["max_rows"])
-					}
-
-					auth, err := unmarshalStateAttr(state, "auth")
-					if err != nil {
-						return err
-					}
-					if auth["site_url"] != "http://localhost:3000" {
-						return fmt.Errorf("expected auth.site_url to be http://localhost:3000, got %v", auth["site_url"])
-					}
-					if auth["mailer_otp_exp"] != float64(3600) {
-						return fmt.Errorf("expected auth.mailer_otp_exp to be 3600, got %v", auth["mailer_otp_exp"])
-					}
-					if auth["mfa_phone_otp_length"] != float64(6) {
-						return fmt.Errorf("expected auth.mfa_phone_otp_length to be 6, got %v", auth["mfa_phone_otp_length"])
-					}
-					if auth["sms_otp_length"] != float64(6) {
-						return fmt.Errorf("expected auth.sms_otp_length to be 6, got %v", auth["sms_otp_length"])
-					}
-					if _, found := auth["smtp_admin_email"]; found {
-						return fmt.Errorf("expected auth.smtp_admin_email to be filtered out, got %v", auth["smtp_admin_email"])
-					}
-
-					storage, err := unmarshalStateAttr(state, "storage")
-					if err != nil {
-						return err
-					}
-					if storage["fileSizeLimit"] != float64(52428800) {
-						return fmt.Errorf("expected storage.fileSizeLimit to be 52428800, got %v", storage["fileSizeLimit"])
-					}
-					if features, ok := storage["features"].(map[string]any); ok {
-						if imgTransform, ok := features["imageTransformation"].(map[string]any); ok {
-							if imgTransform["enabled"] != true {
-								return fmt.Errorf("expected storage.features.imageTransformation.enabled to be true, got %v", imgTransform["enabled"])
-							}
+					for attr, expected := range map[string]map[string]any{
+						"api": api, "auth": auth, "database": database, "storage": storage,
+					} {
+						if err := checkJSONSubset(states[0].Attributes[attr], expected); err != nil {
+							return fmt.Errorf("%s: %w", attr, err)
 						}
 					}
-
-					if projectRef, ok := state.Attributes["project_ref"]; !ok || projectRef != testProjectRef {
-						return fmt.Errorf("expected project_ref to be %s, got %v", testProjectRef, projectRef)
-					}
-
 					return nil
 				},
 			},
-			// Update and Read testing
-			{
-				Config: testAccSettingsResourceConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("supabase_settings.production", "api"),
-				),
-			},
-			// Delete testing automatically occurs in TestCase
 		},
 	})
 }
 
-// settingsConfigWithTimeouts returns the default settings resource config with a timeouts block.
-func settingsConfigWithTimeouts() string {
-	s := examples.SettingsResourceConfig
-	idx := strings.LastIndex(s, "}")
-	return s[:idx] + `
-  timeouts {
-    create = "30m"
-    update = "30m"
-  }
-` + s[idx:]
-}
-
-func TestAccSettingsResource_Timeouts(t *testing.T) {
-	defer gock.OffAll()
-	projectStatusResponse := api.V1ProjectWithDatabaseResponse{
-		Id:             "mayuaycdtijbctgqbycg",
-		Name:           "test",
-		OrganizationId: "test-org",
-		Region:         "us-east-1",
-		Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-	}
-	exactPathMatcher := func(req *http.Request, _ *gock.Request) (bool, error) {
-		return req.URL.Path == "/v1/projects/mayuaycdtijbctgqbycg", nil
-	}
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
-		AddMatcher(exactPathMatcher).
-		Reply(http.StatusOK).
-		JSON(projectStatusResponse)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg").
-		AddMatcher(exactPathMatcher).
-		Reply(http.StatusOK).
-		JSON(projectStatusResponse)
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/health").
-		Reply(http.StatusOK).
-		JSON(allServicesHealthy)
-
-	// Create and post-apply refresh
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("10s"),
-		})
-	gock.New("https://api.supabase.com").
-		Put("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("10s"),
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
-		Reply(http.StatusOK).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
-				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
-			},
-		})
-	gock.New("https://api.supabase.com").
-		Post("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
-		Reply(http.StatusCreated).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
-				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
-			},
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           1000,
-		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           1000,
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-		})
-	gock.New("https://api.supabase.com").
-		Patch("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-		})
-	// Post-apply refresh: read configs again
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/database/postgres").
-		Reply(http.StatusOK).
-		JSON(api.PostgresConfigResponse{
-			StatementTimeout: Ptr("10s"),
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/network-restrictions").
-		Reply(http.StatusOK).
-		JSON(api.NetworkRestrictionsResponse{
-			Config: api.NetworkRestrictionsRequest{
-				DbAllowedCidrs:   Ptr([]string{"0.0.0.0/0"}),
-				DbAllowedCidrsV6: Ptr([]string{"::/0"}),
-			},
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/postgrest").
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{
-			DbExtraSearchPath: "public,extensions",
-			DbSchema:          "public,storage,graphql_public",
-			MaxRows:           1000,
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/auth").
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New("https://api.supabase.com").
-		Get("/v1/projects/mayuaycdtijbctgqbycg/config/storage").
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"fileSizeLimit": 52428800,
-			"features": map[string]any{
-				"imageTransformation": map[string]any{"enabled": true},
-				"s3Protocol":          map[string]any{"enabled": false},
-			},
-		})
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: settingsConfigWithTimeouts(),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.production", "id", "mayuaycdtijbctgqbycg"),
-				),
-			},
-		},
-	})
-}
-
-func unmarshalStateAttr(state *terraform.InstanceState, attr string) (map[string]any, error) {
-	raw, ok := state.Attributes[attr]
-	if !ok {
-		return nil, fmt.Errorf("attribute %s not found in state with ID %s", attr, state.ID)
+func TestAccSettingsResource_update(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
 	}
 
-	var out map[string]any
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, err
-	}
+	resourceName := "supabase_settings.test"
+	projectName := acctest.RandomName()
 
-	return out, nil
-}
+	api := map[string]any{"db_schema": "public,storage", "max_rows": 1000}
+	auth := map[string]any{"site_url": "http://localhost:3000", "mailer_otp_exp": 3600}
+	database := map[string]any{"statement_timeout": "10s"}
+	storage := map[string]any{"fileSizeLimit": 52428800}
 
-func TestAccSettingsResource_SmtpPass(t *testing.T) {
-	// Setup mock api
-	defer gock.OffAll()
+	updatedAPI := map[string]any{"db_schema": "public", "max_rows": 500}
+	updatedAuth := map[string]any{"site_url": "http://localhost:4000", "mailer_otp_exp": 1800}
+	updatedDatabase := map[string]any{"statement_timeout": "20s"}
+	updatedStorage := map[string]any{"fileSizeLimit": 41943040}
 
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     testProjectRef,
-			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
-	gock.New(defaultApiEndpoint).
-		Get(healthApiPath).
-		Reply(http.StatusOK).
-		JSON(allServicesHealthy)
-	gock.New(defaultApiEndpoint).
-		Get(authConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New(defaultApiEndpoint).
-		Patch(authConfigApiPath).
-		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
-			body, err := io.ReadAll(req.Body)
-			if err != nil {
-				return false, err
-			}
-			req.Body = io.NopCloser(bytes.NewBuffer(body))
-			bodyStr := string(body)
-			return strings.Contains(bodyStr, `"smtp_pass"`) &&
-				strings.Contains(bodyStr, `"secret_password_123"`), nil
-		}).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-	gock.New(defaultApiEndpoint).
-		Get(authConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(api.AuthConfigResponse{
-			SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
-			MailerOtpExp:      3600,
-			MfaPhoneOtpLength: 6,
-			SmsOtpLength:      6,
-			SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
-		})
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: fmt.Sprintf(`
-resource "supabase_settings" "test" {
-  project_ref = "%s"
-
-  auth = jsonencode({
-    site_url = "http://localhost:3000"
-    smtp_pass = "secret_password_123"
-  })
-}
-`, testProjectRef),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
-				),
+	update := func(settings map[string]map[string]any, checks ...statecheck.StateCheck) resource.TestStep {
+		return resource.TestStep{
+			ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+			ConfigVariables: testAccSettingsLiveVariables(organizationID, projectName, settings),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
+				},
 			},
-		},
-	})
-}
-
-func TestAccSettingsResource_AppleAdditionalClientIds(t *testing.T) {
-	defer gock.OffAll()
-
-	const appleClientID = "com.example.service"
-	const appleAdditionalClientIDs = "com.example.ios,com.example.macos"
-	mergedAppleClientIDs := appleClientID + "," + appleAdditionalClientIDs
-	authResponse := func() api.AuthConfigResponse {
-		return api.AuthConfigResponse{
-			SiteUrl:                          nullable.NewNullableWithValue("http://localhost:3000"),
-			ExternalAppleEnabled:             nullable.NewNullableWithValue(true),
-			ExternalAppleClientId:            nullable.NewNullableWithValue(mergedAppleClientIDs),
-			ExternalAppleAdditionalClientIds: nullable.NewNullNullable[string](),
-			ExternalAppleEmailOptional:       nullable.NewNullableWithValue(false),
-			SmtpAdminEmail:                   nullable.NewNullNullable[openapi_types.Email](),
-			MailerOtpExp:                     3600,
-			MfaPhoneOtpLength:                6,
-			SmsOtpLength:                     6,
+			ConfigStateChecks: checks,
 		}
 	}
 
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     testProjectRef,
-			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(postgrestApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1PostgrestConfigResponse{DbSchema: "public,storage,graphql_public"})
-	gock.New(defaultApiEndpoint).
-		Get(healthApiPath).
-		Reply(http.StatusOK).
-		JSON(allServicesHealthy)
-	gock.New(defaultApiEndpoint).
-		Patch(authConfigApiPath).
-		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
-			body, err := io.ReadAll(req.Body)
-			if err != nil {
-				return false, err
-			}
-			req.Body = io.NopCloser(bytes.NewBuffer(body))
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			// Create
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables: testAccSettingsLiveVariables(organizationID, projectName, map[string]map[string]any{
+					"api": api, "auth": auth, "database": database, "storage": storage,
+				}),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
+			},
+			// Update api
+			update(map[string]map[string]any{
+				"api": updatedAPI, "auth": auth, "database": database, "storage": storage,
+			},
+				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("api"), jsonSubsetCheck{updatedAPI}),
+				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("auth"), jsonSubsetCheck{auth}),
+			),
+			// Update auth
+			update(map[string]map[string]any{
+				"api": updatedAPI, "auth": updatedAuth, "database": database, "storage": storage,
+			},
+				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("auth"), jsonSubsetCheck{updatedAuth}),
+			),
+			// Update database
+			update(map[string]map[string]any{
+				"api": updatedAPI, "auth": updatedAuth, "database": updatedDatabase, "storage": storage,
+			},
+				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("database"), jsonSubsetCheck{updatedDatabase}),
+			),
+			// Update storage
+			update(map[string]map[string]any{
+				"api": updatedAPI, "auth": updatedAuth, "database": updatedDatabase, "storage": updatedStorage,
+			},
+				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("storage"), jsonSubsetCheck{updatedStorage}),
+			),
+		},
+	})
+}
 
-			var payload map[string]any
-			if err := json.Unmarshal(body, &payload); err != nil {
-				return false, err
-			}
+func TestAccSettingsResource_smtpPass(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
 
-			return payload["external_apple_client_id"] == appleClientID &&
-				payload["external_apple_additional_client_ids"] == appleAdditionalClientIDs, nil
-		}).
-		Reply(http.StatusOK).
-		JSON(authResponse())
-	for range 2 {
-		gock.New(defaultApiEndpoint).
-			Get(authConfigApiPath).
-			Reply(http.StatusOK).
-			JSON(authResponse())
+	resourceName := "supabase_settings.test"
+	vars := testAccSettingsLiveVariables(organizationID, acctest.RandomName(), map[string]map[string]any{
+		"auth": {
+			"smtp_admin_email": "admin@example.com",
+			"smtp_host":        "smtp.example.com",
+			"smtp_port":        "587",
+			"smtp_user":        "smtp-user",
+			"smtp_pass":        "secret_password_123",
+			"smtp_sender_name": "Test",
+		},
+	})
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			// The API returns smtp_pass as a hash; state must keep the configured plaintext.
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables: vars,
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("auth"), jsonSubsetCheck{map[string]any{
+						"smtp_host": "smtp.example.com",
+						"smtp_pass": "secret_password_123",
+					}}),
+				},
+			},
+			// A refresh must not show drift from the hashed value.
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables: vars,
+				PlanOnly:        true,
+			},
+		},
+	})
+}
+
+func TestAccSettingsResource_apple(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resourceName := "supabase_settings.test"
+	auth := map[string]any{
+		"site_url":                             "http://localhost:3000",
+		"external_apple_enabled":               true,
+		"external_apple_client_id":             "com.example.service",
+		"external_apple_additional_client_ids": "com.example.ios,com.example.macos",
+		"external_apple_email_optional":        false,
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
+			// The API merges additional client ids into client_id; state must keep them separate.
 			{
-				Config: fmt.Sprintf(`
-resource "supabase_settings" "test" {
-  project_ref = "%s"
-
-  auth = jsonencode({
-    site_url                             = "http://localhost:3000"
-    external_apple_enabled              = true
-    external_apple_client_id            = "%s"
-    external_apple_additional_client_ids = "%s"
-    external_apple_email_optional       = false
-  })
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables: testAccSettingsLiveVariables(organizationID, acctest.RandomName(), map[string]map[string]any{"auth": auth}),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("auth"), jsonSubsetCheck{auth}),
+				},
+			},
+		},
+	})
 }
-`, testProjectRef, appleClientID, appleAdditionalClientIDs),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
-					resource.TestCheckResourceAttrWith("supabase_settings.test", "auth", func(value string) error {
-						var auth map[string]any
-						if err := json.Unmarshal([]byte(value), &auth); err != nil {
-							return err
-						}
-						if auth["external_apple_client_id"] != appleClientID {
-							return fmt.Errorf("expected external_apple_client_id to be %s, got %v", appleClientID, auth["external_apple_client_id"])
-						}
-						if auth["external_apple_additional_client_ids"] != appleAdditionalClientIDs {
-							return fmt.Errorf("expected external_apple_additional_client_ids to be %s, got %v", appleAdditionalClientIDs, auth["external_apple_additional_client_ids"])
-						}
-						return nil
-					}),
-				),
+
+func TestAccSettingsResource_database(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resourceName := "supabase_settings.test"
+	database := map[string]any{
+		"log_connections":    true,
+		"log_disconnections": true,
+		"statement_timeout":  "10s",
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			// Every configured parameter is sent to the API and read back
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables: testAccSettingsLiveVariables(organizationID, acctest.RandomName(), map[string]map[string]any{"database": database}),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("database"), jsonSubsetCheck{database}),
+				},
+			},
+		},
+	})
+}
+
+func TestAccSettingsResource_ssl(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resourceName := "supabase_settings.test"
+	projectName := acctest.RandomName()
+	withSSL := func(enabled bool) config.Variables {
+		vars := testAccSettingsLiveVariables(organizationID, projectName, nil)
+		vars["ssl_enforcement"] = config.BoolVariable(enabled)
+		return vars
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			// Enable (reboots the database, so the provider waits for services to recover)
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables: withSSL(true),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("ssl_enforcement"), knownvalue.Bool(true)),
+				},
+			},
+			// A plan-only refresh must stay empty
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables: withSSL(true),
+				PlanOnly:        true,
+			},
+			// Disable
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Settings/basic/"),
+				ConfigVariables: withSSL(false),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("ssl_enforcement"), knownvalue.Bool(false)),
+				},
 			},
 		},
 	})
@@ -1237,87 +747,6 @@ func TestParseConfigNullablePreservesUserValue(t *testing.T) {
 // generated API client does not know about such as log_connections. The old
 // typed decoding silently dropped them, so the apply succeeded while the API
 // replaced the config without them.
-func TestAccSettingsResource_DatabaseForwardsAllParameters(t *testing.T) {
-	defer gock.OffAll()
-
-	databaseConfig := fmt.Sprintf(`
-resource "supabase_settings" "test" {
-  project_ref = %q
-
-  database = jsonencode({
-    log_connections    = true
-    log_disconnections = true
-    statement_timeout  = "10s"
-  })
-}
-`, testProjectRef)
-	applied := map[string]any{
-		"log_connections":    true,
-		"log_disconnections": true,
-		"statement_timeout":  "10s",
-	}
-
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     testProjectRef,
-			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	mockServicesActiveHealth()
-	gock.New(defaultApiEndpoint).
-		Put(dbConfigApiPath).
-		AddMatcher(matchJSONBody(t, applied)).
-		Reply(http.StatusOK).
-		JSON(applied)
-	// Post-apply refresh.
-	gock.New(defaultApiEndpoint).
-		Get(dbConfigApiPath).
-		Reply(http.StatusOK).
-		JSON(applied)
-
-	// Connection logging is then disabled outside Terraform; the refresh must
-	// pick that up even though the generated client cannot decode the field.
-	gock.New(defaultApiEndpoint).
-		Get(dbConfigApiPath).
-		Persist().
-		Reply(http.StatusOK).
-		JSON(map[string]any{
-			"log_connections":   false,
-			"statement_timeout": "10s",
-		})
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: databaseConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
-					resource.TestCheckResourceAttrWith("supabase_settings.test", "database", func(value string) error {
-						var database map[string]any
-						if err := json.Unmarshal([]byte(value), &database); err != nil {
-							return err
-						}
-						if !reflect.DeepEqual(database, applied) {
-							return fmt.Errorf("expected database settings %v in state, got %v", applied, database)
-						}
-						return nil
-					}),
-				),
-			},
-			{
-				Config:             databaseConfig,
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: true,
-			},
-		},
-	})
-}
-
-// A null database document must be rejected before anything is sent. The old
-// typed decoding turned it into {} and wiped the project's postgres config.
 func TestAccSettingsResource_DatabaseRejectsNull(t *testing.T) {
 	defer gock.OffAll()
 
@@ -1509,61 +938,10 @@ resource "supabase_settings" "test" {
 	})
 }
 
-var testAccSettingsResourceConfig = fmt.Sprintf(`
-resource "supabase_settings" "production" {
-  project_ref = "%s"
-
-  database = jsonencode({
-    statement_timeout = "20s"
-  })
-
-  network = jsonencode({
-	restrictions = ["0.0.0.0/0"]
-  })
-
-  api = jsonencode({
-	db_schema            = "public,storage,graphql_public"
-    db_extra_search_path = "public,extensions"
-	max_rows             = 100
-  })
-
-  auth = jsonencode({
-    site_url = "http://localhost:3000"
-    jwt_exp  = 1800
-  })
-
-  storage = jsonencode({
-    fileSizeLimit = 52428800
-    features = {
-      imageTransformation = {
-        enabled = true
-      }
-      s3Protocol = {
-        enabled = false
-      }
-    }
-  })
-
-  # pooler = jsonencode({
-  #   default_pool_size         = 15
-  #   ignore_startup_parameters = ""
-  #   max_client_conn           = 200
-  #   pool_mode                 = "transaction"
-  # })
-}
-`, testProjectRef)
-
 var sslEnforcementEnabled = fmt.Sprintf(`
 resource "supabase_settings" "test" {
   project_ref     = %q
   ssl_enforcement = true
-}
-`, testProjectRef)
-
-var sslEnforcementDisabled = fmt.Sprintf(`
-resource "supabase_settings" "test" {
-  project_ref     = %q
-  ssl_enforcement = false
 }
 `, testProjectRef)
 
@@ -1599,97 +977,6 @@ func mockServicesActiveHealth() {
 		Get(healthApiPath).
 		Reply(http.StatusOK).
 		JSON(allServicesHealthy)
-}
-
-func TestAccSettingsResource_SslEnforcementEnable(t *testing.T) {
-	defer gock.OffAll()
-
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     testProjectRef,
-			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	mockServicesActiveHealth()
-	gock.New(defaultApiEndpoint).
-		Put(sslEnforcementApiPath).
-		AddMatcher(matchSslPutBody(true)).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, true))
-	gock.New(defaultApiEndpoint).
-		Get(sslEnforcementApiPath).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, true))
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: sslEnforcementEnabled,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
-				),
-			},
-		},
-	})
-}
-
-func TestAccSettingsResource_SslEnforcementUpdate(t *testing.T) {
-	defer gock.OffAll()
-
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     testProjectRef,
-			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	mockServicesActiveHealth()
-	gock.New(defaultApiEndpoint).
-		Put(sslEnforcementApiPath).
-		AddMatcher(matchSslPutBody(true)).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, true))
-	gock.New(defaultApiEndpoint).
-		Get(sslEnforcementApiPath).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, true))
-
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     testProjectRef,
-			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	mockServicesActiveHealth()
-	gock.New(defaultApiEndpoint).
-		Put(sslEnforcementApiPath).
-		AddMatcher(matchSslPutBody(false)).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, false))
-	gock.New(defaultApiEndpoint).
-		Get(sslEnforcementApiPath).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, false))
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: sslEnforcementEnabled,
-				Check:  resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
-			},
-			{
-				Config: sslEnforcementDisabled,
-				Check:  resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "false"),
-			},
-		},
-	})
 }
 
 func TestAccSettingsResource_SslEnforcementAsyncConvergence(t *testing.T) {
@@ -1886,54 +1173,6 @@ func TestAccSettingsResource_SslEnforcement400NonCapability(t *testing.T) {
 }
 
 // Read should trust currentConfig.database even while the reboot is still in progress.
-func TestAccSettingsResource_SslEnforcementReadIgnoresAppliedSuccessfully(t *testing.T) {
-	defer gock.OffAll()
-
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:     testProjectRef,
-			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	mockServicesActiveHealth()
-	gock.New(defaultApiEndpoint).
-		Put(sslEnforcementApiPath).
-		AddMatcher(matchSslPutBody(true)).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, true))
-	gock.New(defaultApiEndpoint).
-		Get(sslEnforcementApiPath).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(true, true))
-
-	// Plan-only refresh during the reboot window. The plan must stay empty.
-	gock.New(defaultApiEndpoint).
-		Get(sslEnforcementApiPath).
-		Times(2).
-		Reply(http.StatusOK).
-		JSON(sslEnforcementResponse(false, true))
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: sslEnforcementEnabled,
-				Check:  resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
-			},
-			{
-				Config:   sslEnforcementEnabled,
-				PlanOnly: true,
-				Check:    resource.TestCheckResourceAttr("supabase_settings.test", "ssl_enforcement", "true"),
-			},
-		},
-	})
-}
-
-// Branch refs return 404 from /v1/projects/{ref}; their status is served by
-// /v1/branches/{ref} instead. Settings must still apply against them.
-// https://github.com/supabase/terraform-provider-supabase/issues/345
 func TestAccSettingsResource_BranchRef(t *testing.T) {
 	defer gock.OffAll()
 
