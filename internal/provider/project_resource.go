@@ -181,7 +181,8 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	tflog.Trace(ctx, "read up to date project")
-	resp.Diagnostics.Append(readProject(ctx, &data, r.client)...)
+	_, diags = readProject(ctx, &data, r.client)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -201,8 +202,15 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	tflog.Trace(ctx, "read project")
 
-	resp.Diagnostics.Append(readProject(ctx, &data, r.client)...)
+	found, diags := readProject(ctx, &data, r.client)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !found {
+		tflog.Trace(ctx, fmt.Sprintf("project not found, removing from state: %s", data.Id.ValueString()))
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -318,20 +326,22 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 	return nil
 }
 
-func readProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+// readProject refreshes data from the API. It reports false, without an
+// error, when the project no longer exists.
+func readProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
 	projectResp, err := client.V1GetProjectWithResponse(ctx, data.Id.ValueString())
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read project, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	if projectResp.StatusCode() == http.StatusNotFound {
-		return nil
+		return false, nil
 	}
 
 	if projectResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read project, got status %d: %s", projectResp.StatusCode(), projectResp.Body)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	project := projectResp.JSON200
@@ -343,14 +353,14 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 	legacyKeysResp, err := client.V1GetProjectLegacyApiKeysWithResponse(ctx, project.Id)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read project legacy api keys state, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	if legacyKeysResp.JSON200 == nil {
 		// This API endpoint will be removed in the future, so explicitly check for HTTP 404 Not Found.
 		if legacyKeysResp.StatusCode() != http.StatusNotFound {
 			msg := fmt.Sprintf("Unable to read project legacy api keys, got status %d: %s", legacyKeysResp.StatusCode(), legacyKeysResp.Body)
-			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 		}
 
 		data.LegacyApiKeysEnabled = types.BoolValue(false)
@@ -361,12 +371,12 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 	addonsResp, err := client.V1ListProjectAddonsWithResponse(ctx, project.Id)
 	if err != nil {
 		msg := fmt.Sprintf("Unable to read project addons, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	if addonsResp.JSON200 == nil {
 		msg := fmt.Sprintf("Unable to read project addons, got error: %s", string(addonsResp.Body))
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
 	for _, addon := range addonsResp.JSON200.SelectedAddons {
@@ -377,14 +387,14 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 		val, err := addon.Variant.Id.AsListProjectAddonsResponseSelectedAddonsVariantId0()
 		if err != nil {
 			msg := fmt.Sprintf("Unable to read compute instance addon, got error: %s", err)
-			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 		}
 
 		data.InstanceSize = types.StringValue(strings.TrimPrefix(string(val), "ci_"))
 		break
 	}
 
-	return nil
+	return true, nil
 }
 
 func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
