@@ -80,3 +80,8 @@ generate-docs: ## Regenerate the docs in docs/
 
 .PHONY: generate
 generate: generate-docs generate-json ## Regenerate the docs and docs/schema.json
+
+# Add a changelog entry for the current change (interactive)
+.PHONY: changelog
+changelog:
+	@go run github.com/miniscruff/changie new
