@@ -21,3 +21,11 @@ updates:
           - minor
           - patch
           - major
+  # govulncheck is tracked as a tool dependency in its own module so it does
+  # not affect the provider's go.mod. Its dependencies are all indirect.
+  - package-ecosystem: "gomod"
+    directory: "/tools/govulncheck"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-type: "all"
