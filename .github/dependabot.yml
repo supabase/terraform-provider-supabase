@@ -21,3 +21,12 @@ updates:
           - minor
           - patch
           - major
+  # Developer tools (govulncheck, tfplugindocs) are tracked in their own module
+  # so they do not affect the provider's go.mod. Their dependencies are all
+  # indirect.
+  - package-ecosystem: "gomod"
+    directory: "/tools"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-type: "all"
