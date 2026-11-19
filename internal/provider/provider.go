@@ -257,13 +257,18 @@ func (p *SupabaseProvider) Configure(ctx context.Context, req provider.Configure
 		return
 	}
 
-	// Example client configuration for data sources and resources
+	// Terraform core reports its version at configure time. Capture it here:
+	// the request editor's own "req" parameter shadows the ConfigureRequest.
+	userAgent := userAgentValue(p.version, req.TerraformVersion)
+	clientInfo := clientInfoValue(p.version, req.TerraformVersion)
+
 	client, err := api.NewClientWithResponses(
 		apiEndpoint,
 		api.WithHTTPClient(newRetryableClient(p.baseHTTPClient)),
 		api.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer "+accessToken)
-			req.Header.Set("User-Agent", "TFProvider/"+p.version)
+			req.Header.Set("User-Agent", userAgent)
+			req.Header.Set("X-Client-Info", clientInfo)
 			return nil
 		}),
 		api.WithRequestEditorFn(stashRequestMethod),

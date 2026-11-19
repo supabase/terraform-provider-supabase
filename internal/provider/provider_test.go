@@ -32,6 +32,10 @@ var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServe
 	"supabase": providerserver.NewProtocol6WithError(newWithBaseClient("test", http.DefaultClient)()),
 }
 
+var testAccProtoV6ProviderFactoriesActual = map[string]func() (tfprotov6.ProviderServer, error){
+	"supabase": providerserver.NewProtocol6WithError(New("test")()),
+}
+
 func testAccPreCheck(t *testing.T) {
 	// You can add code here to run prior to any test case execution, for example assertions
 	// about the appropriate environment variables being set are common to see in a pre-check

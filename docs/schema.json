@@ -462,7 +462,7 @@
               },
               "storage": {
                 "type": "string",
-                "description": "Storage settings as serialised JSON",
+                "description": "Storage settings as serialised JSON.\n\n~> `migrationVersion`, `capabilities` and `databasePoolMode` are read-only and managed by Supabase. They are never written to state and setting them has no effect.",
                 "description_kind": "markdown",
                 "optional": true
               }

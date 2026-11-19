@@ -4,10 +4,16 @@
 package provider
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
+	"math/big"
 	"net/http"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
@@ -16,10 +22,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/compare"
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/oapi-codegen/nullable"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -55,47 +68,6 @@ func oidcThirdPartyAuthResponse(t *testing.T, issuerURL string) api.ThirdPartyAu
 		InsertedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt:  "2026-01-01T00:00:00Z",
 		ResolvedAt: nullable.NewNullableWithValue("2026-01-01T00:01:00Z"),
-	}
-}
-
-func jwksURLThirdPartyAuthResponse(t *testing.T, id string, jwksURL string) api.ThirdPartyAuth {
-	t.Helper()
-
-	return api.ThirdPartyAuth{
-		Id:            thirdPartyAuthUUID(t, id),
-		Type:          "jwks_url",
-		OidcIssuerUrl: nullable.NewNullNullable[string](),
-		JwksUrl:       nullable.NewNullableWithValue(jwksURL),
-		CustomJwks:    nullable.NewNullNullable[interface{}](),
-		ResolvedJwks: nullable.NewNullableWithValue[interface{}](map[string]any{
-			"keys": []any{
-				map[string]any{
-					"kty": "RSA",
-					"kid": "test-key",
-					"n":   "abc",
-					"e":   "AQAB",
-				},
-			},
-		}),
-		InsertedAt: "2026-01-01T00:00:00Z",
-		UpdatedAt:  "2026-01-01T00:00:00Z",
-		ResolvedAt: nullable.NewNullableWithValue("2026-01-01T00:01:00Z"),
-	}
-}
-
-func customJWKSThirdPartyAuthResponse(t *testing.T, customJWKS map[string]any) api.ThirdPartyAuth {
-	t.Helper()
-
-	return api.ThirdPartyAuth{
-		Id:            thirdPartyAuthUUID(t, testThirdPartyAuthUUID),
-		Type:          "custom_jwks",
-		OidcIssuerUrl: nullable.NewNullNullable[string](),
-		JwksUrl:       nullable.NewNullNullable[string](),
-		CustomJwks:    nullable.NewNullableWithValue[interface{}](customJWKS),
-		ResolvedJwks:  nullable.NewNullableWithValue[interface{}](customJWKS),
-		InsertedAt:    "2026-01-01T00:00:00Z",
-		UpdatedAt:     "2026-01-01T00:00:00Z",
-		ResolvedAt:    nullable.NewNullableWithValue("2026-01-01T00:01:00Z"),
 	}
 }
 
@@ -140,233 +112,245 @@ func mockThirdPartyAuthCreateReadiness() {
 		})
 }
 
-func TestAccThirdPartyAuthResource_OIDC(t *testing.T) {
-	defer gock.OffAll()
+// The API reports every integration as type "custom", whichever source
+// (oidc_issuer_url, jwks_url or custom_jwks) was configured.
+const thirdPartyAuthAPIType = "custom"
 
-	issuerURL := "https://issuer.example.com"
-	response := oidcThirdPartyAuthResponse(t, issuerURL)
+const (
+	thirdPartyAuthOIDCIssuer = "https://accounts.google.com"
+	thirdPartyAuthJWKSURL    = "https://www.googleapis.com/oauth2/v3/certs"
+)
 
-	mockThirdPartyAuthCreateReadiness()
-	gock.New(defaultApiEndpoint).
-		Post(thirdPartyAuthApiPath).
-		AddMatcher(matchJSONBody(t, map[string]any{
-			"oidc_issuer_url": issuerURL,
-		})).
-		Reply(http.StatusCreated).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Get(thirdPartyAuthItemApiPath).
-		Reply(http.StatusOK).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Delete(thirdPartyAuthItemApiPath).
-		Reply(http.StatusOK).
-		JSON(response)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref     = %q
-  oidc_issuer_url = %q
-}
-`, testProjectRef, issuerURL),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "project_ref", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "id", testThirdPartyAuthUUID),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "type", "oidc"),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "oidc_issuer_url", issuerURL),
-					resource.TestCheckResourceAttrSet("supabase_third_party_auth.test", "resolved_jwks"),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "inserted_at", "2026-01-01T00:00:00Z"),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "updated_at", "2026-01-01T00:00:00Z"),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "resolved_at", "2026-01-01T00:01:00Z"),
-				),
-			},
-		},
-	})
-}
-
-func TestAccThirdPartyAuthResource_CustomJWKS(t *testing.T) {
-	defer gock.OffAll()
-
-	customJWKS := map[string]any{
+// testAccThirdPartyAuthCustomJWKS returns a public-only JWKS containing a
+// freshly generated RSA key, so the API can parse the key material.
+func testAccThirdPartyAuthCustomJWKS(t *testing.T) map[string]any {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("Failed to generate RSA key: %v", err)
+	}
+	return map[string]any{
 		"keys": []any{
 			map[string]any{
 				"kty": "RSA",
 				"kid": "test-key",
-				"n":   "abc",
-				"e":   "AQAB",
+				"use": "sig",
+				"alg": "RS256",
+				"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+				"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
 			},
 		},
 	}
-	response := customJWKSThirdPartyAuthResponse(t, customJWKS)
-
-	mockThirdPartyAuthCreateReadiness()
-	gock.New(defaultApiEndpoint).
-		Post(thirdPartyAuthApiPath).
-		AddMatcher(matchJSONBody(t, map[string]any{
-			"custom_jwks": customJWKS,
-		})).
-		Reply(http.StatusCreated).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Get(thirdPartyAuthItemApiPath).
-		Reply(http.StatusOK).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Delete(thirdPartyAuthItemApiPath).
-		Reply(http.StatusOK).
-		JSON(response)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref = %q
-  custom_jwks = jsonencode({
-    keys = [
-      {
-        kty = "RSA"
-        kid = "test-key"
-        n   = "abc"
-        e   = "AQAB"
-      }
-    ]
-  })
 }
-`, testProjectRef),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "project_ref", testProjectRef),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "id", testThirdPartyAuthUUID),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "type", "custom_jwks"),
-					resource.TestCheckResourceAttrSet("supabase_third_party_auth.test", "custom_jwks"),
-					resource.TestCheckResourceAttrSet("supabase_third_party_auth.test", "resolved_jwks"),
-				),
-			},
-		},
+
+func testAccThirdPartyAuthLiveVariables(organizationID, projectName string, extra config.Variables) config.Variables {
+	vars := config.Variables{
+		"organization_id": config.StringVariable(organizationID),
+		"project_name":    config.StringVariable(projectName),
+	}
+	maps.Copy(vars, extra)
+	return vars
+}
+
+func testAccThirdPartyAuthImportStateID(projectResource, resourceName string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		project, ok := s.RootModule().Resources[projectResource]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", projectResource)
+		}
+		res, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", resourceName)
+		}
+		return fmt.Sprintf("%s/%s", project.Primary.ID, res.Primary.ID), nil
+	}
+}
+
+func TestAccThirdPartyAuthResource_basic(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectResourceName := "supabase_project.test"
+	resourceName := "supabase_third_party_auth.test"
+	vars := testAccThirdPartyAuthLiveVariables(organizationID, acctest.RandomName(), config.Variables{
+		"oidc_issuer_url": config.StringVariable(thirdPartyAuthOIDCIssuer),
 	})
-}
-
-func TestAccThirdPartyAuthResource_CustomJWKSFormattingDoesNotReplace(t *testing.T) {
-	defer gock.OffAll()
-
-	customJWKS := map[string]any{
-		"keys": []any{
-			map[string]any{
-				"kty": "RSA",
-				"kid": "test-key",
-				"n":   "abc",
-				"e":   "AQAB",
-			},
-		},
-	}
-	response := customJWKSThirdPartyAuthResponse(t, customJWKS)
-
-	mockThirdPartyAuthCreateReadiness()
-	gock.New(defaultApiEndpoint).
-		Post(thirdPartyAuthApiPath).
-		AddMatcher(matchJSONBody(t, map[string]any{
-			"custom_jwks": customJWKS,
-		})).
-		Reply(http.StatusCreated).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Get(thirdPartyAuthItemApiPath).
-		Times(3).
-		Reply(http.StatusOK).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Delete(thirdPartyAuthItemApiPath).
-		Reply(http.StatusOK).
-		JSON(response)
-
-	config := func(customJWKS string) string {
-		return fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref = %q
-  custom_jwks = %q
-}
-`, testProjectRef, customJWKS)
-	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
+			// Create and Read testing
 			{
-				Config: config(`{
-  "keys": [
-    {
-      "kty": "RSA",
-      "kid": "test-key",
-      "n": "abc",
-      "e": "AQAB"
-    }
-  ]
-}`),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "id", testThirdPartyAuthUUID),
-				),
-			},
-			{
-				Config: config(`{"keys":[{"e":"AQAB","n":"abc","kid":"test-key","kty":"RSA"}]}`),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "id", testThirdPartyAuthUUID),
-				),
-			},
-		},
-	})
-}
-
-func TestAccThirdPartyAuthResource_Import(t *testing.T) {
-	defer gock.OffAll()
-
-	issuerURL := "https://issuer.example.com"
-	response := oidcThirdPartyAuthResponse(t, issuerURL)
-
-	gock.New(defaultApiEndpoint).
-		Get(thirdPartyAuthItemApiPath).
-		Times(2).
-		Reply(http.StatusOK).
-		JSON(response)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref     = %q
-  oidc_issuer_url = %q
-}
-`, testProjectRef, issuerURL),
-				ResourceName:  "supabase_third_party_auth.test",
-				ImportState:   true,
-				ImportStateId: fmt.Sprintf("%s/%s", testProjectRef, testThirdPartyAuthUUID),
-				ImportStateCheck: func(s []*terraform.InstanceState) error {
-					if len(s) != 1 {
-						return fmt.Errorf("expected 1 instance state, got %d", len(s))
-					}
-					state := s[0]
-					if state.Attributes["project_ref"] != testProjectRef {
-						return fmt.Errorf("expected project_ref %q, got %q", testProjectRef, state.Attributes["project_ref"])
-					}
-					if state.Attributes["id"] != testThirdPartyAuthUUID {
-						return fmt.Errorf("expected id %q, got %q", testThirdPartyAuthUUID, state.Attributes["id"])
-					}
-					if state.Attributes["oidc_issuer_url"] != issuerURL {
-						return fmt.Errorf("expected oidc_issuer_url %q, got %q", issuerURL, state.Attributes["oidc_issuer_url"])
-					}
-					return nil
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
+				ConfigVariables: vars,
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.CompareValuePairs(
+						resourceName, tfjsonpath.New("project_ref"),
+						projectResourceName, tfjsonpath.New("id"),
+						compare.ValuesSame(),
+					),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("type"), knownvalue.StringExact(thirdPartyAuthAPIType)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("oidc_issuer_url"), knownvalue.StringExact(thirdPartyAuthOIDCIssuer)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("jwks_url"), knownvalue.Null()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("custom_jwks"), knownvalue.Null()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("resolved_jwks"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("inserted_at"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("updated_at"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("resolved_at"), knownvalue.NotNull()),
 				},
 			},
+			// ImportState testing
+			{
+				ConfigDirectory:   config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
+				ConfigVariables:   vars,
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: testAccThirdPartyAuthImportStateID(projectResourceName, resourceName),
+			},
+		},
+	})
+}
+
+func TestAccThirdPartyAuthResource_jwksURL(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resourceName := "supabase_third_party_auth.test"
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
+				ConfigVariables: testAccThirdPartyAuthLiveVariables(organizationID, acctest.RandomName(), config.Variables{
+					"jwks_url": config.StringVariable(thirdPartyAuthJWKSURL),
+				}),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("type"), knownvalue.StringExact(thirdPartyAuthAPIType)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("jwks_url"), knownvalue.StringExact(thirdPartyAuthJWKSURL)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("oidc_issuer_url"), knownvalue.Null()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("custom_jwks"), knownvalue.Null()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("resolved_jwks"), knownvalue.NotNull()),
+				},
+			},
+		},
+	})
+}
+
+func TestAccThirdPartyAuthResource_customJWKS(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resourceName := "supabase_third_party_auth.test"
+	projectName := acctest.RandomName()
+
+	jwks := testAccThirdPartyAuthCustomJWKS(t)
+	pretty, err := json.MarshalIndent(jwks, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to encode JWKS: %v", err)
+	}
+	compact, err := json.Marshal(jwks)
+	if err != nil {
+		t.Fatalf("Failed to encode JWKS: %v", err)
+	}
+	idUnchanged := statecheck.CompareValue(compare.ValuesSame())
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
+				ConfigVariables: testAccThirdPartyAuthLiveVariables(organizationID, projectName, config.Variables{
+					"custom_jwks": config.StringVariable(string(pretty)),
+				}),
+				ConfigStateChecks: []statecheck.StateCheck{
+					idUnchanged.AddStateValue(resourceName, tfjsonpath.New("id")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("type"), knownvalue.StringExact(thirdPartyAuthAPIType)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("custom_jwks"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("oidc_issuer_url"), knownvalue.Null()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("jwks_url"), knownvalue.Null()),
+					// inline keys are never resolved remotely, so the API returns no resolved JWKS
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("resolved_jwks"), knownvalue.Null()),
+				},
+			},
+			// Re-formatting the same JWKS updates in place (the string differs) but must not replace the resource
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
+				ConfigVariables: testAccThirdPartyAuthLiveVariables(organizationID, projectName, config.Variables{
+					"custom_jwks": config.StringVariable(string(compact)),
+				}),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					idUnchanged.AddStateValue(resourceName, tfjsonpath.New("id")),
+				},
+			},
+		},
+	})
+}
+
+// The integration source cannot be updated in place: changing it replaces the resource.
+func TestAccThirdPartyAuthResource_update(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resourceName := "supabase_third_party_auth.test"
+	projectName := acctest.RandomName()
+	idChanges := statecheck.CompareValue(compare.ValuesDiffer())
+
+	step := func(action plancheck.ResourceActionType, extra config.Variables, checks ...statecheck.StateCheck) resource.TestStep {
+		return resource.TestStep{
+			ConfigDirectory: config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
+			ConfigVariables: testAccThirdPartyAuthLiveVariables(organizationID, projectName, extra),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(resourceName, action),
+				},
+			},
+			ConfigStateChecks: append([]statecheck.StateCheck{
+				idChanges.AddStateValue(resourceName, tfjsonpath.New("id")),
+			}, checks...),
+		}
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			step(plancheck.ResourceActionCreate,
+				config.Variables{"oidc_issuer_url": config.StringVariable(thirdPartyAuthOIDCIssuer)},
+				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("type"), knownvalue.StringExact(thirdPartyAuthAPIType)),
+			),
+			// oidc_issuer_url -> jwks_url
+			step(plancheck.ResourceActionDestroyBeforeCreate,
+				config.Variables{"jwks_url": config.StringVariable(thirdPartyAuthJWKSURL)},
+				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("type"), knownvalue.StringExact(thirdPartyAuthAPIType)),
+				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("oidc_issuer_url"), knownvalue.Null()),
+			),
+			// Changing the URL itself also replaces
+			step(plancheck.ResourceActionDestroyBeforeCreate,
+				config.Variables{"jwks_url": config.StringVariable("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")},
+				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("jwks_url"), knownvalue.StringExact("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")),
+			),
 		},
 	})
 }
@@ -603,139 +587,6 @@ func TestSetThirdPartyAuthState_ResolvedJWKSRejectsPrivateMaterial(t *testing.T)
 	if got := diags.Errors()[0].Detail(); !strings.Contains(got, "private or symmetric JWK member") {
 		t.Fatalf("expected private JWK diagnostic, got %q", got)
 	}
-}
-
-func TestAccThirdPartyAuthResource_ReplaceOnSourceChange(t *testing.T) {
-	defer gock.OffAll()
-
-	replacementID := "99999999-9999-4999-9999-999999999999"
-	issuerURL := "https://issuer.example.com"
-	jwksURL := "https://issuer.example.com/.well-known/jwks.json"
-	initialResponse := oidcThirdPartyAuthResponse(t, issuerURL)
-	replacementResponse := jwksURLThirdPartyAuthResponse(t, replacementID, jwksURL)
-	replacementPath := fmt.Sprintf("%s/%s", thirdPartyAuthApiPath, replacementID)
-
-	mockThirdPartyAuthCreateReadiness()
-	gock.New(defaultApiEndpoint).
-		Post(thirdPartyAuthApiPath).
-		AddMatcher(matchJSONBody(t, map[string]any{
-			"oidc_issuer_url": issuerURL,
-		})).
-		Reply(http.StatusCreated).
-		JSON(initialResponse)
-	gock.New(defaultApiEndpoint).
-		Get(thirdPartyAuthItemApiPath).
-		Times(2).
-		Reply(http.StatusOK).
-		JSON(initialResponse)
-	gock.New(defaultApiEndpoint).
-		Delete(thirdPartyAuthItemApiPath).
-		Reply(http.StatusOK).
-		JSON(initialResponse)
-	mockThirdPartyAuthCreateReadiness()
-	gock.New(defaultApiEndpoint).
-		Post(thirdPartyAuthApiPath).
-		AddMatcher(matchJSONBody(t, map[string]any{
-			"jwks_url": jwksURL,
-		})).
-		Reply(http.StatusCreated).
-		JSON(replacementResponse)
-	gock.New(defaultApiEndpoint).
-		Get(replacementPath).
-		Reply(http.StatusOK).
-		JSON(replacementResponse)
-	gock.New(defaultApiEndpoint).
-		Delete(replacementPath).
-		Reply(http.StatusOK).
-		JSON(replacementResponse)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref     = %q
-  oidc_issuer_url = %q
-}
-`, testProjectRef, issuerURL),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "id", testThirdPartyAuthUUID),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "oidc_issuer_url", issuerURL),
-				),
-			},
-			{
-				Config: fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref = %q
-  jwks_url    = %q
-}
-`, testProjectRef, jwksURL),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "id", replacementID),
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "jwks_url", jwksURL),
-				),
-			},
-		},
-	})
-}
-
-func TestAccThirdPartyAuthResource_UpdateTimeoutOnly(t *testing.T) {
-	defer gock.OffAll()
-
-	issuerURL := "https://issuer.example.com"
-	response := oidcThirdPartyAuthResponse(t, issuerURL)
-
-	mockThirdPartyAuthCreateReadiness()
-	gock.New(defaultApiEndpoint).
-		Post(thirdPartyAuthApiPath).
-		AddMatcher(matchJSONBody(t, map[string]any{
-			"oidc_issuer_url": issuerURL,
-		})).
-		Reply(http.StatusCreated).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Get(thirdPartyAuthItemApiPath).
-		Times(3).
-		Reply(http.StatusOK).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Delete(thirdPartyAuthItemApiPath).
-		Reply(http.StatusOK).
-		JSON(response)
-
-	configWithTimeout := func(createTimeout string) string {
-		return fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref     = %q
-  oidc_issuer_url = %q
-
-  timeouts {
-    create = %q
-  }
-}
-`, testProjectRef, issuerURL, createTimeout)
-	}
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: configWithTimeout("5m"),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "id", testThirdPartyAuthUUID),
-				),
-			},
-			{
-				Config: configWithTimeout("10m"),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "id", testThirdPartyAuthUUID),
-				),
-			},
-		},
-	})
 }
 
 func TestAccThirdPartyAuthResource_ReadRemovesDeletedResource(t *testing.T) {

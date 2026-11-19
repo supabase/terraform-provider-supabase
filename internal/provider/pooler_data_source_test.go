@@ -4,42 +4,47 @@
 package provider
 
 import (
-	"net/http"
+	"os"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-testing/compare"
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/oapi-codegen/nullable"
-	"github.com/supabase/cli/pkg/api"
-	"github.com/supabase/terraform-provider-supabase/examples"
-	"gopkg.in/h2non/gock.v1"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 )
 
 func TestAccPoolerDataSource(t *testing.T) {
-	poolerUrl := "postgres://user:pass@db.supabase.co:5432/postgres"
-	// Setup mock api
-	defer gock.OffAll()
-	gock.New(defaultApiEndpoint).
-		Get(poolerApiPath).
-		Times(3).
-		Reply(http.StatusOK).
-		JSON([]api.SupavisorConfigResponse{{
-			DatabaseType:     api.SupavisorConfigResponseDatabaseTypePRIMARY,
-			ConnectionString: poolerUrl,
-			DefaultPoolSize:  nullable.NewNullableWithValue(15),
-			MaxClientConn:    nullable.NewNullableWithValue(200),
-			PoolMode:         api.SupavisorConfigResponsePoolModeTransaction,
-		}})
-	// Run test
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectResourceName := "supabase_project.test"
+	dataSourceName := "data.supabase_pooler.test"
+
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Read testing
 			{
-				Config: examples.PoolerDataSourceConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.supabase_pooler.production", "url.transaction", poolerUrl),
-				),
+				ConfigDirectory: config.StaticDirectory("test-fixtures/Pooler/basic/"),
+				ConfigVariables: config.Variables{
+					"organization_id": config.StringVariable(organizationID),
+					"project_name":    config.StringVariable(acctest.RandomName()),
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.CompareValuePairs(
+						dataSourceName, tfjsonpath.New("project_ref"),
+						projectResourceName, tfjsonpath.New("id"),
+						compare.ValuesSame(),
+					),
+					statecheck.ExpectKnownValue(dataSourceName, tfjsonpath.New("url"), knownvalue.MapPartial(map[string]knownvalue.Check{
+						"transaction": knownvalue.NotNull(),
+					})),
+				},
 			},
 		},
 	})

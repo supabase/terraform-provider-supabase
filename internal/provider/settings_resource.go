@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -31,6 +33,7 @@ import (
 var (
 	_ resource.Resource                = &SettingsResource{}
 	_ resource.ResourceWithImportState = &SettingsResource{}
+	_ resource.ResourceWithModifyPlan  = &SettingsResource{}
 )
 
 // Backend returns this 400 body fragment for unsupported projects.
@@ -105,9 +108,10 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 				Optional:            true,
 			},
 			"storage": schema.StringAttribute{
-				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Storage settings as serialised JSON",
-				Optional:            true,
+				CustomType: jsontypes.NormalizedType{},
+				MarkdownDescription: "Storage settings as serialised JSON.\n\n" +
+					"~> `migrationVersion`, `capabilities` and `databasePoolMode` are read-only and managed by Supabase. They are never written to state and setting them has no effect.",
+				Optional: true,
 			},
 			"auth": schema.StringAttribute{
 				CustomType: jsontypes.NormalizedType{},
@@ -138,6 +142,21 @@ func (r *SettingsResource) Schema(ctx context.Context, req resource.SchemaReques
 				},
 			},
 		},
+	}
+}
+
+// ModifyPlan warns when read-only storage keys are set in configuration, since
+// they are managed by Supabase and cannot be changed through this resource.
+func (r *SettingsResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+	var storage jsontypes.Normalized
+	if diags := req.Plan.GetAttribute(ctx, path.Root("storage"), &storage); diags.HasError() {
+		return
+	}
+	if warning := readOnlyStorageWarning(storage); warning != nil {
+		resp.Diagnostics.AddAttributeWarning(path.Root("storage"), warning.Summary(), warning.Detail())
 	}
 }
 
@@ -635,6 +654,63 @@ var requestOnlyConfigKeys = map[string]bool{
 	"restart_database": true,
 }
 
+// readOnlyStorageKeys are returned by the storage config API but cannot be
+// updated. They are kept out of state, and any value the user configured is
+// preserved as planned so the read-back never differs from the plan.
+//
+// databasePoolMode is a legacy internal Storage flag. It is absent from the
+// public OpenAPI spec and recent responses omit it. However, the API client
+// used here (github.com/supabase/cli/pkg/api, generated from the Management API
+// spec in the supabase/cli repo, not in this repository) is pinned to a version
+// whose StorageConfigResponse still has a plain string DatabasePoolMode field.
+// A missing or null value therefore decodes to "" and would leak into state on
+// import unless it is filtered.
+var readOnlyStorageKeys = []string{"migrationVersion", "capabilities", "databasePoolMode"}
+
+// restoreReadOnlyStorageKeys drops read-only keys from the refreshed value and
+// puts back whatever the user had in prev, if anything.
+func restoreReadOnlyStorageKeys(prev, refreshed jsontypes.Normalized) (jsontypes.Normalized, error) {
+	// Null or unknown values leave the maps empty; errors are deliberately ignored.
+	before, after := map[string]any{}, map[string]any{}
+	_ = prev.Unmarshal(&before)
+	_ = refreshed.Unmarshal(&after)
+	if after == nil {
+		after = map[string]any{}
+	}
+	for _, k := range readOnlyStorageKeys {
+		delete(after, k)
+		if v, ok := before[k]; ok {
+			after[k] = v
+		}
+	}
+	value, err := json.Marshal(after)
+	if err != nil {
+		return refreshed, fmt.Errorf("failed to parse config: %w", err)
+	}
+	return jsontypes.NewNormalizedValue(string(value)), nil
+}
+
+// readOnlyStorageWarning returns a warning if storage sets any read-only key.
+func readOnlyStorageWarning(storage jsontypes.Normalized) diag.Diagnostic {
+	config := map[string]any{}
+	_ = storage.Unmarshal(&config)
+	var found []string
+	for _, k := range readOnlyStorageKeys {
+		if _, ok := config[k]; ok {
+			found = append(found, k)
+		}
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	sort.Strings(found)
+	return diag.NewWarningDiagnostic(
+		"Read-only Storage Settings",
+		fmt.Sprintf("The storage setting(s) %s are managed by Supabase. Setting them has no effect "+
+			"and the configured value is not applied. Remove them from `storage`.", strings.Join(found, ", ")),
+	)
+}
+
 func pickConfig(source any, target map[string]any) {
 	if sourceMap, ok := source.(map[string]any); ok {
 		pickConfigMap(sourceMap, target)
@@ -913,7 +989,11 @@ func readStorageConfig(ctx context.Context, state *SettingsResourceModel, client
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}
 
-	if state.Storage, err = parseConfig(state.Storage, *httpResp.JSON200); err != nil {
+	prev := state.Storage
+	if state.Storage, err = parseConfig(prev, *httpResp.JSON200); err == nil {
+		state.Storage, err = restoreReadOnlyStorageKeys(prev, state.Storage)
+	}
+	if err != nil {
 		msg := fmt.Sprintf("Unable to read storage settings, got error: %s", err)
 		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
 	}

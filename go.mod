@@ -1,6 +1,6 @@
 module github.com/supabase/terraform-provider-supabase
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/google/uuid v1.6.0
@@ -15,7 +15,7 @@ require (
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.40.1
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
 	github.com/oapi-codegen/nullable v1.2.0
-	github.com/oapi-codegen/runtime v1.8.0
+	github.com/oapi-codegen/runtime v1.9.0
 	github.com/supabase/cli/pkg v1.2.3
 	gopkg.in/h2non/gock.v1 v1.1.2
 )
