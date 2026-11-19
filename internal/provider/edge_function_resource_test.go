@@ -16,9 +16,16 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-testing/compare"
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 	"gopkg.in/h2non/gock.v1"
 )
 
@@ -63,490 +70,289 @@ func mockMultipartBodyResponse(t *testing.T, projectRef, slug, entrypointPath st
 		Body(&buf)
 }
 
-func TestAccEdgeFunctionResource(t *testing.T) {
-	defer gock.OffAll()
+const testAccEdgeFunctionSlug = "test-function"
 
-	testFunctionID := uuid.New().String()
+func testAccEdgeFunctionLiveVariables(organizationID, projectName, entrypoint string, name *string) config.Variables {
+	vars := config.Variables{
+		"organization_id": config.StringVariable(organizationID),
+		"project_name":    config.StringVariable(projectName),
+		"slug":            config.StringVariable(testAccEdgeFunctionSlug),
+		"entrypoint":      config.StringVariable(entrypoint),
+	}
+	if name != nil {
+		vars["name"] = config.StringVariable(*name)
+	}
+	return vars
+}
 
-	// Create a temp directory with the entrypoint file
-	tmpDir := t.TempDir()
-	entrypointPath := filepath.Join(tmpDir, "index.ts")
-	if err := os.WriteFile(entrypointPath, []byte(`Deno.serve((req) => new Response("Hello"));`), 0o600); err != nil {
+func writeTestEntrypoint(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "index.ts")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("Failed to write entrypoint file: %v", err)
 	}
-
-	testConfig := fmt.Sprintf(`
-resource "supabase_edge_function" "foo" {
-  project_ref = "%s"
-  slug        = "%s"
-  entrypoint  = "%s"
+	return path
 }
-`, testProjectRef, functionSlug, entrypointPath)
 
-	// Step 1: Create - Deploy function
-	createdAt := int64(1234567890)
-	updatedAt := int64(1234567890)
-	gock.New(defaultApiEndpoint).
-		Post(deployFunctionApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: &createdAt,
-			UpdatedAt: &updatedAt,
-		})
+func TestAccEdgeFunctionResource_basic(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
 
-	// Step 1: Read after create
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567890,
-		})
-
-	// Step 2: Read for refresh
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567890,
-		})
-
-	// Step 3: Delete
-	gock.New(defaultApiEndpoint).
-		Delete(functionApiPath).
-		Reply(http.StatusOK)
+	projectResourceName := "supabase_project.test"
+	resourceName := "supabase_edge_function.test"
+	projectName := acctest.RandomName()
+	slug := testAccEdgeFunctionSlug
+	entrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Hello"));`)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "id", testFunctionID),
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "slug", functionSlug),
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "name", functionSlug),
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "status", "ACTIVE"),
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "version", "1"),
-					resource.TestCheckResourceAttrSet("supabase_edge_function.foo", "local_checksum"),
-				),
+				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunction/basic/"),
+				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, entrypoint, nil),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.CompareValuePairs(
+						resourceName, tfjsonpath.New("project_ref"),
+						projectResourceName, tfjsonpath.New("id"),
+						compare.ValuesSame(),
+					),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("slug"), knownvalue.StringExact(slug)),
+					// name defaults to the slug when not specified
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(slug)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("entrypoint"), knownvalue.StringExact(entrypoint)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("import_map"), knownvalue.Null()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("static_files"), knownvalue.Null()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("status"), knownvalue.StringExact("ACTIVE")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("version"), knownvalue.Int64Exact(1)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("checksum"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("local_checksum"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("updated_at"), knownvalue.NotNull()),
+				},
 			},
 			// Delete testing automatically occurs in TestCase
 		},
 	})
 }
 
-func TestAccEdgeFunctionResource_Update(t *testing.T) {
-	defer gock.OffAll()
-
-	testFunctionID := uuid.New().String()
-
-	tmpDir := t.TempDir()
-	entrypointPath := filepath.Join(tmpDir, "index.ts")
-	if err := os.WriteFile(entrypointPath, []byte(`Deno.serve((req) => new Response("Hello"));`), 0o600); err != nil {
-		t.Fatalf("Failed to write entrypoint file: %v", err)
+func TestAccEdgeFunctionResource_update(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
 	}
 
-	entrypointPath2 := filepath.Join(tmpDir, "index2.ts")
-	if err := os.WriteFile(entrypointPath2, []byte(`Deno.serve((req) => new Response("Updated"));`), 0o600); err != nil {
-		t.Fatalf("Failed to write entrypoint file 2: %v", err)
-	}
-
-	testConfig1 := fmt.Sprintf(`
-resource "supabase_edge_function" "foo" {
-  project_ref = "%s"
-  slug        = "%s"
-  entrypoint  = "%s"
-}
-`, testProjectRef, functionSlug, entrypointPath)
-
-	testConfig2 := fmt.Sprintf(`
-resource "supabase_edge_function" "foo" {
-  project_ref = "%s"
-  slug        = "%s"
-  entrypoint  = "%s"
-}
-`, testProjectRef, functionSlug, entrypointPath2)
-
-	createdAt := int64(1234567890)
-	updatedAt := int64(1234567890)
-	updatedAt2 := int64(1234567999)
-
-	gock.New(defaultApiEndpoint).
-		Post(deployFunctionApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: &createdAt,
-			UpdatedAt: &updatedAt,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567890,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567890,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Post(deployFunctionApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
-			Version:   2,
-			CreatedAt: &createdAt,
-			UpdatedAt: &updatedAt2,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   2,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567999,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   2,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567999,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Delete(functionApiPath).
-		Reply(http.StatusOK)
+	resourceName := "supabase_edge_function.test"
+	projectName := acctest.RandomName()
+	slug := testAccEdgeFunctionSlug
+	entrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Hello"));`)
+	updatedEntrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Updated"));`)
+	updatedName := "Renamed function"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
+			// Create
 			{
-				Config: testConfig1,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "id", testFunctionID),
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "version", "1"),
-				),
-			},
-			{
-				Config: testConfig2,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "id", testFunctionID),
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "version", "2"),
-				),
-			},
-		},
-	})
-}
-
-func TestAccEdgeFunctionResource_Import(t *testing.T) {
-	defer gock.OffAll()
-
-	testFunctionID := uuid.New().String()
-
-	tmpDir := t.TempDir()
-	entrypointPath := filepath.Join(tmpDir, "index.ts")
-	if err := os.WriteFile(entrypointPath, []byte(`Deno.serve((req) => new Response("Hello"));`), 0o600); err != nil {
-		t.Fatalf("Failed to write entrypoint file: %v", err)
-	}
-
-	testConfig := fmt.Sprintf(`
-resource "supabase_edge_function" "foo" {
-  project_ref = "%s"
-  slug        = "%s"
-  entrypoint  = "%s"
-}
-`, testProjectRef, functionSlug, entrypointPath)
-
-	createdAt := int64(1234567890)
-	updatedAt := int64(1234567890)
-
-	gock.New(defaultApiEndpoint).
-		Post(deployFunctionApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: &createdAt,
-			UpdatedAt: &updatedAt,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567890,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567890,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567890,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(functionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.FunctionSlugResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: 1234567890,
-			UpdatedAt: 1234567890,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Delete(functionApiPath).
-		Reply(http.StatusOK)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function.foo", "id", testFunctionID),
-				),
-			},
-			{
-				ResourceName:            "supabase_edge_function.foo",
-				ImportState:             true,
-				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, functionSlug),
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
-			},
-		},
-	})
-}
-
-func TestAccEdgeFunctionResource_ImportWithDownload(t *testing.T) {
-	defer gock.OffAll()
-
-	testFunctionID := uuid.New().String()
-	functionSlug := "hello-world"
-	helloWorldFunctionApiPath := functionsApiPath + "/" + functionSlug
-	entrypointContent := `Deno.serve((req) => new Response("Hello from import"));`
-
-	// chdir to temp directory so downloaded files don't pollute the repo
-	tmpDir := t.TempDir()
-	t.Chdir(tmpDir)
-
-	entrypointPath := filepath.Join(tmpDir, "deploy-src", "index.ts")
-	if err := os.MkdirAll(filepath.Dir(entrypointPath), 0o755); err != nil {
-		t.Fatalf("Failed to create deploy-src dir: %v", err)
-	}
-	if err := os.WriteFile(entrypointPath, []byte(entrypointContent), 0o600); err != nil {
-		t.Fatalf("Failed to write entrypoint file: %v", err)
-	}
-
-	testConfig := fmt.Sprintf(`
-resource "supabase_edge_function" "test" {
-  project_ref = "%s"
-  slug        = "%s"
-  entrypoint  = "%s"
-}
-`, testProjectRef, functionSlug, entrypointPath)
-
-	createdAt := int64(1234567890)
-	updatedAt := int64(1234567890)
-	apiEntrypoint := "file:///src/index.ts"
-
-	gock.New(defaultApiEndpoint).
-		Post(deployFunctionApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: &createdAt,
-			UpdatedAt: &updatedAt,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(helloWorldFunctionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:             testFunctionID,
-			Slug:           functionSlug,
-			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
-			Version:        1,
-			CreatedAt:      1234567890,
-			UpdatedAt:      1234567890,
-			EntrypointPath: &apiEntrypoint,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(helloWorldFunctionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:             testFunctionID,
-			Slug:           functionSlug,
-			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
-			Version:        1,
-			CreatedAt:      1234567890,
-			UpdatedAt:      1234567890,
-			EntrypointPath: &apiEntrypoint,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(helloWorldFunctionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:             testFunctionID,
-			Slug:           functionSlug,
-			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
-			Version:        1,
-			CreatedAt:      1234567890,
-			UpdatedAt:      1234567890,
-			EntrypointPath: &apiEntrypoint,
-		})
-
-	mockMultipartBodyResponse(t, testProjectRef, functionSlug, "/src/index.ts", map[string]string{
-		"/src/index.ts": entrypointContent,
-	})
-
-	gock.New(defaultApiEndpoint).
-		Get(helloWorldFunctionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:             testFunctionID,
-			Slug:           functionSlug,
-			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
-			Version:        1,
-			CreatedAt:      1234567890,
-			UpdatedAt:      1234567890,
-			EntrypointPath: &apiEntrypoint,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Delete(helloWorldFunctionApiPath).
-		Reply(http.StatusOK)
-
-	expectedEntrypoint := filepath.Join(".", "supabase", "functions", functionSlug, "index.ts")
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function.test", "id", testFunctionID),
-				),
-			},
-			{
-				ResourceName:            "supabase_edge_function.test",
-				ImportState:             true,
-				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, functionSlug),
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function.test", "entrypoint", expectedEntrypoint),
-					resource.TestCheckNoResourceAttr("supabase_edge_function.test", "import_map"),
-					// Verify file was actually written to disk
-					func(s *terraform.State) error {
-						content, err := os.ReadFile(expectedEntrypoint)
-						if err != nil {
-							return fmt.Errorf("expected entrypoint file at %s: %v", expectedEntrypoint, err)
-						}
-						if string(content) != entrypointContent {
-							return fmt.Errorf("entrypoint content mismatch: got %q, want %q", string(content), entrypointContent)
-						}
-						return nil
+				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunction/basic/"),
+				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, entrypoint, nil),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
 					},
-				),
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("version"), knownvalue.Int64Exact(1)),
+				},
+			},
+			// Update entrypoint (new source deploys a new version)
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunction/basic/"),
+				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, updatedEntrypoint, nil),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("entrypoint"), knownvalue.StringExact(updatedEntrypoint)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("version"), knownvalue.Int64Exact(2)),
+				},
+			},
+			// Update name
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunction/basic/"),
+				ConfigVariables: testAccEdgeFunctionLiveVariables(organizationID, projectName, updatedEntrypoint, &updatedName),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("slug"), knownvalue.StringExact(slug)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(updatedName)),
+				},
+			},
+		},
+	})
+}
+
+// testAccEdgeFunctionFixtureDir returns the absolute path of the basic fixture so
+// tests can t.Chdir (import downloads source relative to the working directory)
+// without breaking the relative ConfigDirectory lookup.
+func testAccEdgeFunctionFixtureDir(t *testing.T) config.TestStepConfigFunc {
+	t.Helper()
+	dir, err := filepath.Abs("test-fixtures/EdgeFunction/basic")
+	if err != nil {
+		t.Fatalf("Failed to resolve fixture dir: %v", err)
+	}
+	return config.StaticDirectory(dir)
+}
+
+func testAccEdgeFunctionImportStateID(projectResource, functionResource string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		project, ok := s.RootModule().Resources[projectResource]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", projectResource)
+		}
+		fn, ok := s.RootModule().Resources[functionResource]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", functionResource)
+		}
+		return fmt.Sprintf("%s/%s", project.Primary.ID, fn.Primary.Attributes["slug"]), nil
+	}
+}
+
+func TestAccEdgeFunctionResource_import(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectResourceName := "supabase_project.test"
+	resourceName := "supabase_edge_function.test"
+	slug := testAccEdgeFunctionSlug
+	entrypointContent := `Deno.serve((req) => new Response("Hello from import"));`
+	entrypoint := writeTestEntrypoint(t, entrypointContent)
+	fixture := testAccEdgeFunctionFixtureDir(t)
+	vars := testAccEdgeFunctionLiveVariables(organizationID, acctest.RandomName(), entrypoint, nil)
+
+	// chdir to a temp directory so downloaded files don't pollute the repo
+	t.Chdir(t.TempDir())
+	expectedEntrypoint := filepath.Join(".", "supabase", "functions", slug, "index.ts")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			{
+				ConfigDirectory: fixture,
+				ConfigVariables: vars,
+			},
+			// ImportState testing (downloads the deployed source)
+			{
+				ConfigDirectory:         fixture,
+				ConfigVariables:         vars,
+				ResourceName:            resourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateIdFunc:       testAccEdgeFunctionImportStateID(projectResourceName, resourceName),
+				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
+				ImportStateCheck: func(states []*terraform.InstanceState) error {
+					if len(states) != 1 {
+						return fmt.Errorf("expected 1 imported state, got %d", len(states))
+					}
+					if got := states[0].Attributes["entrypoint"]; got != expectedEntrypoint {
+						return fmt.Errorf("entrypoint: got %q, want %q", got, expectedEntrypoint)
+					}
+					if _, ok := states[0].Attributes["import_map"]; ok {
+						return fmt.Errorf("expected import_map to be unset")
+					}
+					content, err := os.ReadFile(expectedEntrypoint)
+					if err != nil {
+						return fmt.Errorf("expected entrypoint file at %s: %w", expectedEntrypoint, err)
+					}
+					if string(content) != entrypointContent {
+						return fmt.Errorf("entrypoint content mismatch: got %q, want %q", content, entrypointContent)
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
+func TestAccEdgeFunctionResource_importWithExistingFiles(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectResourceName := "supabase_project.test"
+	resourceName := "supabase_edge_function.test"
+	slug := testAccEdgeFunctionSlug
+	originalContent := "// original content - must not be overwritten"
+	entrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Downloaded"));`)
+	fixture := testAccEdgeFunctionFixtureDir(t)
+	vars := testAccEdgeFunctionLiveVariables(organizationID, acctest.RandomName(), entrypoint, nil)
+
+	t.Chdir(t.TempDir())
+
+	// Pre-create the output file to trigger collision detection
+	existingFile := filepath.Join(".", "supabase", "functions", slug, "index.ts")
+	if err := os.MkdirAll(filepath.Dir(existingFile), 0o755); err != nil {
+		t.Fatalf("Failed to create output dir: %v", err)
+	}
+	if err := os.WriteFile(existingFile, []byte(originalContent), 0o600); err != nil {
+		t.Fatalf("Failed to write existing file: %v", err)
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []resource.TestStep{
+			{
+				ConfigDirectory: fixture,
+				ConfigVariables: vars,
+			},
+			{
+				ConfigDirectory:         fixture,
+				ConfigVariables:         vars,
+				ResourceName:            resourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateIdFunc:       testAccEdgeFunctionImportStateID(projectResourceName, resourceName),
+				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
+				ImportStateCheck: func(states []*terraform.InstanceState) error {
+					if len(states) != 1 {
+						return fmt.Errorf("expected 1 imported state, got %d", len(states))
+					}
+					if _, ok := states[0].Attributes["entrypoint"]; ok {
+						return fmt.Errorf("expected entrypoint to be unset after a collision")
+					}
+					content, err := os.ReadFile(existingFile)
+					if err != nil {
+						return fmt.Errorf("existing file should still exist at %s: %w", existingFile, err)
+					}
+					if string(content) != originalContent {
+						return fmt.Errorf("existing file was modified: got %q, want %q", content, originalContent)
+					}
+					matches, err := filepath.Glob(filepath.Join(".", "supabase", "functions", ".tf-import-*"))
+					if err != nil {
+						return fmt.Errorf("glob error: %w", err)
+					}
+					if len(matches) > 0 {
+						return fmt.Errorf("temp directory residue found: %v", matches)
+					}
+					return nil
+				},
 			},
 		},
 	})
@@ -672,169 +478,6 @@ resource "supabase_edge_function" "fallback" {
 				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, functionSlug),
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
-			},
-		},
-	})
-}
-
-func TestAccEdgeFunctionResource_ImportWithExistingFiles(t *testing.T) {
-	defer gock.OffAll()
-
-	testFunctionID := uuid.New().String()
-	functionSlug := "collision-func"
-	collisionFunctionApiPath := functionsApiPath + "/" + functionSlug
-	originalContent := "// original content - must not be overwritten"
-	downloadedContent := `Deno.serve((req) => new Response("Downloaded"));`
-
-	tmpDir := t.TempDir()
-	t.Chdir(tmpDir)
-
-	// Pre-create the output file to trigger collision detection
-	existingFile := filepath.Join(".", "supabase", "functions", functionSlug, "index.ts")
-	if err := os.MkdirAll(filepath.Dir(existingFile), 0o755); err != nil {
-		t.Fatalf("Failed to create output dir: %v", err)
-	}
-	if err := os.WriteFile(existingFile, []byte(originalContent), 0o600); err != nil {
-		t.Fatalf("Failed to write existing file: %v", err)
-	}
-
-	entrypointPath := filepath.Join(tmpDir, "deploy-src", "index.ts")
-	if err := os.MkdirAll(filepath.Dir(entrypointPath), 0o755); err != nil {
-		t.Fatalf("Failed to create deploy-src dir: %v", err)
-	}
-	if err := os.WriteFile(entrypointPath, []byte(downloadedContent), 0o600); err != nil {
-		t.Fatalf("Failed to write entrypoint file: %v", err)
-	}
-
-	testConfig := fmt.Sprintf(`
-resource "supabase_edge_function" "collision" {
-  project_ref = "%s"
-  slug        = "%s"
-  entrypoint  = "%s"
-}
-`, testProjectRef, functionSlug, entrypointPath)
-
-	createdAt := int64(1234567890)
-	updatedAt := int64(1234567890)
-	apiEntrypoint := "file:///src/index.ts"
-
-	gock.New(defaultApiEndpoint).
-		Post(deployFunctionApiPath).
-		Reply(http.StatusCreated).
-		JSON(api.DeployFunctionResponse{
-			Id:        testFunctionID,
-			Slug:      functionSlug,
-			Name:      functionSlug,
-			Status:    api.DeployFunctionResponseStatusACTIVE,
-			Version:   1,
-			CreatedAt: &createdAt,
-			UpdatedAt: &updatedAt,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(collisionFunctionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:             testFunctionID,
-			Slug:           functionSlug,
-			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
-			Version:        1,
-			CreatedAt:      1234567890,
-			UpdatedAt:      1234567890,
-			EntrypointPath: &apiEntrypoint,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(collisionFunctionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:             testFunctionID,
-			Slug:           functionSlug,
-			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
-			Version:        1,
-			CreatedAt:      1234567890,
-			UpdatedAt:      1234567890,
-			EntrypointPath: &apiEntrypoint,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Get(collisionFunctionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:             testFunctionID,
-			Slug:           functionSlug,
-			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
-			Version:        1,
-			CreatedAt:      1234567890,
-			UpdatedAt:      1234567890,
-			EntrypointPath: &apiEntrypoint,
-		})
-
-	mockMultipartBodyResponse(t, testProjectRef, functionSlug, "/src/index.ts", map[string]string{
-		"/src/index.ts": downloadedContent,
-	})
-
-	gock.New(defaultApiEndpoint).
-		Get(collisionFunctionApiPath).
-		Reply(http.StatusOK).
-		JSON(api.FunctionSlugResponse{
-			Id:             testFunctionID,
-			Slug:           functionSlug,
-			Name:           functionSlug,
-			Status:         api.FunctionSlugResponseStatusACTIVE,
-			Version:        1,
-			CreatedAt:      1234567890,
-			UpdatedAt:      1234567890,
-			EntrypointPath: &apiEntrypoint,
-		})
-
-	gock.New(defaultApiEndpoint).
-		Delete(collisionFunctionApiPath).
-		Reply(http.StatusOK)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testConfig,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_edge_function.collision", "id", testFunctionID),
-				),
-			},
-			{
-				ResourceName:            "supabase_edge_function.collision",
-				ImportState:             true,
-				ImportStateId:           fmt.Sprintf("%s/%s", testProjectRef, functionSlug),
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"entrypoint", "import_map", "static_files", "local_checksum"},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckNoResourceAttr("supabase_edge_function.collision", "entrypoint"),
-					func(s *terraform.State) error {
-						content, err := os.ReadFile(existingFile)
-						if err != nil {
-							return fmt.Errorf("existing file should still exist at %s: %v", existingFile, err)
-						}
-						if string(content) != originalContent {
-							return fmt.Errorf("existing file was modified: got %q, want %q", string(content), originalContent)
-						}
-						return nil
-					},
-					func(s *terraform.State) error {
-						parentDir := filepath.Join(".", "supabase", "functions")
-						matches, err := filepath.Glob(filepath.Join(parentDir, ".tf-import-*"))
-						if err != nil {
-							return fmt.Errorf("glob error: %v", err)
-						}
-						if len(matches) > 0 {
-							return fmt.Errorf("temp directory residue found: %v", matches)
-						}
-						return nil
-					},
-				),
 			},
 		},
 	})

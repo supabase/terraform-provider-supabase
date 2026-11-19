@@ -10,6 +10,10 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 )
 
@@ -32,13 +36,18 @@ func TestAccProjectResource_basic(t *testing.T) {
 					"name":            config.StringVariable(rName),
 					"organization_id": config.StringVariable(organizationID),
 				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet(resourceName, "id"),
-					resource.TestCheckResourceAttr(resourceName, "name", rName),
-					resource.TestCheckResourceAttr(resourceName, "instance_size", "micro"),
-					resource.TestCheckResourceAttr(resourceName, "database_password", "barbaz"),
-					resource.TestCheckResourceAttr(resourceName, "legacy_api_keys_enabled", "false"),
-				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(rName)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("instance_size"), knownvalue.StringExact("micro")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("database_password"), knownvalue.StringExact("barbaz")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("legacy_api_keys_enabled"), knownvalue.Bool(false)),
+				},
 			},
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/Project/basic/"),
@@ -76,13 +85,18 @@ func TestAccProjectResource_update(t *testing.T) {
 					"name":            config.StringVariable(rName),
 					"organization_id": config.StringVariable(organizationID),
 				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet(resourceName, "id"),
-					resource.TestCheckResourceAttr(resourceName, "name", rName),
-					resource.TestCheckResourceAttr(resourceName, "instance_size", "micro"),
-					resource.TestCheckResourceAttr(resourceName, "database_password", "barbaz"),
-					resource.TestCheckResourceAttr(resourceName, "legacy_api_keys_enabled", "false"),
-				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(rName)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("instance_size"), knownvalue.StringExact("micro")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("database_password"), knownvalue.StringExact("barbaz")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("legacy_api_keys_enabled"), knownvalue.Bool(false)),
+				},
 			},
 			// Update password
 			{
@@ -92,13 +106,18 @@ func TestAccProjectResource_update(t *testing.T) {
 					"organization_id":   config.StringVariable(organizationID),
 					"database_password": config.StringVariable("barbaznew"),
 				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet(resourceName, "id"),
-					resource.TestCheckResourceAttr(resourceName, "name", rName),
-					resource.TestCheckResourceAttr(resourceName, "instance_size", "micro"),
-					resource.TestCheckResourceAttr(resourceName, "database_password", "barbaznew"),
-					resource.TestCheckResourceAttr(resourceName, "legacy_api_keys_enabled", "false"),
-				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(rName)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("instance_size"), knownvalue.StringExact("micro")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("database_password"), knownvalue.StringExact("barbaznew")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("legacy_api_keys_enabled"), knownvalue.Bool(false)),
+				},
 			},
 			// Update instance size testing
 			{
@@ -109,13 +128,18 @@ func TestAccProjectResource_update(t *testing.T) {
 					"database_password": config.StringVariable("barbaznew"),
 					"instance_size":     config.StringVariable("16xlarge"),
 				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet(resourceName, "id"),
-					resource.TestCheckResourceAttr(resourceName, "name", rName),
-					resource.TestCheckResourceAttr(resourceName, "instance_size", "16xlarge"),
-					resource.TestCheckResourceAttr(resourceName, "database_password", "barbaznew"),
-					resource.TestCheckResourceAttr(resourceName, "legacy_api_keys_enabled", "false"),
-				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("name"), knownvalue.StringExact(rName)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("instance_size"), knownvalue.StringExact("16xlarge")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("database_password"), knownvalue.StringExact("barbaznew")),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("legacy_api_keys_enabled"), knownvalue.Bool(false)),
+				},
 			},
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/Project/basic/"),
