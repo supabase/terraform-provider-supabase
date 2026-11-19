@@ -1,497 +1,232 @@
 package provider
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-testing/compare"
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 	"gopkg.in/h2non/gock.v1"
 )
 
-func TestAccEdgeFunctionSecretsResource(t *testing.T) {
-	// Verify that new secret values creates the secrets
-	// on the server.
-	defer gock.OffAll()
+type testAccSecret struct{ name, value string }
 
-	apiKeyPlain := "secret-api-key-123"
-	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
-
-	// Pre-compute SHA-256 digests matching what the API returns
-	apiKeyDigest := computeSecretDigest(apiKeyPlain)
-	dbUrlDigest := computeSecretDigest(dbUrlPlain)
-
-	testConfig := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets = [
-		{
-			name  = "API_KEY"
-			value = "%s"
-		},
-		{
-			name  = "DATABASE_URL"
-			value = "%s"
-		}
-	]
+func testAccEdgeFunctionSecretsLiveVariables(organizationID, projectName string, secrets ...testAccSecret) config.Variables {
+	items := make([]config.Variable, 0, len(secrets))
+	for _, secret := range secrets {
+		items = append(items, config.ObjectVariable(map[string]config.Variable{
+			"name":  config.StringVariable(secret.name),
+			"value": config.StringVariable(secret.value),
+		}))
+	}
+	return config.Variables{
+		"organization_id": config.StringVariable(organizationID),
+		"project_name":    config.StringVariable(projectName),
+		"secrets":         config.ListVariable(items...),
+	}
 }
-`, testProjectRef, apiKeyPlain, dbUrlPlain)
 
-	// Mock create secrets
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusOK)
+// testAccSecretChecks asserts the secrets set and the digests computed from it.
+func testAccSecretChecks(resourceName string, secrets ...testAccSecret) []statecheck.StateCheck {
+	setChecks := make([]knownvalue.Check, 0, len(secrets))
+	digests := make(map[string]knownvalue.Check, len(secrets))
+	for _, secret := range secrets {
+		setChecks = append(setChecks, knownvalue.ObjectExact(map[string]knownvalue.Check{
+			"name":  knownvalue.StringExact(secret.name),
+			"value": knownvalue.StringExact(secret.value),
+		}))
+		digests[secret.name] = knownvalue.StringExact(computeSecretDigest(secret.value))
+	}
+	return []statecheck.StateCheck{
+		statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("secrets"), knownvalue.SetExact(setChecks)),
+		statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("secret_digests"), knownvalue.MapExact(digests)),
+	}
+}
 
-	// Mock read secrets after create and refresh – API returns SHA-256 digests, not plaintext
-	gock.New(defaultApiEndpoint).
-		Get(secretsApiPath).
-		Times(2).
-		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
-			{
-				Name:  "API_KEY",
-				Value: apiKeyDigest,
-			},
-			{
-				Name:  "DATABASE_URL",
-				Value: dbUrlDigest,
-			},
-		})
+func testAccEdgeFunctionSecretsImportStateID(projectResource string) testresource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		project, ok := s.RootModule().Resources[projectResource]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", projectResource)
+		}
+		return project.Primary.ID, nil
+	}
+}
 
-	// Mock delete secrets
-	gock.New(defaultApiEndpoint).
-		Delete(secretsApiPath).
-		Reply(http.StatusOK)
+func TestAccEdgeFunctionSecretsResource_basic(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectResourceName := "supabase_project.test"
+	resourceName := "supabase_edge_function_secrets.test"
+	projectName := acctest.RandomName()
+	secrets := []testAccSecret{
+		{"API_KEY", "secret-api-key-123"},
+		{"DATABASE_URL", "postgresql://user:pass@localhost:5432/db"},
+	}
 
 	testresource.Test(t, testresource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []testresource.TestStep{
+			// Create and Read testing
 			{
-				Config: testConfig,
-				Check: testresource.ComposeAggregateTestCheckFunc(
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
-				),
-			},
-		},
-	})
-}
-
-func TestAccEdgeFunctionSecretsResource_Update(t *testing.T) {
-	// Verify that changing secret values updates the secrets
-	// on the server.
-	defer gock.OffAll()
-
-	apiKeyV1 := "secret-v1"
-	apiKeyV2 := "secret-v2"
-	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
-
-	digestV1 := computeSecretDigest(apiKeyV1)
-	digestV2 := computeSecretDigest(apiKeyV2)
-	dbUrlDigest := computeSecretDigest(dbUrlPlain)
-
-	config1 := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets = [
-		{
-			name  = "API_KEY"
-			value = "%s"
-		},
-		{
-			name  = "DATABASE_URL"
-			value = "%s"
-		}
-	]
-}
-`, testProjectRef, apiKeyV1, dbUrlPlain)
-
-	config2 := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets = [
-		{
-			name  = "API_KEY"
-			value = "%s"
-		},
-		{
-			name  = "DATABASE_URL"
-			value = "%s"
-		}
-	]
-}
-`, testProjectRef, apiKeyV2, dbUrlPlain)
-
-	// Step 1: create
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusOK)
-
-	// Step 1: read after create and refresh
-	gock.New(defaultApiEndpoint).
-		Get(secretsApiPath).
-		Times(2).
-		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
-			{Name: "API_KEY", Value: digestV1},
-			{Name: "DATABASE_URL", Value: dbUrlDigest},
-		})
-
-	// Step 2: update – create/upsert secrets
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusOK)
-
-	// Step 2: read after update and refresh
-	gock.New(defaultApiEndpoint).
-		Get(secretsApiPath).
-		Times(2).
-		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
-			{Name: "API_KEY", Value: digestV2},
-			{Name: "DATABASE_URL", Value: dbUrlDigest},
-		})
-
-	// Teardown: delete
-	gock.New(defaultApiEndpoint).
-		Delete(secretsApiPath).
-		Reply(http.StatusOK)
-
-	testresource.Test(t, testresource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []testresource.TestStep{
-			{
-				Config: config1,
-				Check: testresource.ComposeAggregateTestCheckFunc(
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", digestV1),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
-				),
-			},
-			{
-				Config: config2,
-				Check: testresource.ComposeAggregateTestCheckFunc(
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", digestV2),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
-				),
-			},
-		},
-	})
-}
-
-func TestAccEdgeFunctionSecretsResource_DeleteOneSecret(t *testing.T) {
-	// Verify that when a secret is removed from Terraform config,
-	// only that secret is deleted from the server and the other remains.
-	defer gock.OffAll()
-
-	keyAPlain := "secret-key-a"
-	keyBPlain := "secret-key-b"
-
-	keyADigest := computeSecretDigest(keyAPlain)
-	keyBDigest := computeSecretDigest(keyBPlain)
-
-	// Config with 2 secrets
-	config1 := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets = [
-		{
-			name  = "KEY_A"
-			value = "%s"
-		},
-		{
-			name  = "KEY_B"
-			value = "%s"
-		}
-	]
-}
-`, testProjectRef, keyAPlain, keyBPlain)
-
-	// Config with only 1 secret (KEY_B remains, KEY_A removed)
-	config2 := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets = [
-		{
-			name  = "KEY_B"
-			value = "%s"
-		}
-	]
-}
-`, testProjectRef, keyBPlain)
-
-	// Step 1: Create both secrets
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusOK)
-
-	// Step 1: Read after create and refresh
-	gock.New(defaultApiEndpoint).
-		Get(secretsApiPath).
-		Times(2).
-		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
-			{Name: "KEY_A", Value: keyADigest},
-			{Name: "KEY_B", Value: keyBDigest},
-		})
-
-	// Step 2: Delete the removed secret (KEY_A)
-	deleteCalled := false
-	gock.New(defaultApiEndpoint).
-		Delete(secretsApiPath).
-		AddMatcher(func(req *http.Request, greq *gock.Request) (bool, error) {
-			// Read and verify that only KEY_A is sent in the delete request body
-			bodyBytes, err := io.ReadAll(req.Body)
-			if err != nil {
-				return false, fmt.Errorf("failed to read delete request body: %w", err)
-			}
-			req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-			// Decode the JSON array
-			var secretNames []string
-			if err := json.Unmarshal(bodyBytes, &secretNames); err != nil {
-				return false, fmt.Errorf("failed to decode JSON body: %w", err)
-			}
-
-			// Check that exactly one secret is being deleted and it's KEY_A
-			if len(secretNames) != 1 {
-				return false, fmt.Errorf("expected 1 secret to delete, got %d: %v", len(secretNames), secretNames)
-			}
-			if secretNames[0] != "KEY_A" {
-				return false, fmt.Errorf("expected KEY_A to be deleted, got %s", secretNames[0])
-			}
-
-			deleteCalled = true
-			return true, nil
-		}).
-		Reply(http.StatusOK)
-
-	// Step 2: Update remaining secret (bulk upsert KEY_B)
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusOK)
-
-	// Step 2: Read after update and refresh
-	gock.New(defaultApiEndpoint).
-		Get(secretsApiPath).
-		Times(2).
-		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
-			{Name: "KEY_B", Value: keyBDigest},
-		})
-
-	// Teardown: Delete remaining secrets
-	gock.New(defaultApiEndpoint).
-		Delete(secretsApiPath).
-		Reply(http.StatusOK)
-
-	testresource.Test(t, testresource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []testresource.TestStep{
-			{
-				Config: config1,
-				Check: testresource.ComposeAggregateTestCheckFunc(
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "2"),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "2"),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_A", keyADigest),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_B", keyBDigest),
-				),
-			},
-			{
-				Config: config2,
-				Check: testresource.ComposeAggregateTestCheckFunc(
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "1"),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_B", keyBDigest),
-					testresource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.KEY_A"),
-					func(s *terraform.State) error {
-						if !deleteCalled {
-							return fmt.Errorf("DELETE API was not called to remove KEY_A")
-						}
-						return nil
+				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunctionSecrets/basic/"),
+				ConfigVariables: testAccEdgeFunctionSecretsLiveVariables(organizationID, projectName, secrets...),
+				ConfigPlanChecks: testresource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
 					},
-				),
+				},
+				ConfigStateChecks: append([]statecheck.StateCheck{
+					statecheck.CompareValuePairs(
+						resourceName, tfjsonpath.New("id"),
+						projectResourceName, tfjsonpath.New("id"),
+						compare.ValuesSame(),
+					),
+					statecheck.CompareValuePairs(
+						resourceName, tfjsonpath.New("project_ref"),
+						projectResourceName, tfjsonpath.New("id"),
+						compare.ValuesSame(),
+					),
+					// Exact digests also prove reserved SUPABASE_ secrets are filtered out of state
+				}, testAccSecretChecks(resourceName, secrets...)...),
+			},
+			// ImportState testing (the API only returns digests, so values are not verified)
+			{
+				ConfigDirectory:         config.StaticDirectory("test-fixtures/EdgeFunctionSecrets/basic/"),
+				ConfigVariables:         testAccEdgeFunctionSecretsLiveVariables(organizationID, projectName, secrets...),
+				ResourceName:            resourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateIdFunc:       testAccEdgeFunctionSecretsImportStateID(projectResourceName),
+				ImportStateVerifyIgnore: []string{"secrets"},
 			},
 		},
 	})
 }
 
-func TestAccEdgeFunctionSecretsResource_Import(t *testing.T) {
-	// Verify that importing resources succeeds
-	defer gock.OffAll()
-
-	apiKeyPlain := "secret-api-key-123"
-	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
-
-	apiKeyDigest := computeSecretDigest(apiKeyPlain)
-	dbUrlDigest := computeSecretDigest(dbUrlPlain)
-
-	secretsResponse := []api.SecretResponse{
-		{Name: "API_KEY", Value: apiKeyDigest},
-		{Name: "DATABASE_URL", Value: dbUrlDigest},
+func TestAccEdgeFunctionSecretsResource_update(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
 	}
 
-	testConfig := fmt.Sprintf(`
-	resource "supabase_edge_function_secrets" "test" {
-		project_ref = "%s"
-		secrets = []
-	}
-	`, testProjectRef)
+	resourceName := "supabase_edge_function_secrets.test"
+	projectName := acctest.RandomName()
 
-	// Read after refresh, import and import verification
-	gock.New(defaultApiEndpoint).
-		Get(secretsApiPath).
-		Times(3).
-		Reply(http.StatusOK).
-		JSON(secretsResponse)
-
-	testresource.Test(t, testresource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []testresource.TestStep{
-			{
-				// Import by project_ref. The imported state uses API digests in
-				// the value field (no plaintext available on import).
-				// We use ImportStateCheck to verify the imported state rather than
-				// ImportStateVerify because we're importing without creating first.
-				Config:        testConfig,
-				ResourceName:  "supabase_edge_function_secrets.test",
-				ImportState:   true,
-				ImportStateId: testProjectRef,
-				ImportStateCheck: func(s []*terraform.InstanceState) error {
-					if len(s) != 1 {
-						return fmt.Errorf("expected 1 instance state, got %d", len(s))
-					}
-					state := s[0]
-					if state.Attributes["project_ref"] != testProjectRef {
-						return fmt.Errorf("expected project_ref %q, got %q", testProjectRef, state.Attributes["project_ref"])
-					}
-					if state.Attributes["secret_digests.%"] != "2" {
-						return fmt.Errorf("expected 2 secret_digests, got %s", state.Attributes["secret_digests.%"])
-					}
-					if state.Attributes["secret_digests.API_KEY"] != apiKeyDigest {
-						return fmt.Errorf("expected API_KEY digest %q, got %q", apiKeyDigest, state.Attributes["secret_digests.API_KEY"])
-					}
-					if state.Attributes["secret_digests.DATABASE_URL"] != dbUrlDigest {
-						return fmt.Errorf("expected DATABASE_URL digest %q, got %q", dbUrlDigest, state.Attributes["secret_digests.DATABASE_URL"])
-					}
-					return nil
+	step := func(action plancheck.ResourceActionType, secrets ...testAccSecret) testresource.TestStep {
+		return testresource.TestStep{
+			ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunctionSecrets/basic/"),
+			ConfigVariables: testAccEdgeFunctionSecretsLiveVariables(organizationID, projectName, secrets...),
+			ConfigPlanChecks: testresource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(resourceName, action),
 				},
 			},
-		},
-	})
-}
-
-func TestAccEdgeFunctionSecretsResource_CreateImport(t *testing.T) {
-	// Verify that importing the same resources as already created
-	// successfully imports them
-	defer gock.OffAll()
-
-	apiKeyPlain := "secret-api-key-123"
-	dbUrlPlain := "postgresql://user:pass@localhost:5432/db"
-
-	apiKeyDigest := computeSecretDigest(apiKeyPlain)
-	dbUrlDigest := computeSecretDigest(dbUrlPlain)
-
-	secretsResponse := []api.SecretResponse{
-		{Name: "API_KEY", Value: apiKeyDigest},
-		{Name: "DATABASE_URL", Value: dbUrlDigest},
-	}
-
-	testConfig := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets = [
-		{
-			name  = "API_KEY"
-			value = "%s"
-		},
-		{
-			name  = "DATABASE_URL"
-			value = "%s"
+			ConfigStateChecks: testAccSecretChecks(resourceName, secrets...),
 		}
-	]
-}
-`, testProjectRef, apiKeyPlain, dbUrlPlain)
-
-	// Step 1: create
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusOK)
-
-	// Step 1: read after create, refresh, import and import verification
-	gock.New(defaultApiEndpoint).
-		Get(secretsApiPath).
-		Times(4).
-		Reply(http.StatusOK).
-		JSON(secretsResponse)
-
-	// Teardown: delete
-	gock.New(defaultApiEndpoint).
-		Delete(secretsApiPath).
-		Reply(http.StatusOK)
+	}
 
 	testresource.Test(t, testresource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []testresource.TestStep{
+			step(plancheck.ResourceActionCreate,
+				testAccSecret{"API_KEY", "value-1"}, testAccSecret{"OTHER_KEY", "value-1"}),
+			// Change a secret value
+			step(plancheck.ResourceActionUpdate,
+				testAccSecret{"API_KEY", "value-2"}, testAccSecret{"OTHER_KEY", "value-1"}),
+			// Add a secret
+			step(plancheck.ResourceActionUpdate,
+				testAccSecret{"API_KEY", "value-2"}, testAccSecret{"OTHER_KEY", "value-1"}, testAccSecret{"THIRD_KEY", "value-1"}),
+			// Remove a secret
+			step(plancheck.ResourceActionUpdate,
+				testAccSecret{"API_KEY", "value-2"}, testAccSecret{"THIRD_KEY", "value-1"}),
+		},
+	})
+}
+
+func TestAccEdgeFunctionSecretsResource_empty(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	resourceName := "supabase_edge_function_secrets.test"
+
+	testresource.Test(t, testresource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []testresource.TestStep{
+			// An explicit empty set is valid and must not import or manage reserved secrets
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunctionSecrets/basic/"),
+				ConfigVariables: testAccEdgeFunctionSecretsLiveVariables(organizationID, acctest.RandomName()),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("secrets"), knownvalue.SetSizeExact(0)),
+					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("secret_digests"), knownvalue.MapSizeExact(0)),
+				},
+			},
+		},
+	})
+}
+
+func TestAccEdgeFunctionSecretsResource_reservedPrefixCreate(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	testresource.Test(t, testresource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
+		Steps: []testresource.TestStep{
+			// The API rejects SUPABASE_-prefixed names and the provider surfaces the error
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunctionSecrets/basic/"),
+				ConfigVariables: testAccEdgeFunctionSecretsLiveVariables(organizationID, acctest.RandomName(),
+					testAccSecret{"API_KEY", "valid-secret"},
+					testAccSecret{"SUPABASE_URL", "https://example.supabase.co"},
+				),
+				ExpectError: regexp.MustCompile(`Unable to create/update edge function secrets`),
+			},
+		},
+	})
+}
+
+func TestAccEdgeFunctionSecretsResource_reservedPrefixUpdate(t *testing.T) {
+	organizationID := os.Getenv("ORGANIZATION_ID")
+	if organizationID == "" {
+		t.Skip("Organization ID not set")
+	}
+
+	projectName := acctest.RandomName()
+
+	testresource.Test(t, testresource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []testresource.TestStep{
 			{
-				Config: testConfig,
-				Check: testresource.ComposeAggregateTestCheckFunc(
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.DATABASE_URL", dbUrlDigest),
-				),
+				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunctionSecrets/basic/"),
+				ConfigVariables: testAccEdgeFunctionSecretsLiveVariables(organizationID, projectName, testAccSecret{"API_KEY", "valid-secret"}),
 			},
+			// Adding a reserved name to an existing resource is rejected too
 			{
-				// Import by project_ref. The imported state uses API digests in
-				// the value field (no plaintext available on import), so we ignore
-				// the secrets attribute during verification (values differ from
-				// original plaintext). The resource has no "id" attribute; use
-				// project_ref as the identifier for verification.
-				ResourceName:                         "supabase_edge_function_secrets.test",
-				ImportState:                          true,
-				ImportStateId:                        testProjectRef,
-				ImportStateVerify:                    true,
-				ImportStateVerifyIdentifierAttribute: "project_ref",
-				ImportStateVerifyIgnore: []string{
-					// secret values are not returned by the API; the imported
-					// state will contain the digest rather than the original plaintext
-					"secrets",
-				},
-				ImportStateCheck: func(s []*terraform.InstanceState) error {
-					if len(s) != 1 {
-						return fmt.Errorf("expected 1 instance state, got %d", len(s))
-					}
-					state := s[0]
-					if state.Attributes["project_ref"] != testProjectRef {
-						return fmt.Errorf("expected project_ref %q, got %q", testProjectRef, state.Attributes["project_ref"])
-					}
-					if state.Attributes["secret_digests.%"] != "2" {
-						return fmt.Errorf("expected 2 secret_digests, got %s", state.Attributes["secret_digests.%"])
-					}
-					if state.Attributes["secret_digests.API_KEY"] != apiKeyDigest {
-						return fmt.Errorf("expected API_KEY digest %q, got %q", apiKeyDigest, state.Attributes["secret_digests.API_KEY"])
-					}
-					if state.Attributes["secret_digests.DATABASE_URL"] != dbUrlDigest {
-						return fmt.Errorf("expected DATABASE_URL digest %q, got %q", dbUrlDigest, state.Attributes["secret_digests.DATABASE_URL"])
-					}
-					return nil
-				},
+				ConfigDirectory: config.StaticDirectory("test-fixtures/EdgeFunctionSecrets/basic/"),
+				ConfigVariables: testAccEdgeFunctionSecretsLiveVariables(organizationID, projectName,
+					testAccSecret{"API_KEY", "valid-secret"},
+					testAccSecret{"SUPABASE_URL", "https://example.supabase.co"},
+				),
+				ExpectError: regexp.MustCompile(`Unable to create/update edge function secrets`),
 			},
 		},
 	})
@@ -588,48 +323,6 @@ resource "supabase_edge_function_secrets" "test" {
 				Config: testConfig,
 				Check: testresource.ComposeAggregateTestCheckFunc(
 					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
-				),
-			},
-		},
-	})
-}
-
-func TestAccEdgeFunctionSecretsResource_EmptySecrets(t *testing.T) {
-	// Verify that configuring an empty secrets set is safe
-	// and does not trigger any API delete calls.
-	defer gock.OffAll()
-
-	testConfig := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets     = []
-}
-`, testProjectRef)
-
-	// Create call: empty body – still expected to succeed
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusOK)
-
-	// All reads return an empty list (post-create read and refresh read)
-	gock.New(defaultApiEndpoint).
-		Get(secretsApiPath).
-		Times(3).
-		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{})
-
-	// Teardown: delete is a no-op (no secret names to send), so no HTTP call expected.
-
-	testresource.Test(t, testresource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []testresource.TestStep{
-			{
-				Config: testConfig,
-				Check: testresource.ComposeAggregateTestCheckFunc(
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "0"),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.%", "0"),
 				),
 			},
 		},
@@ -858,134 +551,6 @@ resource "supabase_edge_function_secrets" "test" {
 					testresource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.SUPABASE_URL"),
 					testresource.TestCheckNoResourceAttr("supabase_edge_function_secrets.test", "secret_digests.SUPABASE_ANON_KEY"),
 				),
-			},
-		},
-	})
-}
-
-func TestAccEdgeFunctionSecretsResource_CreateReservedPrefixFails(t *testing.T) {
-	// Verify that attempting to create secrets with names starting with
-	// SUPABASE_ returns an error from the API, which the provider surfaces
-	// to the user.
-	defer gock.OffAll()
-
-	testConfig := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets = [
-		{
-			name  = "API_KEY"
-			value = "valid-secret"
-		},
-		{
-			name  = "SUPABASE_URL"
-			value = "https://example.supabase.co"
-		}
-	]
-}
-`, testProjectRef)
-
-	// Mock create secrets - API rejects request containing SUPABASE_ prefix
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusBadRequest).
-		BodyString(`{"message":"Secret names starting with SUPABASE_ are reserved"}`)
-
-	testresource.Test(t, testresource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []testresource.TestStep{
-			{
-				Config:      testConfig,
-				ExpectError: regexp.MustCompile(supabasePrefix),
-			},
-		},
-	})
-}
-
-func TestAccEdgeFunctionSecretsResource_UpdateReservedPrefixFails(t *testing.T) {
-	// Verify that attempting to update (add or modify) secrets with names
-	// starting with SUPABASE_ returns an error from the API, which the
-	// provider surfaces to the user.
-	defer gock.OffAll()
-
-	apiKeyPlain := "secret-api-key-123"
-	apiKeyDigest := computeSecretDigest(apiKeyPlain)
-
-	// Initial config with valid secrets only
-	config1 := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets = [
-		{
-			name  = "API_KEY"
-			value = "%s"
-		}
-	]
-}
-`, testProjectRef, apiKeyPlain)
-
-	// Updated config attempting to add a SUPABASE_ prefixed secret
-	config2 := fmt.Sprintf(`
-resource "supabase_edge_function_secrets" "test" {
-	project_ref = "%s"
-	secrets = [
-		{
-			name  = "API_KEY"
-			value = "%s"
-		},
-		{
-			name  = "SUPABASE_ANON_KEY"
-			value = "anon-key-value"
-		}
-	]
-}
-`, testProjectRef, apiKeyPlain)
-
-	// Step 1: create initial valid secrets
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusOK)
-
-	// Step 1: read after create and refresh
-	gock.New(defaultApiEndpoint).
-		Get(secretsApiPath).
-		Times(2).
-		Reply(http.StatusOK).
-		JSON([]api.SecretResponse{
-			{Name: "API_KEY", Value: apiKeyDigest},
-		})
-
-	// Step 2: attempt to update with reserved prefix - API rejects
-	gock.New(defaultApiEndpoint).
-		Delete(secretsApiPath).
-		Reply(http.StatusOK)
-
-	gock.New(defaultApiEndpoint).
-		Post(secretsApiPath).
-		Reply(http.StatusBadRequest).
-		BodyString(`{"message":"Secret names starting with SUPABASE_ are reserved"}`)
-
-	// Final cleanup: delete resources (since first step succeeded, state exists)
-	gock.New(defaultApiEndpoint).
-		Delete(secretsApiPath).
-		Reply(http.StatusOK)
-
-	testresource.Test(t, testresource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []testresource.TestStep{
-			{
-				Config: config1,
-				Check: testresource.ComposeAggregateTestCheckFunc(
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "project_ref", testProjectRef),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secrets.#", "1"),
-					testresource.TestCheckResourceAttr("supabase_edge_function_secrets.test", "secret_digests.API_KEY", apiKeyDigest),
-				),
-			},
-			{
-				Config:      config2,
-				ExpectError: regexp.MustCompile(supabasePrefix),
 			},
 		},
 	})
