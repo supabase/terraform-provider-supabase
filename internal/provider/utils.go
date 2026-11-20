@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -169,7 +170,7 @@ func waitForServicesActive(ctx context.Context, projectRef string, client *api.C
 		return services
 	}
 
-	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "services", "Project Services Unhealthy", true)
+	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "services", "Project Services Unhealthy")
 }
 
 func waitForAuthServiceActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
@@ -177,7 +178,7 @@ func waitForAuthServiceActive(ctx context.Context, projectRef string, client *ap
 		return []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesAuth}
 	}
 
-	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "auth service", "Project Auth Service Unhealthy", false)
+	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "auth service", "Project Auth Service Unhealthy")
 }
 
 func waitForProjectServicesActive(
@@ -188,8 +189,9 @@ func waitForProjectServicesActive(
 	getServices func() []api.V1GetServicesHealthParamsServices,
 	serviceLabel string,
 	unhealthySummary string,
-	retryPoolerNotFound bool,
 ) diag.Diagnostics {
+	var lastUnhealthyErr atomic.Pointer[error]
+
 	stateConf := &retry.StateChangeConf{
 		Timeout: timeout,
 		Pending: []string{waitForServicesStatusPending},
@@ -207,43 +209,26 @@ func waitForProjectServicesActive(
 				"status":      resp.JSON200,
 			})
 
-			comingupCount := 0
+			pendingCount := 0
 			var errs []error
 
 			for _, v := range *resp.JSON200 {
 				switch v.Status {
 				case api.UNHEALTHY:
-					err := errorFromServiceErrorDescription(v.Name, v.Error)
-					// errFailedToRetrieveHealth is always transient; poll again to get more information
-					if errors.Is(err, errFailedToRetrieveHealth) {
-						tflog.Debug(ctx, "Retrying a recoverable error", map[string]any{
-							"error":  err,
-							"status": v,
-						})
-						comingupCount++
-						continue
-					}
-					// pooler reports UNHEALTHY: "not found" for the first couple of seconds of provisioning,
-					// so we treat it as COMINGUP
-					if retryPoolerNotFound && v.Name == api.V1ServiceHealthResponseNamePooler && errors.Is(err, errServiceNotFound) {
-						tflog.Debug(ctx, "Retrying a recoverable error", map[string]any{
-							"error":  err,
-							"status": v,
-						})
-						comingupCount++
-						continue
-					}
-					errs = append(errs, err)
+					errs = append(errs, errorFromServiceErrorDescription(v.Name, v.Error))
+					pendingCount++
 				case api.COMINGUP:
-					comingupCount++
+					pendingCount++
 				}
 			}
 
-			if err := errors.Join(errs...); err != nil {
-				return nil, "", err
+			if unhealthyErr := errors.Join(errs...); unhealthyErr != nil {
+				lastUnhealthyErr.Store(&unhealthyErr)
+			} else {
+				lastUnhealthyErr.Store(nil)
 			}
 
-			if comingupCount > 0 {
+			if pendingCount > 0 {
 				return nil, waitForServicesStatusPending, nil
 			}
 
@@ -252,6 +237,9 @@ func waitForProjectServicesActive(
 	}
 
 	if _, err := stateConf.WaitForStateContext(ctx); err != nil {
+		if lastErr := lastUnhealthyErr.Load(); lastErr != nil {
+			err = errors.Join(err, *lastErr)
+		}
 		return diag.Diagnostics{diag.NewErrorDiagnostic(
 			unhealthySummary,
 			fmt.Sprintf("Project %s %s did not become active within timeout: %s", projectRef, serviceLabel, err),
