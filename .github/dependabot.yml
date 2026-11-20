@@ -21,7 +21,7 @@ updates:
           - minor
           - patch
           - major
-  # Developer tools (govulncheck, tfplugindocs) are tracked in their own module
+  # Developer tools (govulncheck, tfplugindocs, changie) are tracked in their own module
   # so they do not affect the provider's go.mod. Their dependencies are all
   # indirect.
   - package-ecosystem: "gomod"

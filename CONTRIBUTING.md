@@ -225,11 +225,4 @@ and choose a kind (`NOTES`, `FEATURES`, `ENHANCEMENTS` or `BUG FIXES`), write a 
 
 Pull requests that need no entry (dependency bumps, CI or test-only changes) can carry the `skip-changelog` label.
 
-To cut a release, a maintainer runs:
-
-```shell
-go run github.com/miniscruff/changie batch <version>
-go run github.com/miniscruff/changie merge
-```
-
-and commits the resulting `.changes/<version>.md` and `CHANGELOG.md` changes before tagging.
+Maintainers fold the entries into `CHANGELOG.md` when they cut a release, as described in [RELEASING.md](RELEASING.md).

@@ -81,7 +81,12 @@ generate-docs: ## Regenerate the docs in docs/
 .PHONY: generate
 generate: generate-docs generate-json ## Regenerate the docs and docs/schema.json
 
-# Add a changelog entry for the current change (interactive)
 .PHONY: changelog
-changelog:
-	@go run github.com/miniscruff/changie new
+changelog: ## Add a changelog entry for the current change (interactive)
+	@go tool -modfile=tools/go.mod changie new
+
+.PHONY: changelog-release
+changelog-release: ## Fold unreleased entries into CHANGELOG.md, VERSION=<x.y.z|major|minor|patch>
+	@test -n "$(VERSION)" || (echo "VERSION is required, for example: make changelog-release VERSION=1.2.3"; exit 1)
+	@go tool -modfile=tools/go.mod changie batch $(VERSION)
+	@go tool -modfile=tools/go.mod changie merge
