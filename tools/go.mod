@@ -20,7 +20,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/cloudflare/circl v1.6.5 // indirect
 	github.com/fatih/color v1.19.0 // indirect
-	github.com/google/uuid v1.3.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/cli v1.1.7 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-checkpoint v0.5.0 // indirect
