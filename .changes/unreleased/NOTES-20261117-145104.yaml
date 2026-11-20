@@ -1,0 +1,5 @@
+kind: NOTES
+body: Update Go to 1.26.11
+time: 2026-11-17T14:51:04.1273-05:00
+custom:
+    PR: "398"
