@@ -18,26 +18,22 @@ Replace the following:
 
 The target runs `changie batch`, which collects the unreleased entries into `.changes/<changelog-version>.md` and deletes the entry files, and then `changie merge`, which regenerates `CHANGELOG.md`. Check the result, and edit `.changes/<changelog-version>.md` and run `go tool -modfile=tools/go.mod changie merge` again if an entry needs rewording. Then open a pull request with these changes and merge it, so the tag in the next steps points at a commit that includes the new changelog.
 
-Next, draft the release using those changelog entries as the release notes. From the updated `main` branch, run the following command:
-
-```shell
-tail -n +3 .changes/<changelog-version>.md | gh release create <version> --draft --notes-file -
-```
-
-Replace the following:
-
-- `<version>`: the new version, prefixed with `v` and following [semantic versioning](https://semver.org/), such as `v1.2.3`. Check the [releases page](https://github.com/supabase/terraform-provider-supabase/releases) and the existing tags first, so you don't reuse a version. It must match `<changelog-version>`.
-
-The `tail` command skips the version heading, because GitHub already shows the release title. The command prints a link where you can polish the notes, and you can also edit them with `gh release edit`. If you'd rather draft the release on the [new release page](https://github.com/supabase/terraform-provider-supabase/releases/new), paste in the contents of `.changes/<changelog-version>.md` and keep the release title identical to the tag name, because GoReleaser finds the draft by its title.
-
-Drafting a release doesn't create the git tag, so you create and push it yourself. Make it an annotated tag, which records who created it and when. To create the tag and push it, run the following commands:
+Next, create the git tag from the updated `main` branch and push it. Make it an annotated tag, which records who created it and when. To create the tag and push it, run the following commands:
 
 ```shell
 git tag -a <version> -m "<version>"
 git push origin <version>
 ```
 
-Pushing the tag starts the [release workflow](.github/workflows/release.yml). [GoReleaser](https://goreleaser.com/) builds and signs the binaries and attaches them to your draft, and it leaves your release notes as they are. If you skipped the draft, GoReleaser creates one with an auto-generated changelog, which won't match `CHANGELOG.md`.
+Replace the following:
+
+- `<version>`: the new version, prefixed with `v` and following [semantic versioning](https://semver.org/), such as `v1.2.3`. It must match `<changelog-version>`. Check the [releases page](https://github.com/supabase/terraform-provider-supabase/releases) and the existing tags first, so you don't reuse a version.
+
+Pushing the tag starts the [release workflow](.github/workflows/release.yml). The workflow takes the release notes from `.changes/<changelog-version>.md` and fails if that file is missing, which means the changelog step was skipped. [GoReleaser](https://goreleaser.com/) then builds and signs the binaries and creates a draft release with those notes and the binaries attached.
+
+If you want to edit the notes before publishing, change them in the draft release with `gh release edit`. Keep `CHANGELOG.md` in step by making the same change in a follow-up pull request.
+
+You can also create the draft yourself before pushing the tag, for example to write custom notes. Run `gh release create <version> --draft --notes-file <file>`, or use the [new release page](https://github.com/supabase/terraform-provider-supabase/releases/new) and keep the release title identical to the tag name, because GoReleaser finds the draft by its title. GoReleaser attaches the binaries to your draft and leaves its notes as they are.
 
 When the workflow finishes, review the draft release and approve the workflow's `publish` job. That publishes the release, and the Terraform Registry picks up the new version automatically.
 
