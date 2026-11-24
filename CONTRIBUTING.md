@@ -141,7 +141,7 @@ If you try your build against the real Management API, a failed run can leave pr
 
 Sweepers are the one thing in this repository that talks to the real API. They're destructive and can't be undone, so check which account your access token belongs to before you run one.
 
-Name the projects you create for testing so that they start with `tf-acc-test`, such as `tf-acc-test-my-change`. The project sweeper deletes only projects with that prefix, so it leaves your other projects alone. It also skips projects that are already removed.
+Name the projects you create for testing so that they start with `acc-test`, such as `acc-test-my-change`. The project sweeper deletes only projects with that prefix, so it leaves your other projects alone. It also skips projects that are already removed.
 
 To run the sweepers, run the following command:
 

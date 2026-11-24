@@ -25,12 +25,6 @@ func TestMain(m *testing.M) {
 	sdkresource.TestMain(m)
 }
 
-// sweepProjectNamePrefix limits the project sweeper to projects created by
-// acceptance tests, so that it never deletes real projects in the account.
-const (
-	sweepProjectNamePrefix = "tf-acc-test"
-)
-
 // sweeperClient builds an API client from the same environment variables the
 // provider reads.
 func sweeperClient() (*api.ClientWithResponses, error) {

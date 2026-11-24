@@ -12,6 +12,7 @@ import (
 
 	sdkresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/acctest"
 )
 
 const (
@@ -26,7 +27,7 @@ func init() {
 }
 
 // sweepProjects deletes every project whose name starts with
-// sweepProjectNamePrefix. The Management API is global, so the region passed by
+// acctest.NamePrefix. The Management API is global, so the region passed by
 // the sweeper runner is ignored. It keeps going after a failed delete and
 // returns all failures together.
 func sweepProjects(_ string) error {
@@ -47,7 +48,7 @@ func sweepProjects(_ string) error {
 
 	var errList []error
 	for _, project := range *listResp.JSON200 {
-		if !strings.HasPrefix(project.Name, sweepProjectNamePrefix) ||
+		if !strings.HasPrefix(project.Name, acctest.NamePrefix) ||
 			project.Status == api.V1ProjectWithDatabaseResponseStatusREMOVED {
 			continue
 		}

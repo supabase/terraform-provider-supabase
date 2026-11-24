@@ -45,12 +45,12 @@ testacc: ## Run all tests verbosely
 	TF_ACC=1 go test ./... -v $(TESTARGS) -timeout 120m
 
 # Unlike the other test targets, this talks to the real Management API and
-# permanently deletes projects whose names start with "tf-acc-test". The
+# permanently deletes projects whose names start with "acc-test". The
 # -sweep flag needs a value, and "all" is a placeholder because the API is global.
 .PHONY: sweep
 sweep: ## Delete leftover acceptance test resources from your account (needs SUPABASE_ACCESS_TOKEN)
 	@test -n "$$SUPABASE_ACCESS_TOKEN" || (echo "SUPABASE_ACCESS_TOKEN is required, for example: SUPABASE_ACCESS_TOKEN=... make sweep"; exit 1)
-	@echo "WARNING: this is destructive. It permanently deletes projects named tf-acc-test* from the account for this access token."
+	@echo "WARNING: this is destructive. It permanently deletes projects named acc-test* from the account for this access token."
 	go test ./internal/provider -v -sweep=all $(SWEEPARGS) -timeout 60m
 
 .PHONY: lint
