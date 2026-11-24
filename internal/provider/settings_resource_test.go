@@ -129,7 +129,7 @@ func TestAccSettingsResource_basic(t *testing.T) {
 		"api": api, "auth": auth, "database": database, "storage": storage,
 	})
 
-	resource.ParallelTest(t, resource.TestCase{
+	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
@@ -218,7 +218,7 @@ func TestAccSettingsResource_update(t *testing.T) {
 		}
 	}
 
-	resource.ParallelTest(t, resource.TestCase{
+	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create
@@ -280,7 +280,7 @@ func TestAccSettingsResource_smtpPass(t *testing.T) {
 		},
 	})
 
-	resource.ParallelTest(t, resource.TestCase{
+	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// The API returns smtp_pass as a hash; state must keep the configured plaintext.
@@ -319,7 +319,7 @@ func TestAccSettingsResource_apple(t *testing.T) {
 		"external_apple_email_optional":        false,
 	}
 
-	resource.ParallelTest(t, resource.TestCase{
+	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// The API merges additional client ids into client_id; state must keep them separate.
@@ -347,7 +347,7 @@ func TestAccSettingsResource_database(t *testing.T) {
 		"statement_timeout":  "10s",
 	}
 
-	resource.ParallelTest(t, resource.TestCase{
+	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Every configured parameter is sent to the API and read back
@@ -376,7 +376,7 @@ func TestAccSettingsResource_ssl(t *testing.T) {
 		return vars
 	}
 
-	resource.ParallelTest(t, resource.TestCase{
+	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Enable (reboots the database, so the provider waits for services to recover)
