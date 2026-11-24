@@ -273,8 +273,14 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	resp.Diagnostics.Append(deleteProject(ctx, &data, r.client)...)
-	if resp.Diagnostics.HasError() {
+	err := deleteProject(ctx, &data, r.client)
+	if errs.NotFound(err) {
+		tflog.Trace(ctx, fmt.Sprintf("project not found: %s", data.Id.ValueString()))
+		return
+	}
+
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", err.Error())
 		return
 	}
 
@@ -390,21 +396,19 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 	return nil
 }
 
-func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+// deleteProject deletes the project. It returns an errs.NotFoundErr when the project no longer exists.
+func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) error {
 	httpResp, err := client.V1DeleteAProjectWithResponse(ctx, data.Id.ValueString())
 	if err != nil {
-		msg := fmt.Sprintf("Unable to delete project, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to delete project, got error: %w", err)
 	}
 
 	if httpResp.StatusCode() == http.StatusNotFound {
-		tflog.Trace(ctx, fmt.Sprintf("project not found: %s", data.Id.ValueString()))
-		return nil
+		return errs.NewNotFoundErr("project", data.Id.ValueString())
 	}
 
 	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to delete project, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to delete project, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 	}
 
 	return nil
