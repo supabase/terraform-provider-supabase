@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	sdkresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -14,10 +15,6 @@ import (
 )
 
 const (
-	// sweepProjectNamePrefix limits the project sweeper to projects created by
-	// acceptance tests, so that it never deletes real projects in the account.
-	sweepProjectNamePrefix = "tf-acc-test"
-
 	projectSweeperName = "supabase_project"
 )
 
@@ -55,9 +52,13 @@ func sweepProjects(_ string) error {
 			continue
 		}
 
+		log.Printf("[INFO] Sweeping %s: deleting project %q (id: %s)", projectSweeperName, project.Name, project.Ref)
 		if err := deleteWithResource(ctx, client, NewProjectResource, map[string]any{"id": project.Ref}); err != nil {
+			log.Printf("[ERROR] Sweeping %s: failed to delete project %q (id: %s): %s", projectSweeperName, project.Name, project.Ref, err)
 			errList = append(errList, fmt.Errorf("project %q (%s): %w", project.Name, project.Ref, err))
+			continue
 		}
+		log.Printf("[INFO] Sweeping %s: deleted project %q (id: %s)", projectSweeperName, project.Name, project.Ref)
 	}
 
 	return errors.Join(errList...)
