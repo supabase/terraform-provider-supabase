@@ -29,5 +29,5 @@ jobs:
           if git diff --name-only --diff-filter=A "$BASE_SHA"...HEAD | grep -qE '^\.changes/unreleased/.+\.yaml$'; then
             exit 0
           fi
-          echo "No changelog entry found. Run 'make changelog' and commit the new file in .changes/unreleased/, or add the 'skip-changelog' label."
+          echo "No changelog entry found. Run 'make changelog' and commit the new file in .changes/unreleased/, or add the 'skip-changelog' label if there are no user-facing changes (e.g. CI changes, dependency bumps)."
           exit 1
