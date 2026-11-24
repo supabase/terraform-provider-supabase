@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/errs"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -179,8 +180,8 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	tflog.Trace(ctx, "read up to date project")
-	resp.Diagnostics.Append(readProject(ctx, &data, r.client)...)
-	if resp.Diagnostics.HasError() {
+	if err := readProject(ctx, &data, r.client); err != nil {
+		resp.Diagnostics.AddError("Client Error", err.Error())
 		return
 	}
 
@@ -199,8 +200,15 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	tflog.Trace(ctx, "read project")
 
-	resp.Diagnostics.Append(readProject(ctx, &data, r.client)...)
-	if resp.Diagnostics.HasError() {
+	err := readProject(ctx, &data, r.client)
+	if errs.NotFound(err) {
+		tflog.Info(ctx, "project not found. Removing from state.")
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", err.Error())
 		return
 	}
 
@@ -262,8 +270,14 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	resp.Diagnostics.Append(deleteProject(ctx, &data, r.client)...)
-	if resp.Diagnostics.HasError() {
+	err := deleteProject(ctx, &data, r.client)
+	if errs.NotFound(err) {
+		tflog.Trace(ctx, fmt.Sprintf("project not found: %s", data.Id.ValueString()))
+		return
+	}
+
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", err.Error())
 		return
 	}
 
@@ -316,20 +330,19 @@ func createProject(ctx context.Context, data *ProjectResourceModel, client *api.
 	return nil
 }
 
-func readProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+// readProject refreshes data from the API. It returns an errs.NotFoundErr when the project no longer exists.
+func readProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) error {
 	projectResp, err := client.V1GetProjectWithResponse(ctx, data.Id.ValueString())
 	if err != nil {
-		msg := fmt.Sprintf("Unable to read project, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to read project, got error: %w", err)
 	}
 
 	if projectResp.StatusCode() == http.StatusNotFound {
-		return nil
+		return errs.NewNotFoundErr("project", data.Id.ValueString())
 	}
 
 	if projectResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to read project, got status %d: %s", projectResp.StatusCode(), projectResp.Body)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to read project, got status %d: %s", projectResp.StatusCode(), projectResp.Body)
 	}
 
 	project := projectResp.JSON200
@@ -340,15 +353,13 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 
 	legacyKeysResp, err := client.V1GetProjectLegacyApiKeysWithResponse(ctx, project.Id)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to read project legacy api keys state, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to read project legacy api keys state, got error: %w", err)
 	}
 
 	if legacyKeysResp.JSON200 == nil {
 		// This API endpoint will be removed in the future, so explicitly check for HTTP 404 Not Found.
 		if legacyKeysResp.StatusCode() != http.StatusNotFound {
-			msg := fmt.Sprintf("Unable to read project legacy api keys, got status %d: %s", legacyKeysResp.StatusCode(), legacyKeysResp.Body)
-			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			return fmt.Errorf("unable to read project legacy api keys, got status %d: %s", legacyKeysResp.StatusCode(), legacyKeysResp.Body)
 		}
 
 		data.LegacyApiKeysEnabled = types.BoolValue(false)
@@ -358,13 +369,11 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 
 	addonsResp, err := client.V1ListProjectAddonsWithResponse(ctx, project.Id)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to read project addons, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to read project addons, got error: %w", err)
 	}
 
 	if addonsResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to read project addons, got error: %s", string(addonsResp.Body))
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to read project addons, got status %d: %s", addonsResp.StatusCode(), addonsResp.Body)
 	}
 
 	for _, addon := range addonsResp.JSON200.SelectedAddons {
@@ -374,8 +383,7 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 
 		val, err := addon.Variant.Id.AsListProjectAddonsResponseSelectedAddonsVariantId0()
 		if err != nil {
-			msg := fmt.Sprintf("Unable to read compute instance addon, got error: %s", err)
-			return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+			return fmt.Errorf("unable to read compute instance addon, got error: %w", err)
 		}
 
 		data.InstanceSize = types.StringValue(strings.TrimPrefix(string(val), "ci_"))
@@ -385,21 +393,19 @@ func readProject(ctx context.Context, data *ProjectResourceModel, client *api.Cl
 	return nil
 }
 
-func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
+// deleteProject deletes the project. It returns an errs.NotFoundErr when the project no longer exists.
+func deleteProject(ctx context.Context, data *ProjectResourceModel, client *api.ClientWithResponses) error {
 	httpResp, err := client.V1DeleteAProjectWithResponse(ctx, data.Id.ValueString())
 	if err != nil {
-		msg := fmt.Sprintf("Unable to delete project, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to delete project, got error: %w", err)
 	}
 
 	if httpResp.StatusCode() == http.StatusNotFound {
-		tflog.Trace(ctx, fmt.Sprintf("project not found: %s", data.Id.ValueString()))
-		return nil
+		return errs.NewNotFoundErr("project", data.Id.ValueString())
 	}
 
 	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to delete project, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to delete project, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 	}
 
 	return nil

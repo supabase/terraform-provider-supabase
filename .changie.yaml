@@ -1,0 +1,23 @@
+changesDir: .changes
+unreleasedDir: unreleased
+headerPath: header.tpl.md
+changelogPath: CHANGELOG.md
+versionExt: md
+versionFormat: "## {{.Version}} ({{.Time.Format \"January 2, 2006\"}})"
+kindFormat: "{{.Kind}}:"
+changeFormat: '* {{.Body}} ([#{{.Custom.PR}}](https://github.com/supabase/terraform-provider-supabase/pull/{{.Custom.PR}}))'
+kinds:
+  - label: NOTES
+  - label: FEATURES
+  - label: ENHANCEMENTS
+  - label: BUG FIXES
+custom:
+  - key: PR
+    label: Pull request number
+    type: int
+    minInt: 1
+newlines:
+  afterVersion: 0
+  afterKind: 1
+  beforeKind: 1
+  afterChangelogVersion: 2

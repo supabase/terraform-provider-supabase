@@ -1,9 +1,3 @@
-## 1.12.0 (Unreleased)
-
-NOTES:
-
-* Update Go to 1.26.11 ([#398](https://github.com/supabase/terraform-provider-supabase/pull/398))
-
 ## 1.11.1 (November 6, 2026)
 
 NOTES:
@@ -216,3 +210,4 @@ ENHANCEMENTS:
 
 * provider: Implement basic provider for project settings ([#2](https://github.com/supabase/terraform-provider-supabase/pull/2))
 * resource/supabase_settings: Support auth config ([#16](https://github.com/supabase/terraform-provider-supabase/pull/16))
+

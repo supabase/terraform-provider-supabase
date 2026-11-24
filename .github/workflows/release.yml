@@ -30,9 +30,22 @@ jobs:
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.PASSPHRASE }}
+      # Use the changelog entries for this version as the release notes. The tag
+      # `v1.2.3` maps to `.changes/1.2.3.md`, which `make changelog-release` creates.
+      - name: Prepare release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes=".changes/${TAG#v}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes not found. Run 'make changelog-release VERSION=${TAG#v}' and merge the result before tagging."
+            exit 1
+          fi
+          # Skip the version heading and its blank line; GitHub shows the release title.
+          tail -n +3 "$notes" > "$RUNNER_TEMP/release-notes.md"
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
-          args: release --clean
+          args: release --clean --release-notes=${{ runner.temp }}/release-notes.md
         env:
           # GitHub sets the GITHUB_TOKEN secret automatically.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
