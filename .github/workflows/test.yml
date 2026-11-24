@@ -84,7 +84,7 @@ jobs:
 
   # Run acceptance tests with the latest stable Terraform CLI
   testacc:
-    name: Terraform Provider Acceptance Tests
+    name: Terraform Provider Acceptance Tests (changes)
     needs: [build, changes]
     if: github.event_name == 'pull_request' && needs.changes.outputs.acceptance == 'true'
     runs-on: ubuntu-latest
@@ -106,7 +106,7 @@ jobs:
         shell: bash
         env:
           TF_ACC: "1"
-          PARALLEL: "7"
+          PARALLEL: "3"
           RUN: ${{ needs.changes.outputs.run }}
         run: |
           echo "go test -v -cover -timeout 120m -parallel $PARALLEL -run '$RUN' ./internal/provider/" > "$RUNNER_TEMP/testacc.cmd"
