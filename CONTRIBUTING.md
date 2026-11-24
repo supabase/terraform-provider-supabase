@@ -210,3 +210,19 @@ If you've found a bug in Supabase itself rather than in the provider, please rep
 See [LICENSE](LICENSE).
 
 If you're ready to start, browse the [open issues](https://github.com/supabase/terraform-provider-supabase/issues) or open one for the change you have in mind. Maintainers cutting a release can follow [RELEASING.md](RELEASING.md).
+
+## Changelog
+
+Changelog entries are managed with [changie](https://changie.dev). Do not edit `CHANGELOG.md` directly; each pull request adds its own entry file under `.changes/unreleased/`.
+
+After opening your pull request (you need its number), run:
+
+```shell
+make changelog
+```
+
+and choose a kind (`NOTES`, `FEATURES`, `ENHANCEMENTS` or `BUG FIXES`), write a short description, and enter the PR number. Prefix the description with the affected object where relevant, for example `resource/supabase_settings: Keep read-only storage keys out of state`. Commit the generated file with your PR.
+
+Pull requests that need no entry (dependency bumps, CI or test-only changes) can carry the `skip-changelog` label.
+
+Maintainers fold the entries into `CHANGELOG.md` when they cut a release, as described in [RELEASING.md](RELEASING.md).

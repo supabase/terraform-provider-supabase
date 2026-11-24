@@ -1,0 +1,33 @@
+# Require every pull request to add a changie entry under .changes/unreleased/.
+# Add the `skip-changelog` label for changes that need no entry.
+name: Changelog
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  entry:
+    name: Changelog entry
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check for a new changelog entry
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --name-only --diff-filter=A "$BASE_SHA"...HEAD | grep -qE '^\.changes/unreleased/.+\.yaml$'; then
+            exit 0
+          fi
+          echo "No changelog entry found. Run 'make changelog' and commit the new file in .changes/unreleased/, or add the 'skip-changelog' label if there are no user-facing changes (e.g. CI changes, dependency bumps)."
+          exit 1
