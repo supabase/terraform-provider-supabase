@@ -100,11 +100,24 @@ jobs:
           terraform_version: latest
           terraform_wrapper: false
       - run: go mod download
-      - env:
+      - name: Run acceptance tests
+        id: tests
+        # Explicit bash enables pipefail, so a failing go test still fails the step through tee.
+        shell: bash
+        env:
           TF_ACC: "1"
           PARALLEL: "7"
           RUN: ${{ needs.changes.outputs.run }}
-        run: go test -v -cover -timeout 120m -parallel "$PARALLEL" -run "$RUN" ./internal/provider/
+        run: |
+          echo "go test -v -cover -timeout 120m -parallel $PARALLEL -run '$RUN' ./internal/provider/" > "$RUNNER_TEMP/testacc.cmd"
+          go test -v -cover -timeout 120m -parallel "$PARALLEL" -run "$RUN" ./internal/provider/ 2>&1 | tee "$RUNNER_TEMP/testacc.log"
+      - name: Write results to the job summary
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.tests.outcome }}
+          COMMAND_FILE: ${{ runner.temp }}/testacc.cmd
+          LOG_FILE: ${{ runner.temp }}/testacc.log
+        run: bash .github/scripts/write-test-summary.sh
 
   # Run every acceptance test, without change detection, after each push to main.
   testacc-main:
