@@ -135,6 +135,28 @@ You can skip `terraform init` while the override is active. Terraform prints a w
 
 Your build talks to the real Management API with your access token, so `terraform apply` changes real projects. A dedicated test project is the safest place to experiment.
 
+### Cleaning up test resources with sweepers
+
+If you try your build against the real Management API, a failed run can leave projects behind. A _sweeper_ deletes them. It lists the resources in your account and deletes the ones that match a naming rule, by running the same `Delete` method that `terraform destroy` uses.
+
+Sweepers are the one thing in this repository that talks to the real API. They're destructive and can't be undone, so check which account your access token belongs to before you run one.
+
+Name the projects you create for testing so that they start with `tf-acc-test`, such as `tf-acc-test-my-change`. The project sweeper deletes only projects with that prefix, so it leaves your other projects alone. It also skips projects that are already removed.
+
+To run the sweepers, run the following command:
+
+```shell
+SUPABASE_ACCESS_TOKEN=<access-token> make sweep
+```
+
+The sweeper prints the name and ID of each project as it deletes it. If a delete fails, the sweeper reports the failure and carries on with the remaining projects. To run a single sweeper, pass `-sweep-run` through `SWEEPARGS`:
+
+```shell
+SUPABASE_ACCESS_TOKEN=<access-token> SWEEPARGS="-sweep-run=supabase_project" make sweep
+```
+
+By default, sweepers use `https://api.supabase.com`. To use a different API endpoint, set `SUPABASE_API_ENDPOINT`.
+
 ## Adding a resource or data source
 
 A new resource touches a handful of places, and the easiest way to start is to copy an existing one. [`third_party_auth_resource.go`](internal/provider/third_party_auth_resource.go) is a good model, because it follows the patterns reviewers look for.
