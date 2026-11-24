@@ -32,7 +32,7 @@ func NullableToString[T ~string](n nullable.Nullable[T]) tftypes.String {
 	return tftypes.StringNull()
 }
 
-const defaultWaitTimeout = 5 * time.Minute
+const defaultWaitTimeout = 10 * time.Minute
 
 var terminalProjectStatuses = []api.V1ProjectWithDatabaseResponseStatus{
 	api.V1ProjectWithDatabaseResponseStatusGOINGDOWN,

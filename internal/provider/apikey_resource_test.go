@@ -187,7 +187,7 @@ func TestAccApiKeyResource_basic(t *testing.T) {
 	projectName := acctest.RandomName()
 	keyName := "test_key"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
@@ -239,7 +239,7 @@ func TestAccApiKeyResource_update(t *testing.T) {
 	projectName := acctest.RandomName()
 	keyName := "test_key"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create without description
@@ -309,7 +309,7 @@ func TestAccApiKeyResource_invalidName(t *testing.T) {
 		t.Skip("Organization ID not set")
 	}
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			{

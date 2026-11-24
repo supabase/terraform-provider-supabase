@@ -24,7 +24,7 @@ func TestAccBranchDataSource(t *testing.T) {
 	dataSourceName := "data.supabase_branch.test"
 	gitBranch := "develop"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Read testing

@@ -42,7 +42,7 @@ test: ## Run all tests (pass extra flags with TESTARGS, e.g. TESTARGS="-run Test
 
 .PHONY: testacc
 testacc: ## Run all tests verbosely
-	TF_ACC=1 go test ./... -v $(TESTARGS) -timeout 120m
+	TF_ACC=1 go test ./internal/provider/... -v -parallel 7 $(TESTARGS) -timeout 120m
 
 # Unlike the other test targets, this talks to the real Management API and
 # permanently deletes projects whose names start with "acc-test". The

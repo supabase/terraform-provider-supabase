@@ -103,7 +103,7 @@ func TestAccEdgeFunctionResource_basic(t *testing.T) {
 	slug := testAccEdgeFunctionSlug
 	entrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Hello"));`)
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
@@ -154,7 +154,7 @@ func TestAccEdgeFunctionResource_update(t *testing.T) {
 	updatedEntrypoint := writeTestEntrypoint(t, `Deno.serve((req) => new Response("Updated"));`)
 	updatedName := "Renamed function"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create
