@@ -7,6 +7,8 @@
 /go.mod @supabase/terraform @JEETDESAI25 @savme @supabase-oss
 /go.sum @supabase/terraform @JEETDESAI25 @savme @supabase-oss
 /.github/workflows/*.yml @supabase/terraform @JEETDESAI25 @savme @supabase-oss
+/tools/go.mod @supabase/terraform @JEETDESAI25 @savme @supabase-oss
+/tools/go.sum @supabase/terraform @JEETDESAI25 @savme @supabase-oss
 
 # These run with release signing secrets or hold the approval token, so Dependabot PRs touching
 # them still need a maintainer. Last matching pattern wins.
