@@ -62,38 +62,31 @@ jobs:
       - run: go mod download
       - run: go test -v -cover ./...
 
-  # Decide whether the acceptance tests are needed. They are skipped when the
-  # only changes are under tools/, docs/, assets/ or templates/, or to README.md.
+  # Decide which acceptance tests are needed. See the script for the rules.
+  # Acceptance tests are slow, so they run on pull requests only.
   changes:
     name: Detect changes
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      acceptance: ${{ steps.filter.outputs.acceptance }}
+      acceptance: ${{ steps.select.outputs.acceptance }}
+      run: ${{ steps.select.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - id: filter
+      - id: select
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          # Run the acceptance tests when there is no usable base, such as a new branch.
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            echo "acceptance=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if git diff --name-only "$BASE" HEAD | grep -Eqv '^((tools|docs|assets|templates)/|README\.md$)'; then
-            echo "acceptance=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "acceptance=false" >> "$GITHUB_OUTPUT"
-          fi
+          BASE: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: bash .github/scripts/select-acceptance-tests.sh
 
   # Run acceptance tests with the latest stable Terraform CLI
   testacc:
     name: Terraform Provider Acceptance Tests
     needs: [build, changes]
-    if: needs.changes.outputs.acceptance == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.acceptance == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -110,4 +103,28 @@ jobs:
       - env:
           TF_ACC: "1"
           PARALLEL: "7"
+          RUN: ${{ needs.changes.outputs.run }}
+        run: go test -v -cover -timeout 120m -parallel "$PARALLEL" -run "$RUN" ./internal/provider/
+
+  # Run every acceptance test, without change detection, after each push to main.
+  testacc-main:
+    name: Terraform Provider Acceptance Tests (all)
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: ".go-version"
+          cache: true
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: latest
+          terraform_wrapper: false
+      - run: go mod download
+      - env:
+          TF_ACC: "1"
+          PARALLEL: "1" # parallel of 1 to "serialize tests
         run: go test -v -cover -timeout 120m -parallel "$PARALLEL" -run=TestAcc ./internal/provider/

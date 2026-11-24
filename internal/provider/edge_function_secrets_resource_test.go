@@ -640,7 +640,7 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-func TestSecretDigestsPlanModifier_ComputesDigests(t *testing.T) {
+func TestAccSecretDigestsPlanModifier_ComputesDigests(t *testing.T) {
 	// Verify that the plan modifier correctly computes digests from
 	// known secret values during the plan phase, WITHOUT reading from the API.
 	defer gock.OffAll()
