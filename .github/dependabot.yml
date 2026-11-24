@@ -22,11 +22,13 @@ updates:
           - patch
           - major
   # Developer tools (govulncheck, tfplugindocs, changie) are tracked in their own module
-  # so they do not affect the provider's go.mod. Their dependencies are all
-  # indirect.
+  # so they do not affect the provider's go.mod. Only the tool modules themselves are
+  # updated; their transitive dependencies are left alone.
   - package-ecosystem: "gomod"
     directory: "/tools"
     schedule:
       interval: "daily"
     allow:
-      - dependency-type: "all"
+      - dependency-name: "golang.org/x/vuln"
+      - dependency-name: "github.com/hashicorp/terraform-plugin-docs"
+      - dependency-name: "github.com/miniscruff/changie"
