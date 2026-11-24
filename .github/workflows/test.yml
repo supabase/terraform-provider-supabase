@@ -62,10 +62,38 @@ jobs:
       - run: go mod download
       - run: go test -v -cover ./...
 
+  # Decide whether the acceptance tests are needed. They are skipped when the
+  # only changes are under tools/, docs/, assets/ or templates/, or to README.md.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      acceptance: ${{ steps.filter.outputs.acceptance }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # Run the acceptance tests when there is no usable base, such as a new branch.
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "acceptance=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$BASE" HEAD | grep -Eqv '^((tools|docs|assets|templates)/|README\.md$)'; then
+            echo "acceptance=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "acceptance=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # Run acceptance tests with the latest stable Terraform CLI
   testacc:
     name: Terraform Provider Acceptance Tests
-    needs: build
+    needs: [build, changes]
+    if: needs.changes.outputs.acceptance == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
