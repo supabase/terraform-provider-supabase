@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # The acceptance test command, shared by the testacc and testacc-main jobs so they
+  # cannot drift. Each job adds its own -parallel and -run flags.
+  ACC_TEST_CMD: go test -v -cover -timeout 120m ./internal/provider/
+
 jobs:
   # Ensure project builds before running testing matrix
   build:
@@ -47,18 +52,48 @@ jobs:
           git diff --compact-summary --exit-code || \
             (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
 
-  # Run acceptance tests in a matrix with Terraform CLI versions
+  # Run unit tests. TF_ACC is deliberately unset so acceptance tests skip themselves.
   test:
-    name: Terraform Provider Acceptance Tests
+    name: Unit Tests
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        # list whatever Terraform versions here you would like to support
-        terraform:
-          - "1.7.*"
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: ".go-version"
+          cache: true
+      - run: go mod download
+      - run: go test -v -cover ./...
+
+  # Decide which acceptance tests are needed. See the script for the rules.
+  # Acceptance tests are slow, so they run on pull requests only.
+  changes:
+    name: Detect changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      acceptance: ${{ steps.select.outputs.acceptance }}
+      run: ${{ steps.select.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: select
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: bash .github/scripts/select-acceptance-tests.sh
+
+  # Run acceptance tests with the latest stable Terraform CLI
+  testacc:
+    name: Terraform Provider Acceptance Tests (changes)
+    needs: [build, changes]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.acceptance == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 121
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -67,10 +102,47 @@ jobs:
           cache: true
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
-          terraform_version: ${{ matrix.terraform }}
+          terraform_version: latest
+          terraform_wrapper: false
+      - run: go mod download
+      - name: Run acceptance tests
+        id: tests
+        # Explicit bash enables pipefail, so a failing go test still fails the step through tee.
+        shell: bash
+        env:
+          TF_ACC: "1"
+          PARALLEL: "3"
+          RUN: ${{ needs.changes.outputs.run }}
+        run: |
+          echo "$ACC_TEST_CMD -parallel $PARALLEL -run '$RUN'" > "$RUNNER_TEMP/testacc.cmd"
+          $ACC_TEST_CMD -parallel "$PARALLEL" -run "$RUN" 2>&1 | tee "$RUNNER_TEMP/testacc.log"
+      - name: Write results to the job summary
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.tests.outcome }}
+          COMMAND_FILE: ${{ runner.temp }}/testacc.cmd
+          LOG_FILE: ${{ runner.temp }}/testacc.log
+        run: bash .github/scripts/write-test-summary.sh
+
+  # Run every acceptance test, without change detection, after each push to main.
+  testacc-main:
+    name: Terraform Provider Acceptance Tests (all)
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: ".go-version"
+          cache: true
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: latest
           terraform_wrapper: false
       - run: go mod download
       - env:
           TF_ACC: "1"
-        run: go test -v -cover ./internal/provider/
-        timeout-minutes: 10
+          PARALLEL: "1" # parallel of 1 to serialize tests
+        run: $ACC_TEST_CMD -parallel "$PARALLEL" -run=TestAcc

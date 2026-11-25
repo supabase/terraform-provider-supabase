@@ -175,7 +175,7 @@ func TestAccThirdPartyAuthResource_basic(t *testing.T) {
 		"oidc_issuer_url": config.StringVariable(thirdPartyAuthOIDCIssuer),
 	})
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
@@ -225,7 +225,7 @@ func TestAccThirdPartyAuthResource_jwksURL(t *testing.T) {
 
 	resourceName := "supabase_third_party_auth.test"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			{
@@ -266,7 +266,7 @@ func TestAccThirdPartyAuthResource_customJWKS(t *testing.T) {
 	}
 	idUnchanged := statecheck.CompareValue(compare.ValuesSame())
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			{
@@ -330,7 +330,7 @@ func TestAccThirdPartyAuthResource_update(t *testing.T) {
 		}
 	}
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			step(plancheck.ResourceActionCreate,

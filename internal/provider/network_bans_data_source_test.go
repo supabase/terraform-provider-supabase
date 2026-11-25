@@ -53,7 +53,7 @@ func TestAccNetworkBansDataSource_empty(t *testing.T) {
 	projectResourceName := "supabase_project.test"
 	dataSourceName := "data.supabase_network_bans.test"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// A newly created project has no banned addresses

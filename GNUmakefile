@@ -40,9 +40,12 @@ install: ## Install the provider into your Go bin directory, for Terraform dev_o
 test: ## Run all tests (pass extra flags with TESTARGS, e.g. TESTARGS="-run TestAccApiKeyResource -v")
 	TF_ACC=1 go test ./... $(TESTARGS)
 
+# Maximum number of tests to run at once. Override it with, for example, make testacc PARALLEL=7.
+PARALLEL ?= 3
+
 .PHONY: testacc
-testacc: ## Run all tests verbosely
-	TF_ACC=1 go test ./... -v $(TESTARGS) -timeout 120m
+testacc: ## Run all tests verbosely (set PARALLEL to change how many run at once, default 3)
+	TF_ACC=1 go test ./internal/provider/... -v -parallel $(PARALLEL) $(TESTARGS) -timeout 120m
 
 # Unlike the other test targets, this talks to the real Management API and
 # permanently deletes projects whose names start with "acc-test". The

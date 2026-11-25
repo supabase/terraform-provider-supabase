@@ -23,7 +23,7 @@ func TestAccProjectResource_basic(t *testing.T) {
 	resourceName := "supabase_project.test"
 	rName := acctest.RandomName()
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
@@ -72,7 +72,7 @@ func TestAccProjectResource_update(t *testing.T) {
 	resourceName := "supabase_project.test"
 	rName := acctest.RandomName()
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
@@ -175,7 +175,7 @@ func TestAccProjectResource_legacyAPIKeysDeprecated(t *testing.T) {
 		`Unable\s+to\s+update\s+legacy\s+api\s+keys,\s+got\s+error:\s+\{"message":"JWT\s+based\s+legacy\s+\(anon,\s+service_role\)\s+API\s+keys\s+were\s+already\s+disabled\s+on\s+[^"]+"\}`,
 	)
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Toggle legacy API keys

@@ -22,7 +22,7 @@ func TestAccPoolerDataSource(t *testing.T) {
 	projectResourceName := "supabase_project.test"
 	dataSourceName := "data.supabase_pooler.test"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Read testing

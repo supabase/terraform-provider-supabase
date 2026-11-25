@@ -61,7 +61,7 @@ func TestAccApiKeysDataSource(t *testing.T) {
 	dataSourceName := "data.supabase_apikeys.test"
 	keyName := "test_key"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Read testing

@@ -34,7 +34,7 @@ func TestAccBranchResource_basic(t *testing.T) {
 	projectName := acctest.RandomName()
 	gitBranch := "develop"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create and Read testing
@@ -90,7 +90,7 @@ func TestAccBranchResource_update(t *testing.T) {
 	resourceName := "supabase_branch.test"
 	projectName := acctest.RandomName()
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			// Create

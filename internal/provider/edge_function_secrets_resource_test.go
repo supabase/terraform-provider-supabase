@@ -78,7 +78,7 @@ func TestAccEdgeFunctionSecretsResource_basic(t *testing.T) {
 		{"DATABASE_URL", "postgresql://user:pass@localhost:5432/db"},
 	}
 
-	testresource.Test(t, testresource.TestCase{
+	testresource.ParallelTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []testresource.TestStep{
 			// Create and Read testing
@@ -140,7 +140,7 @@ func TestAccEdgeFunctionSecretsResource_update(t *testing.T) {
 		}
 	}
 
-	testresource.Test(t, testresource.TestCase{
+	testresource.ParallelTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []testresource.TestStep{
 			step(plancheck.ResourceActionCreate,
@@ -166,7 +166,7 @@ func TestAccEdgeFunctionSecretsResource_empty(t *testing.T) {
 
 	resourceName := "supabase_edge_function_secrets.test"
 
-	testresource.Test(t, testresource.TestCase{
+	testresource.ParallelTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []testresource.TestStep{
 			// An explicit empty set is valid and must not import or manage reserved secrets
@@ -188,7 +188,7 @@ func TestAccEdgeFunctionSecretsResource_reservedPrefixCreate(t *testing.T) {
 		t.Skip("Organization ID not set")
 	}
 
-	testresource.Test(t, testresource.TestCase{
+	testresource.ParallelTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []testresource.TestStep{
 			// The API rejects SUPABASE_-prefixed names and the provider surfaces the error
@@ -212,7 +212,7 @@ func TestAccEdgeFunctionSecretsResource_reservedPrefixUpdate(t *testing.T) {
 
 	projectName := acctest.RandomName()
 
-	testresource.Test(t, testresource.TestCase{
+	testresource.ParallelTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []testresource.TestStep{
 			{
@@ -640,7 +640,7 @@ resource "supabase_edge_function_secrets" "test" {
 	})
 }
 
-func TestSecretDigestsPlanModifier_ComputesDigests(t *testing.T) {
+func TestAccSecretDigestsPlanModifier_ComputesDigests(t *testing.T) {
 	// Verify that the plan modifier correctly computes digests from
 	// known secret values during the plan phase, WITHOUT reading from the API.
 	defer gock.OffAll()
