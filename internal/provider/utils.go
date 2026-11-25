@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -155,21 +156,32 @@ func isDataApiDisabled(ctx context.Context, projectRef string, client *api.Clien
 	return strings.TrimSpace(httpResp.JSON200.DbSchema) == "", nil
 }
 
-func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
+// waitForServicesActive waits until the given services are healthy. The rest service is skipped while the Data API is disabled.
+func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, services []api.V1GetServicesHealthParamsServices, timeout time.Duration) diag.Diagnostics {
 	getServices := func() []api.V1GetServicesHealthParamsServices {
-		services := allProjectServices
+		if !slices.Contains(services, api.V1GetServicesHealthParamsServicesRest) {
+			return services
+		}
 		disabled, diags := isDataApiDisabled(ctx, projectRef, client)
 		if diags.HasError() {
 			tflog.Warn(ctx, fmt.Sprintf("Failed to check Data API status for project %s, continuing to check all services: %s", projectRef, diags.Errors()))
 		} else if disabled {
-			services = slices.DeleteFunc(slices.Clone(allProjectServices), func(s api.V1GetServicesHealthParamsServices) bool {
+			return slices.DeleteFunc(slices.Clone(services), func(s api.V1GetServicesHealthParamsServices) bool {
 				return s == api.V1GetServicesHealthParamsServicesRest
 			})
 		}
 		return services
 	}
 
-	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "services", "Project Services Unhealthy", true)
+	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "services", "Project Services Unhealthy")
+}
+
+// waitForProjectAndServicesActive waits for the project and then the given services, sharing one deadline.
+func waitForProjectAndServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, services []api.V1GetServicesHealthParamsServices, deadline time.Time) diag.Diagnostics {
+	if diags := waitForProjectActive(ctx, projectRef, client, time.Until(deadline)); diags.HasError() {
+		return diags
+	}
+	return waitForServicesActive(ctx, projectRef, client, services, time.Until(deadline))
 }
 
 func waitForAuthServiceActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
@@ -177,7 +189,7 @@ func waitForAuthServiceActive(ctx context.Context, projectRef string, client *ap
 		return []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesAuth}
 	}
 
-	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "auth service", "Project Auth Service Unhealthy", false)
+	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "auth service", "Project Auth Service Unhealthy")
 }
 
 func waitForProjectServicesActive(
@@ -188,14 +200,21 @@ func waitForProjectServicesActive(
 	getServices func() []api.V1GetServicesHealthParamsServices,
 	serviceLabel string,
 	unhealthySummary string,
-	retryPoolerNotFound bool,
 ) diag.Diagnostics {
+	// The last refresh can outlive WaitForStateContext, so share its result atomically.
+	var lastUnhealthyErr atomic.Pointer[error]
+
 	stateConf := &retry.StateChangeConf{
 		Timeout: timeout,
 		Pending: []string{waitForServicesStatusPending},
 		Target:  []string{waitForServicesStatusDone},
 		Refresh: func() (any, string, error) {
-			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{Services: getServices()})
+			services := getServices()
+			// The health endpoint rejects an empty service list, and there is nothing to wait for.
+			if len(services) == 0 {
+				return services, waitForServicesStatusDone, nil
+			}
+			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{Services: services})
 			if err != nil {
 				return nil, "", fmt.Errorf("failed to get health information for project %s: %w", serviceLabel, err)
 			}
@@ -213,38 +232,20 @@ func waitForProjectServicesActive(
 			for _, v := range *resp.JSON200 {
 				switch v.Status {
 				case api.UNHEALTHY:
-					err := errorFromServiceErrorDescription(v.Name, v.Error)
-					// errFailedToRetrieveHealth is always transient; poll again to get more information
-					if errors.Is(err, errFailedToRetrieveHealth) {
-						tflog.Debug(ctx, "Retrying a recoverable error", map[string]any{
-							"error":  err,
-							"status": v,
-						})
-						comingupCount++
-						continue
-					}
-					// pooler reports UNHEALTHY: "not found" for the first couple of seconds of provisioning,
-					// so we treat it as COMINGUP
-					if retryPoolerNotFound && v.Name == api.V1ServiceHealthResponseNamePooler && errors.Is(err, errServiceNotFound) {
-						tflog.Debug(ctx, "Retrying a recoverable error", map[string]any{
-							"error":  err,
-							"status": v,
-						})
-						comingupCount++
-						continue
-					}
-					errs = append(errs, err)
+					// Services can be briefly unhealthy, e.g. while provisioning, so keep polling until the timeout.
+					errs = append(errs, errorFromServiceErrorDescription(v.Name, v.Error))
+					comingupCount++
 				case api.COMINGUP:
 					comingupCount++
 				}
 			}
 
-			if err := errors.Join(errs...); err != nil {
-				return nil, "", err
-			}
+			unhealthyErr := errors.Join(errs...)
+			lastUnhealthyErr.Store(&unhealthyErr)
 
 			if comingupCount > 0 {
-				return nil, waitForServicesStatusPending, nil
+				// Return a non-nil result: StateChangeConf treats nil as "not found" and gives up after 20 polls.
+				return resp.JSON200, waitForServicesStatusPending, nil
 			}
 
 			return resp.JSON200, waitForServicesStatusDone, nil
@@ -252,6 +253,11 @@ func waitForProjectServicesActive(
 	}
 
 	if _, err := stateConf.WaitForStateContext(ctx); err != nil {
+		// Only a timeout means the services stayed unhealthy; other errors have their own cause.
+		var timeoutErr *retry.TimeoutError
+		if last := lastUnhealthyErr.Load(); last != nil && errors.As(err, &timeoutErr) {
+			err = errors.Join(err, *last)
+		}
 		return diag.Diagnostics{diag.NewErrorDiagnostic(
 			unhealthySummary,
 			fmt.Sprintf("Project %s %s did not become active within timeout: %s", projectRef, serviceLabel, err),

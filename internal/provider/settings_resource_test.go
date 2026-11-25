@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/compare"
 	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -1387,5 +1388,193 @@ func TestReadStorageConfigNullDatabasePoolMode(t *testing.T) {
 				t.Errorf("%s: read-only key %q leaked into state", name, k)
 			}
 		}
+	}
+}
+
+func TestServicesForSettings(t *testing.T) {
+	block := jsontypes.NewNormalizedValue(`{"a":1}`)
+	changed := jsontypes.NewNormalizedValue(`{"a":2}`)
+	null := jsontypes.NewNormalizedNull()
+	allNull := SettingsResourceModel{
+		Database: null, Pooler: null, Network: null, Storage: null, Auth: null, Api: null,
+		SslEnforcement: types.BoolNull(),
+	}
+
+	withBlocks := func(edit func(*SettingsResourceModel)) SettingsResourceModel {
+		m := allNull
+		edit(&m)
+		return m
+	}
+
+	tests := map[string]struct {
+		plan  SettingsResourceModel
+		state *SettingsResourceModel
+		want  []api.V1GetServicesHealthParamsServices
+	}{
+		"no blocks": {plan: allNull, want: nil},
+		"create with api, auth and storage": {
+			plan: withBlocks(func(m *SettingsResourceModel) { m.Api, m.Auth, m.Storage = block, block, block }),
+			want: []api.V1GetServicesHealthParamsServices{
+				api.V1GetServicesHealthParamsServicesRest,
+				api.V1GetServicesHealthParamsServicesAuth,
+				api.V1GetServicesHealthParamsServicesStorage,
+			},
+		},
+		"database, network and ssl share db": {
+			plan: withBlocks(func(m *SettingsResourceModel) {
+				m.Database, m.Network, m.SslEnforcement = block, block, types.BoolValue(true)
+			}),
+			want: []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesDb},
+		},
+		"update counts only changed blocks": {
+			plan:  withBlocks(func(m *SettingsResourceModel) { m.Api, m.Auth = block, changed }),
+			state: Ptr(withBlocks(func(m *SettingsResourceModel) { m.Api, m.Auth = block, block })),
+			want:  []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesAuth},
+		},
+		"pooler is never written": {
+			plan: withBlocks(func(m *SettingsResourceModel) { m.Pooler = block }),
+			want: nil,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := servicesForSettings(tc.plan, tc.state)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("servicesForSettings() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A service the configured settings don't touch must not block the apply (issue #395).
+func TestAccSettingsResource_WaitsOnlyForServicesItWrites(t *testing.T) {
+	defer gock.OffAll()
+
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+	// Only a request for exactly the db service matches; asking about realtime would be unmatched.
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+			return reflect.DeepEqual(req.URL.Query()["services"], []string{"db"}), nil
+		}).
+		Reply(http.StatusOK).
+		JSON([]api.V1ServiceHealthResponse{
+			{Name: api.V1ServiceHealthResponseNameDb, Status: api.ACTIVEHEALTHY, Healthy: true},
+		})
+	gock.New(defaultApiEndpoint).
+		Post(networkRestrictionsApiPath).
+		Reply(http.StatusCreated).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"})},
+		})
+	gock.New(defaultApiEndpoint).
+		Get(networkRestrictionsApiPath).
+		Reply(http.StatusOK).
+		JSON(api.NetworkRestrictionsResponse{
+			Config: api.NetworkRestrictionsRequest{DbAllowedCidrs: Ptr([]string{"0.0.0.0/0"})},
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref = %q
+  network = jsonencode({
+    restrictions = ["0.0.0.0/0"]
+  })
+}
+`, testProjectRef),
+				Check: resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
+			},
+		},
+	})
+
+	if !gock.IsDone() {
+		t.Fatalf("unconsumed mocks: %v", gock.Pending())
+	}
+}
+
+// Covers issue #395 end to end: an apply that writes only auth ignores other services,
+// keeps polling while auth is briefly unhealthy, and succeeds once it recovers.
+func TestAccSettingsResource_RidesOutBriefUnhealthyService(t *testing.T) {
+	defer gock.OffAll()
+
+	onlyAuth := func(req *http.Request, _ *gock.Request) (bool, error) {
+		return reflect.DeepEqual(req.URL.Query()["services"], []string{"auth"}), nil
+	}
+	authConfig := api.AuthConfigResponse{
+		SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+		MailerOtpExp:      3600,
+		MfaPhoneOtpLength: 6,
+		SmsOtpLength:      6,
+		SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+	}
+
+	// Register sub-paths before the project path: gock matches paths as regexes.
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		AddMatcher(onlyAuth).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.V1ServiceHealthResponse{
+			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Service health check failed"}`)},
+		})
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		AddMatcher(onlyAuth).
+		Reply(http.StatusOK).
+		JSON([]api.V1ServiceHealthResponse{
+			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		})
+	gock.New(defaultApiEndpoint).
+		Patch(authConfigApiPath).
+		AddMatcher(matchJSONBody(t, map[string]any{"site_url": "http://localhost:3000"})).
+		Reply(http.StatusOK).
+		JSON(authConfig)
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
+		Reply(http.StatusOK).
+		JSON(authConfig)
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref = %q
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+  })
+  timeouts {
+    create = "1m"
+  }
+}
+`, testProjectRef),
+				Check: resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
+			},
+		},
+	})
+
+	if !gock.IsDone() {
+		t.Fatalf("unconsumed mocks: %v", gock.Pending())
 	}
 }

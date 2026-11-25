@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -244,12 +245,14 @@ func (r *ThirdPartyAuthResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	resp.Diagnostics.Append(waitForProjectActive(ctx, data.ProjectRef.ValueString(), r.client, createTimeout)...)
+	// Both waits share the configured timeout instead of each getting the full duration.
+	deadline := time.Now().Add(createTimeout)
+	resp.Diagnostics.Append(waitForProjectActive(ctx, data.ProjectRef.ValueString(), r.client, time.Until(deadline))...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(waitForAuthServiceActive(ctx, data.ProjectRef.ValueString(), r.client, createTimeout)...)
+	resp.Diagnostics.Append(waitForAuthServiceActive(ctx, data.ProjectRef.ValueString(), r.client, time.Until(deadline))...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
