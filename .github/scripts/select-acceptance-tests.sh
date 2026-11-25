@@ -50,9 +50,11 @@ fi
 names=()
 while IFS= read -r file; do
   if [[ $file =~ $resource_file ]]; then
+    # A deleted file has nothing left to test.
+    [ -f "$file" ] || continue
     test_file="internal/provider/${BASH_REMATCH[1]}_test.go"
-    # A deleted resource has no test file left to select from.
-    [ -f "$test_file" ] || continue
+    # A resource that cannot be mapped to acceptance tests runs everything, not nothing.
+    [ -f "$test_file" ] || run_all
     while IFS= read -r name; do
       names+=("$name")
     done < <(sed -nE 's/^func (TestAcc[A-Za-z0-9_]*)\(.*/\1/p' "$test_file")
@@ -61,9 +63,9 @@ while IFS= read -r file; do
   fi
 done <<< "$relevant"
 
+# Nothing could be mapped to a test, for example because only deleted files changed.
 if [ ${#names[@]} -eq 0 ]; then
-  emit false TestAcc
-  exit 0
+  run_all
 fi
 
 unique=$(printf '%s\n' "${names[@]}" | sort -u | paste -sd'|' -)
