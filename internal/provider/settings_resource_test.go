@@ -129,6 +129,8 @@ func TestAccSettingsResource_basic(t *testing.T) {
 		"api": api, "auth": auth, "database": database, "storage": storage,
 	})
 
+	// Uses resource.Test instead of resource.ParallelTest until we resolve the inconsistent
+	// behavior when this resource is tested in parallel.
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
@@ -218,6 +220,8 @@ func TestAccSettingsResource_update(t *testing.T) {
 		}
 	}
 
+	// Uses resource.Test instead of resource.ParallelTest until we resolve the inconsistent
+	// behavior when this resource is tested in parallel.
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
@@ -280,6 +284,8 @@ func TestAccSettingsResource_smtpPass(t *testing.T) {
 		},
 	})
 
+	// Uses resource.Test instead of resource.ParallelTest until we resolve the inconsistent
+	// behavior when this resource is tested in parallel.
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
@@ -319,6 +325,8 @@ func TestAccSettingsResource_apple(t *testing.T) {
 		"external_apple_email_optional":        false,
 	}
 
+	// Uses resource.Test instead of resource.ParallelTest until we resolve the inconsistent
+	// behavior when this resource is tested in parallel.
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
@@ -347,6 +355,8 @@ func TestAccSettingsResource_database(t *testing.T) {
 		"statement_timeout":  "10s",
 	}
 
+	// Uses resource.Test instead of resource.ParallelTest until we resolve the inconsistent
+	// behavior when this resource is tested in parallel.
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
@@ -376,6 +386,8 @@ func TestAccSettingsResource_ssl(t *testing.T) {
 		return vars
 	}
 
+	// Uses resource.Test instead of resource.ParallelTest until we resolve the inconsistent
+	// behavior when this resource is tested in parallel.
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
