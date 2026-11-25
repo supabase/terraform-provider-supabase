@@ -1503,3 +1503,78 @@ resource "supabase_settings" "test" {
 		t.Fatalf("unconsumed mocks: %v", gock.Pending())
 	}
 }
+
+// Covers issue #395 end to end: an apply that writes only auth ignores other services,
+// keeps polling while auth is briefly unhealthy, and succeeds once it recovers.
+func TestAccSettingsResource_RidesOutBriefUnhealthyService(t *testing.T) {
+	defer gock.OffAll()
+
+	onlyAuth := func(req *http.Request, _ *gock.Request) (bool, error) {
+		return reflect.DeepEqual(req.URL.Query()["services"], []string{"auth"}), nil
+	}
+	authConfig := api.AuthConfigResponse{
+		SiteUrl:           nullable.NewNullableWithValue("http://localhost:3000"),
+		MailerOtpExp:      3600,
+		MfaPhoneOtpLength: 6,
+		SmsOtpLength:      6,
+		SmtpAdminEmail:    nullable.NewNullNullable[openapi_types.Email](),
+	}
+
+	// Register sub-paths before the project path: gock matches paths as regexes.
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		AddMatcher(onlyAuth).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON([]api.V1ServiceHealthResponse{
+			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Service health check failed"}`)},
+		})
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		AddMatcher(onlyAuth).
+		Reply(http.StatusOK).
+		JSON([]api.V1ServiceHealthResponse{
+			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		})
+	gock.New(defaultApiEndpoint).
+		Patch(authConfigApiPath).
+		AddMatcher(matchJSONBody(t, map[string]any{"site_url": "http://localhost:3000"})).
+		Reply(http.StatusOK).
+		JSON(authConfig)
+	gock.New(defaultApiEndpoint).
+		Get(authConfigApiPath).
+		Reply(http.StatusOK).
+		JSON(authConfig)
+	gock.New(defaultApiEndpoint).
+		Get(projectApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1ProjectWithDatabaseResponse{
+			Id:     testProjectRef,
+			Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
+		})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "supabase_settings" "test" {
+  project_ref = %q
+  auth = jsonencode({
+    site_url = "http://localhost:3000"
+  })
+  timeouts {
+    create = "1m"
+  }
+}
+`, testProjectRef),
+				Check: resource.TestCheckResourceAttr("supabase_settings.test", "id", testProjectRef),
+			},
+		},
+	})
+
+	if !gock.IsDone() {
+		t.Fatalf("unconsumed mocks: %v", gock.Pending())
+	}
+}
