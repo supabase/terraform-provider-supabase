@@ -6,9 +6,9 @@ on:
   push:
     branches:
       - main
-  # Weekly, to catch advisories published between changes.
+  # Nightly, to catch advisories published between changes.
   schedule:
-    - cron: "17 8 * * 1"
+    - cron: "17 8 * * *"
   workflow_dispatch:
 
 permissions:
