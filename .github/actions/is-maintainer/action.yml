@@ -1,0 +1,33 @@
+name: Is maintainer
+description: Checks whether a GitHub user is listed in the maintainers file.
+
+inputs:
+  username:
+    description: GitHub username to look up.
+    required: true
+  maintainers-file:
+    description: Path to a file with one maintainer username per line.
+    required: false
+    default: .github/MAINTAINERS
+
+outputs:
+  is-maintainer:
+    description: '"true" when the user is listed in the maintainers file, otherwise "false".'
+    value: ${{ steps.check.outputs.is-maintainer }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      env:
+        USERNAME: ${{ inputs.username }}
+        MAINTAINERS_FILE: ${{ inputs.maintainers-file }}
+      run: |
+        # An empty username would match blank lines, so reject it first.
+        if [ -n "$USERNAME" ] && grep -v '^[[:space:]]*#' "$MAINTAINERS_FILE" | tr -d '[:blank:]\r' | grep -Fxiq -- "$USERNAME"; then
+          echo "is-maintainer=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "is-maintainer=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::$USERNAME is not listed in $MAINTAINERS_FILE, so acceptance tests are skipped."
+        fi

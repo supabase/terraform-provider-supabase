@@ -1,0 +1,7 @@
+# GitHub usernames, one per line, whose pull requests run the acceptance tests.
+# Matching is case-insensitive. Blank lines and lines starting with # are ignored.
+JEETDESAI25
+savme
+jharley
+johnsonaj
+mujudev
