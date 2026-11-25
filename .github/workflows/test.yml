@@ -87,11 +87,32 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: bash .github/scripts/select-acceptance-tests.sh
 
+  # Only pull requests from listed maintainers run acceptance tests. The list is read from the
+  # base commit so a pull request cannot add its own author to it.
+  maintainer:
+    name: Check maintainer
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      is-maintainer: ${{ steps.check.outputs.is-maintainer }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - id: check
+        uses: ./.github/actions/is-maintainer
+        with:
+          username: ${{ github.event.pull_request.user.login }}
+
   # Run acceptance tests with the latest stable Terraform CLI
   testacc:
     name: Terraform Provider Acceptance Tests (changes)
-    needs: [build, changes]
-    if: github.event_name == 'pull_request' && needs.changes.outputs.acceptance == 'true'
+    needs: [build, changes, maintainer]
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.acceptance == 'true' &&
+      needs.maintainer.outputs.is-maintainer == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 121
     steps:
