@@ -179,13 +179,10 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	resp.Diagnostics.Append(waitForProjectActive(ctx, data.ProjectRef.ValueString(), r.client, createTimeout)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
+	// All waits share the configured timeout instead of each getting the full duration.
+	deadline := time.Now().Add(createTimeout)
 	services := servicesForSettings(data, nil)
-	resp.Diagnostics.Append(waitForServicesActive(ctx, data.ProjectRef.ValueString(), r.client, services, createTimeout)...)
+	resp.Diagnostics.Append(waitForProjectAndServicesActive(ctx, data.ProjectRef.ValueString(), r.client, services, deadline)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -208,7 +205,7 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 		resp.Diagnostics.Append(updateStorageConfig(ctx, &data, r.client)...)
 	}
 	if !data.SslEnforcement.IsNull() && !data.SslEnforcement.IsUnknown() {
-		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &data, r.client, services, createTimeout)...)
+		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &data, r.client, services, deadline)...)
 	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
@@ -315,13 +312,10 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	resp.Diagnostics.Append(waitForProjectActive(ctx, planData.ProjectRef.ValueString(), r.client, updateTimeout)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
+	// All waits share the configured timeout instead of each getting the full duration.
+	deadline := time.Now().Add(updateTimeout)
 	services := servicesForSettings(planData, &stateData)
-	resp.Diagnostics.Append(waitForServicesActive(ctx, planData.ProjectRef.ValueString(), r.client, services, updateTimeout)...)
+	resp.Diagnostics.Append(waitForProjectAndServicesActive(ctx, planData.ProjectRef.ValueString(), r.client, services, deadline)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -344,7 +338,7 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 		resp.Diagnostics.Append(updateStorageConfig(ctx, &planData, r.client)...)
 	}
 	if !planData.SslEnforcement.IsNull() && !planData.SslEnforcement.IsUnknown() && !planData.SslEnforcement.Equal(stateData.SslEnforcement) {
-		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &planData, r.client, services, updateTimeout)...)
+		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &planData, r.client, services, deadline)...)
 	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
@@ -602,7 +596,7 @@ func readSslEnforcementConfig(ctx context.Context, state *SettingsResourceModel,
 	return nil
 }
 
-func updateSslEnforcementConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses, services []api.V1GetServicesHealthParamsServices, timeout time.Duration) diag.Diagnostics {
+func updateSslEnforcementConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses, services []api.V1GetServicesHealthParamsServices, deadline time.Time) diag.Diagnostics {
 	desired := plan.SslEnforcement.ValueBool()
 	var body api.SslEnforcementRequest
 	body.RequestedConfig.Database = desired
@@ -632,7 +626,7 @@ func updateSslEnforcementConfig(ctx context.Context, plan *SettingsResourceModel
 	stateConf := &retry.StateChangeConf{
 		Pending: []string{sslEnforcementStatusPending},
 		Target:  []string{sslEnforcementStatusApplied},
-		Timeout: timeout,
+		Timeout: time.Until(deadline),
 		Refresh: func() (any, string, error) {
 			getResp, err := client.V1GetSslEnforcementConfigWithResponse(ctx, projectRef)
 			if err != nil {
@@ -659,7 +653,7 @@ func updateSslEnforcementConfig(ctx context.Context, plan *SettingsResourceModel
 	}
 	plan.SslEnforcement = types.BoolValue(desired)
 	// Wait for the services this apply writes to recover from the database reboot.
-	return waitForServicesActive(ctx, projectRef, client, services, timeout)
+	return waitForServicesActive(ctx, projectRef, client, services, time.Until(deadline))
 }
 
 func parseConfig(field jsontypes.Normalized, config any) (jsontypes.Normalized, error) {

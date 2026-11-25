@@ -643,3 +643,60 @@ func TestWaitForServicesActive_OnlyRestWithDataApiDisabledSkipsHealthCheck(t *te
 		t.Fatalf("unconsumed mocks: %v", gock.Pending())
 	}
 }
+
+func TestWaitForProjectAndServicesActive_SharesOneDeadline(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	const projectReadyAfter = 4 * time.Minute
+
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		projectReady := func(*http.Request, *gock.Request) (bool, error) {
+			return time.Since(start) >= projectReadyAfter, nil
+		}
+		projectNotReady := func(*http.Request, *gock.Request) (bool, error) {
+			return time.Since(start) < projectReadyAfter, nil
+		}
+
+		// Register health first: gock matches paths as regexes, so the project mocks would also match /health.
+		gock.New(defaultApiEndpoint).
+			Get(healthApiPath).
+			Persist().
+			Reply(http.StatusOK).
+			JSON([]api.V1ServiceHealthResponse{
+				{Name: api.V1ServiceHealthResponseNameAuth, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Service health check failed"}`)},
+			})
+		gock.New(defaultApiEndpoint).
+			Get(projectApiPath).
+			AddMatcher(projectNotReady).
+			Persist().
+			Reply(http.StatusOK).
+			JSON(api.V1ProjectWithDatabaseResponse{Id: testProjectRef, Status: api.V1ProjectWithDatabaseResponseStatusCOMINGUP})
+		gock.New(defaultApiEndpoint).
+			Get(projectApiPath).
+			AddMatcher(projectReady).
+			Persist().
+			Reply(http.StatusOK).
+			JSON(api.V1ProjectWithDatabaseResponse{Id: testProjectRef, Status: api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY})
+
+		client, err := api.NewClientWithResponses(defaultApiEndpoint)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		services := []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesAuth}
+		diags := waitForProjectAndServicesActive(t.Context(), testProjectRef, client, services, start.Add(defaultWaitTimeout))
+		if !diags.HasError() {
+			t.Fatal("Expected error for unhealthy service, got success")
+		}
+		if detail := diags.Errors()[0].Detail(); !strings.Contains(detail, "unhealthy service auth: Service health check failed") {
+			t.Errorf("Expected the unhealthy service in the error, got: %s", detail)
+		}
+		// Allow for one poll interval past the deadline, but not a second full timeout.
+		if elapsed := time.Since(start); elapsed > defaultWaitTimeout+time.Minute {
+			t.Errorf("Expected the project and services waits to share %s, took %s", defaultWaitTimeout, elapsed)
+		}
+	})
+}

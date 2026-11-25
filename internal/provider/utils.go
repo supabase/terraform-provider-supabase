@@ -176,6 +176,14 @@ func waitForServicesActive(ctx context.Context, projectRef string, client *api.C
 	return waitForProjectServicesActive(ctx, projectRef, client, timeout, getServices, "services", "Project Services Unhealthy")
 }
 
+// waitForProjectAndServicesActive waits for the project and then the given services, sharing one deadline.
+func waitForProjectAndServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, services []api.V1GetServicesHealthParamsServices, deadline time.Time) diag.Diagnostics {
+	if diags := waitForProjectActive(ctx, projectRef, client, time.Until(deadline)); diags.HasError() {
+		return diags
+	}
+	return waitForServicesActive(ctx, projectRef, client, services, time.Until(deadline))
+}
+
 func waitForAuthServiceActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
 	getServices := func() []api.V1GetServicesHealthParamsServices {
 		return []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesAuth}
