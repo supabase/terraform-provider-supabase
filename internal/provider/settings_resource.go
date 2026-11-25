@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -183,7 +184,8 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	resp.Diagnostics.Append(waitForServicesActive(ctx, data.ProjectRef.ValueString(), r.client, createTimeout)...)
+	services := servicesForSettings(data, nil)
+	resp.Diagnostics.Append(waitForServicesActive(ctx, data.ProjectRef.ValueString(), r.client, services, createTimeout)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -206,7 +208,7 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 		resp.Diagnostics.Append(updateStorageConfig(ctx, &data, r.client)...)
 	}
 	if !data.SslEnforcement.IsNull() && !data.SslEnforcement.IsUnknown() {
-		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &data, r.client, createTimeout)...)
+		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &data, r.client, services, createTimeout)...)
 	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
@@ -221,6 +223,35 @@ func (r *SettingsResource) Create(ctx context.Context, req resource.CreateReques
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// settingsServices maps each writable settings block to the service that must be healthy before it is written.
+var settingsServices = []struct {
+	block   func(SettingsResourceModel) attr.Value
+	service api.V1GetServicesHealthParamsServices
+}{
+	{func(m SettingsResourceModel) attr.Value { return m.Database }, api.V1GetServicesHealthParamsServicesDb},
+	{func(m SettingsResourceModel) attr.Value { return m.Network }, api.V1GetServicesHealthParamsServicesDb},
+	{func(m SettingsResourceModel) attr.Value { return m.Api }, api.V1GetServicesHealthParamsServicesRest},
+	{func(m SettingsResourceModel) attr.Value { return m.Auth }, api.V1GetServicesHealthParamsServicesAuth},
+	{func(m SettingsResourceModel) attr.Value { return m.Storage }, api.V1GetServicesHealthParamsServicesStorage},
+	{func(m SettingsResourceModel) attr.Value { return m.SslEnforcement }, api.V1GetServicesHealthParamsServicesDb},
+}
+
+// servicesForSettings returns the services that must be healthy before the planned settings are written.
+// With a prior state, only blocks that differ from it count, matching what Update writes.
+func servicesForSettings(plan SettingsResourceModel, state *SettingsResourceModel) []api.V1GetServicesHealthParamsServices {
+	var services []api.V1GetServicesHealthParamsServices
+	for _, s := range settingsServices {
+		value := s.block(plan)
+		if value.IsNull() || (state != nil && value.Equal(s.block(*state))) {
+			continue
+		}
+		if !slices.Contains(services, s.service) {
+			services = append(services, s.service)
+		}
+	}
+	return services
 }
 
 func (r *SettingsResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -289,7 +320,8 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	resp.Diagnostics.Append(waitForServicesActive(ctx, planData.ProjectRef.ValueString(), r.client, updateTimeout)...)
+	services := servicesForSettings(planData, &stateData)
+	resp.Diagnostics.Append(waitForServicesActive(ctx, planData.ProjectRef.ValueString(), r.client, services, updateTimeout)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -312,7 +344,7 @@ func (r *SettingsResource) Update(ctx context.Context, req resource.UpdateReques
 		resp.Diagnostics.Append(updateStorageConfig(ctx, &planData, r.client)...)
 	}
 	if !planData.SslEnforcement.IsNull() && !planData.SslEnforcement.IsUnknown() && !planData.SslEnforcement.Equal(stateData.SslEnforcement) {
-		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &planData, r.client, updateTimeout)...)
+		resp.Diagnostics.Append(updateSslEnforcementConfig(ctx, &planData, r.client, services, updateTimeout)...)
 	}
 	// TODO: update all settings above concurrently
 	if resp.Diagnostics.HasError() {
@@ -570,7 +602,7 @@ func readSslEnforcementConfig(ctx context.Context, state *SettingsResourceModel,
 	return nil
 }
 
-func updateSslEnforcementConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
+func updateSslEnforcementConfig(ctx context.Context, plan *SettingsResourceModel, client *api.ClientWithResponses, services []api.V1GetServicesHealthParamsServices, timeout time.Duration) diag.Diagnostics {
 	desired := plan.SslEnforcement.ValueBool()
 	var body api.SslEnforcementRequest
 	body.RequestedConfig.Database = desired
@@ -626,8 +658,8 @@ func updateSslEnforcementConfig(ctx context.Context, plan *SettingsResourceModel
 			fmt.Sprintf("SSL enforcement did not converge for project %s: %s", projectRef, err))}
 	}
 	plan.SslEnforcement = types.BoolValue(desired)
-	// Wait for ancillary services after the database reboot.
-	return waitForServicesActive(ctx, projectRef, client, timeout)
+	// Wait for the services this apply writes to recover from the database reboot.
+	return waitForServicesActive(ctx, projectRef, client, services, timeout)
 }
 
 func parseConfig(field jsontypes.Normalized, config any) (jsontypes.Normalized, error) {

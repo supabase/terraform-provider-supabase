@@ -220,7 +220,7 @@ func TestWaitForServicesActive_AllHealthy(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, allProjectServices, 5*time.Minute)
 	if diags.HasError() {
 		t.Errorf("Expected success, got errors: %v", diags)
 	}
@@ -258,7 +258,7 @@ func TestWaitForServicesActive_UnhealthyFailsAfterTimeout(t *testing.T) {
 
 		start := time.Now()
 		// The default timeout is long enough to exceed StateChangeConf's 20 "not found" checks.
-		diags := waitForServicesActive(t.Context(), testProjectRef, client, defaultWaitTimeout)
+		diags := waitForServicesActive(t.Context(), testProjectRef, client, allProjectServices, defaultWaitTimeout)
 		if !diags.HasError() {
 			t.Fatal("Expected error for unhealthy service, got success")
 		}
@@ -369,7 +369,7 @@ func TestWaitForServicesActive_ContinuesWhenPostgrestConfigFails(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, allProjectServices, 5*time.Minute)
 	if diags.HasError() {
 		t.Errorf("Expected success when PostgREST config fails but services are healthy, got errors: %v", diags)
 	}
@@ -410,7 +410,7 @@ func TestWaitForServicesActive_SkipsRestWhenDataApiDisabled(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, allProjectServices, 5*time.Minute)
 	if diags.HasError() {
 		t.Errorf("Expected success when data API is disabled, got errors: %v", diags)
 	}
@@ -505,7 +505,7 @@ func TestWaitForServicesActive_TransientErrorsKeepsPolling(t *testing.T) {
 			t.Fatalf("Failed to create client: %v", err)
 		}
 
-		diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
+		diags := waitForServicesActive(t.Context(), testProjectRef, client, allProjectServices, 5*time.Minute)
 		if diags.HasError() {
 			t.Errorf("Expected success, got errors: %v", diags)
 		}
@@ -547,7 +547,7 @@ func TestWaitForServicesActive_HTTPErrorOmitsEarlierUnhealthyReason(t *testing.T
 			t.Fatalf("Failed to create client: %v", err)
 		}
 
-		diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
+		diags := waitForServicesActive(t.Context(), testProjectRef, client, allProjectServices, 5*time.Minute)
 		if !diags.HasError() {
 			t.Fatal("Expected error for forbidden response, got success")
 		}
@@ -560,6 +560,85 @@ func TestWaitForServicesActive_HTTPErrorOmitsEarlierUnhealthyReason(t *testing.T
 		}
 	})
 
+	if !gock.IsDone() {
+		t.Fatalf("unconsumed mocks: %v", gock.Pending())
+	}
+}
+
+func TestWaitForServicesActive_NoServicesSkipsHealthCheck(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, nil, 5*time.Minute)
+	if diags.HasError() {
+		t.Errorf("Expected success, got errors: %v", diags)
+	}
+	if gock.HasUnmatchedRequest() {
+		t.Errorf("Expected no requests, got: %v", gock.GetUnmatchedRequests())
+	}
+}
+
+func TestWaitForServicesActive_ChecksOnlyGivenServices(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	// No PostgREST config mock: without rest in the list, the Data API lookup must be skipped.
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		MatchParam("services", "^auth$").
+		Reply(http.StatusOK).
+		JSON([]api.V1ServiceHealthResponse{
+			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
+		})
+
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	services := []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesAuth}
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, services, 5*time.Minute)
+	if diags.HasError() {
+		t.Errorf("Expected success, got errors: %v", diags)
+	}
+	if gock.HasUnmatchedRequest() {
+		t.Errorf("Expected no unmatched requests, got: %v", gock.GetUnmatchedRequests())
+	}
+	if !gock.IsDone() {
+		t.Fatalf("unconsumed mocks: %v", gock.Pending())
+	}
+}
+
+func TestWaitForServicesActive_OnlyRestWithDataApiDisabledSkipsHealthCheck(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{DbSchema: ""})
+
+	client, err := api.NewClientWithResponses(defaultApiEndpoint)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	services := []api.V1GetServicesHealthParamsServices{api.V1GetServicesHealthParamsServicesRest}
+	diags := waitForServicesActive(t.Context(), testProjectRef, client, services, 5*time.Minute)
+	if diags.HasError() {
+		t.Errorf("Expected success, got errors: %v", diags)
+	}
+	if gock.HasUnmatchedRequest() {
+		t.Errorf("Expected no health request, got: %v", gock.GetUnmatchedRequests())
+	}
 	if !gock.IsDone() {
 		t.Fatalf("unconsumed mocks: %v", gock.Pending())
 	}
