@@ -226,13 +226,14 @@ func TestWaitForServicesActive_AllHealthy(t *testing.T) {
 	}
 }
 
-func TestWaitForServicesActive_UnhealthyFails(t *testing.T) {
+func TestWaitForServicesActive_UnhealthyFailsAfterTimeout(t *testing.T) {
 	defer gock.OffAll()
 	gock.InterceptClient(http.DefaultClient)
 	defer gock.RestoreClient(http.DefaultClient)
 
 	gock.New(defaultApiEndpoint).
 		Get(postgrestApiPath).
+		Persist().
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbSchema:          "public,storage,graphql_public",
@@ -242,21 +243,32 @@ func TestWaitForServicesActive_UnhealthyFails(t *testing.T) {
 
 	gock.New(defaultApiEndpoint).
 		Get(healthApiPath).
+		Persist().
 		Reply(http.StatusOK).
 		JSON([]api.V1ServiceHealthResponse{
 			{Name: api.V1ServiceHealthResponseNameDb, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "fatal"}`)},
 			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
 		})
 
-	client, err := api.NewClientWithResponses(defaultApiEndpoint)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		client, err := api.NewClientWithResponses(defaultApiEndpoint)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
 
-	diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
-	if !diags.HasError() {
-		t.Error("Expected error for unhealthy service, got success")
-	}
+		start := time.Now()
+		// The default timeout is long enough to exceed StateChangeConf's 20 "not found" checks.
+		diags := waitForServicesActive(t.Context(), testProjectRef, client, defaultWaitTimeout)
+		if !diags.HasError() {
+			t.Fatal("Expected error for unhealthy service, got success")
+		}
+		if elapsed := time.Since(start); elapsed < defaultWaitTimeout {
+			t.Errorf("Expected polling until the timeout, gave up after %s", elapsed)
+		}
+		if detail := diags.Errors()[0].Detail(); !strings.Contains(detail, "unhealthy service db: fatal") {
+			t.Errorf("Expected the unhealthy reason in the error, got: %s", detail)
+		}
+	})
 }
 
 func TestIsDataApiDisabled_EmptySchema(t *testing.T) {
@@ -462,13 +474,17 @@ func TestWaitForServicesActive_TransientErrorsKeepsPolling(t *testing.T) {
 		},
 		{
 			{Name: api.V1ServiceHealthResponseNamePooler, Status: api.ACTIVEHEALTHY, Healthy: true},
+			{Name: api.V1ServiceHealthResponseNameRealtime, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Service health check failed"}`)},
+		},
+		{
+			{Name: api.V1ServiceHealthResponseNamePooler, Status: api.ACTIVEHEALTHY, Healthy: true},
 			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
 		},
 	}
 
 	gock.New(defaultApiEndpoint).
 		Get(postgrestApiPath).
-		Persist().
+		Times(len(responses)).
 		Reply(http.StatusOK).
 		JSON(api.V1PostgrestConfigResponse{
 			DbSchema:          "public,storage,graphql_public",
@@ -494,4 +510,57 @@ func TestWaitForServicesActive_TransientErrorsKeepsPolling(t *testing.T) {
 			t.Errorf("Expected success, got errors: %v", diags)
 		}
 	})
+
+	if !gock.IsDone() {
+		t.Fatalf("unconsumed mocks: %v", gock.Pending())
+	}
+}
+
+func TestWaitForServicesActive_HTTPErrorOmitsEarlierUnhealthyReason(t *testing.T) {
+	defer gock.OffAll()
+	gock.InterceptClient(http.DefaultClient)
+	defer gock.RestoreClient(http.DefaultClient)
+
+	gock.New(defaultApiEndpoint).
+		Get(postgrestApiPath).
+		Times(2).
+		Reply(http.StatusOK).
+		JSON(api.V1PostgrestConfigResponse{
+			DbSchema:          "public,storage,graphql_public",
+			DbExtraSearchPath: "public,extensions",
+			MaxRows:           1000,
+		})
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		Reply(http.StatusOK).
+		JSON([]api.V1ServiceHealthResponse{
+			{Name: api.V1ServiceHealthResponseNameRealtime, Status: api.UNHEALTHY, Healthy: false, Error: Ptr(`{"error": "Service health check failed"}`)},
+		})
+	gock.New(defaultApiEndpoint).
+		Get(healthApiPath).
+		Reply(http.StatusForbidden).
+		JSON(map[string]string{"message": "forbidden"})
+
+	synctest.Test(t, func(t *testing.T) {
+		client, err := api.NewClientWithResponses(defaultApiEndpoint)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		diags := waitForServicesActive(t.Context(), testProjectRef, client, 5*time.Minute)
+		if !diags.HasError() {
+			t.Fatal("Expected error for forbidden response, got success")
+		}
+		detail := diags.Errors()[0].Detail()
+		if !strings.Contains(detail, "unexpected status 403") {
+			t.Errorf("Expected the HTTP error in the detail, got: %s", detail)
+		}
+		if strings.Contains(detail, "realtime") {
+			t.Errorf("Expected no stale unhealthy reason for a non-timeout error, got: %s", detail)
+		}
+	})
+
+	if !gock.IsDone() {
+		t.Fatalf("unconsumed mocks: %v", gock.Pending())
+	}
 }
