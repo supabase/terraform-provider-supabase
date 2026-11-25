@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # The acceptance test command, shared by the testacc and testacc-main jobs so they
+  # cannot drift. Each job adds its own -parallel and -run flags.
+  ACC_TEST_CMD: go test -v -cover -timeout 120m ./internal/provider/
+
 jobs:
   # Ensure project builds before running testing matrix
   build:
@@ -109,8 +114,8 @@ jobs:
           PARALLEL: "3"
           RUN: ${{ needs.changes.outputs.run }}
         run: |
-          echo "go test -v -cover -timeout 120m -parallel $PARALLEL -run '$RUN' ./internal/provider/" > "$RUNNER_TEMP/testacc.cmd"
-          go test -v -cover -timeout 120m -parallel "$PARALLEL" -run "$RUN" ./internal/provider/ 2>&1 | tee "$RUNNER_TEMP/testacc.log"
+          echo "$ACC_TEST_CMD -parallel $PARALLEL -run '$RUN'" > "$RUNNER_TEMP/testacc.cmd"
+          $ACC_TEST_CMD -parallel "$PARALLEL" -run "$RUN" 2>&1 | tee "$RUNNER_TEMP/testacc.log"
       - name: Write results to the job summary
         if: ${{ !cancelled() }}
         env:
@@ -140,4 +145,4 @@ jobs:
       - env:
           TF_ACC: "1"
           PARALLEL: "1" # parallel of 1 to serialize tests
-        run: go test -v -cover -timeout 120m -parallel "$PARALLEL" -run=TestAcc ./internal/provider/
+        run: $ACC_TEST_CMD -parallel "$PARALLEL" -run=TestAcc
