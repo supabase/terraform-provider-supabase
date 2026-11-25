@@ -156,14 +156,17 @@ func isDataApiDisabled(ctx context.Context, projectRef string, client *api.Clien
 	return strings.TrimSpace(httpResp.JSON200.DbSchema) == "", nil
 }
 
-func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, timeout time.Duration) diag.Diagnostics {
+// waitForServicesActive waits until the given services are healthy. The rest service is skipped while the Data API is disabled.
+func waitForServicesActive(ctx context.Context, projectRef string, client *api.ClientWithResponses, services []api.V1GetServicesHealthParamsServices, timeout time.Duration) diag.Diagnostics {
 	getServices := func() []api.V1GetServicesHealthParamsServices {
-		services := allProjectServices
+		if !slices.Contains(services, api.V1GetServicesHealthParamsServicesRest) {
+			return services
+		}
 		disabled, diags := isDataApiDisabled(ctx, projectRef, client)
 		if diags.HasError() {
 			tflog.Warn(ctx, fmt.Sprintf("Failed to check Data API status for project %s, continuing to check all services: %s", projectRef, diags.Errors()))
 		} else if disabled {
-			services = slices.DeleteFunc(slices.Clone(allProjectServices), func(s api.V1GetServicesHealthParamsServices) bool {
+			return slices.DeleteFunc(slices.Clone(services), func(s api.V1GetServicesHealthParamsServices) bool {
 				return s == api.V1GetServicesHealthParamsServicesRest
 			})
 		}
@@ -198,7 +201,12 @@ func waitForProjectServicesActive(
 		Pending: []string{waitForServicesStatusPending},
 		Target:  []string{waitForServicesStatusDone},
 		Refresh: func() (any, string, error) {
-			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{Services: getServices()})
+			services := getServices()
+			// The health endpoint rejects an empty service list, and there is nothing to wait for.
+			if len(services) == 0 {
+				return services, waitForServicesStatusDone, nil
+			}
+			resp, err := client.V1GetServicesHealthWithResponse(ctx, projectRef, &api.V1GetServicesHealthParams{Services: services})
 			if err != nil {
 				return nil, "", fmt.Errorf("failed to get health information for project %s: %w", serviceLabel, err)
 			}
