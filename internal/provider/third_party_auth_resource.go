@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,8 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -28,6 +25,8 @@ import (
 	"github.com/oapi-codegen/nullable"
 	"github.com/supabase/cli/pkg/api"
 	"github.com/supabase/terraform-provider-supabase/internal/errs"
+	"github.com/supabase/terraform-provider-supabase/internal/jsonvalue"
+	"github.com/supabase/terraform-provider-supabase/internal/planmodifiers"
 )
 
 var (
@@ -49,7 +48,7 @@ type ThirdPartyAuthResourceModel struct {
 	OIDCIssuerURL types.String         `tfsdk:"oidc_issuer_url"`
 	JWKSURL       types.String         `tfsdk:"jwks_url"`
 	CustomJWKS    jsontypes.Normalized `tfsdk:"custom_jwks"`
-	Id            types.String         `tfsdk:"id"`
+	ID            types.String         `tfsdk:"id"`
 	Type          types.String         `tfsdk:"type"`
 	ResolvedJWKS  jsontypes.Normalized `tfsdk:"resolved_jwks"`
 	InsertedAt    types.String         `tfsdk:"inserted_at"`
@@ -58,11 +57,8 @@ type ThirdPartyAuthResourceModel struct {
 	Timeouts      timeouts.Value       `tfsdk:"timeouts"`
 }
 
+// publicJWKSValidator rejects custom_jwks values that aren't a JWKS of public keys.
 type publicJWKSValidator struct{}
-
-// RequiresReplace uses raw string equality, not jsontypes.Normalized semantic
-// equality, so compare JSON here to avoid replacement for formatting only changes.
-type semanticJSONRequiresReplaceModifier struct{}
 
 func (v publicJWKSValidator) Description(ctx context.Context) string {
 	return v.MarkdownDescription(ctx)
@@ -78,51 +74,8 @@ func (v publicJWKSValidator) ValidateString(_ context.Context, req validator.Str
 	}
 
 	if err := validatePublicJWKS([]byte(req.ConfigValue.ValueString())); err != nil {
-		resp.Diagnostics.AddAttributeError(
-			req.Path,
-			"Invalid Public JWKS",
-			err.Error(),
-		)
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid Public JWKS", err.Error())
 	}
-}
-
-func (m semanticJSONRequiresReplaceModifier) Description(ctx context.Context) string {
-	return m.MarkdownDescription(ctx)
-}
-
-func (m semanticJSONRequiresReplaceModifier) MarkdownDescription(_ context.Context) string {
-	return "Requires replacement when the JSON value changes semantically."
-}
-
-func (m semanticJSONRequiresReplaceModifier) PlanModifyString(_ context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
-		return
-	}
-
-	if req.PlanValue.Equal(req.StateValue) {
-		return
-	}
-
-	if req.PlanValue.IsUnknown() || req.StateValue.IsUnknown() || req.PlanValue.IsNull() || req.StateValue.IsNull() {
-		resp.RequiresReplace = true
-		return
-	}
-
-	equal, err := jsonStringsEqual(req.PlanValue.ValueString(), req.StateValue.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddAttributeError(
-			req.Path,
-			"Semantic JSON Equality Error",
-			fmt.Sprintf("Unable to compare JSON values: %s", err),
-		)
-		return
-	}
-
-	if equal {
-		return
-	}
-
-	resp.RequiresReplace = true
 }
 
 func (r *ThirdPartyAuthResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -180,7 +133,7 @@ func (r *ThirdPartyAuthResource) Schema(ctx context.Context, req resource.Schema
 					"Private or symmetric key material is rejected. Reformatting the JSON doesn't replace the integration.",
 				Optional: true,
 				PlanModifiers: []planmodifier.String{
-					semanticJSONRequiresReplaceModifier{},
+					planmodifiers.RequiresReplaceIfJSONChanged(),
 				},
 				Validators: []validator.String{
 					publicJWKSValidator{},
@@ -268,18 +221,12 @@ func (r *ThirdPartyAuthResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	body, diags := buildThirdPartyAuthCreateBody(&data)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if err := createThirdPartyAuth(ctx, &data, body, r.client); err != nil {
+	if err := createThirdPartyAuth(ctx, &data, r.client); err != nil {
 		resp.Diagnostics.AddError("Client Error", err.Error())
 		return
 	}
 
-	tflog.Trace(ctx, "created third party auth")
+	tflog.Trace(ctx, "created third-party auth integration")
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -303,7 +250,7 @@ func (r *ThirdPartyAuthResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	tflog.Trace(ctx, "read third party auth")
+	tflog.Trace(ctx, "read third-party auth integration")
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -317,9 +264,16 @@ func (r *ThirdPartyAuthResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	if !plan.ProjectRef.Equal(state.ProjectRef) ||
-		!plan.OIDCIssuerURL.Equal(state.OIDCIssuerURL) ||
-		!plan.JWKSURL.Equal(state.JWKSURL) {
+	sameJWKS, err := sameJSONValue(plan.CustomJWKS.StringValue, state.CustomJWKS.StringValue)
+	if err != nil {
+		resp.Diagnostics.AddAttributeError(path.Root("custom_jwks"), "Semantic JSON Equality Error", fmt.Sprintf("Unable to compare JSON values: %s", err))
+		return
+	}
+
+	// Every configurable attribute requires replacement, so Terraform only calls Update for timeout changes
+	// and formatting-only custom_jwks changes. This check guards against an in-place change the API can't make.
+	if !plan.ProjectRef.Equal(state.ProjectRef) || !plan.OIDCIssuerURL.Equal(state.OIDCIssuerURL) ||
+		!plan.JWKSURL.Equal(state.JWKSURL) || !sameJWKS {
 		resp.Diagnostics.AddError(
 			"Update Not Supported",
 			"The Supabase Management API does not support updating third-party auth integrations. Changing any configurable attribute should replace this resource.",
@@ -327,39 +281,11 @@ func (r *ThirdPartyAuthResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	if !plan.CustomJWKS.Equal(state.CustomJWKS) {
-		if plan.CustomJWKS.IsUnknown() || state.CustomJWKS.IsUnknown() || plan.CustomJWKS.IsNull() || state.CustomJWKS.IsNull() {
-			resp.Diagnostics.AddError(
-				"Update Not Supported",
-				"The Supabase Management API does not support updating third-party auth integrations. Changing any configurable attribute should replace this resource.",
-			)
-			return
-		}
-
-		equal, err := jsonStringsEqual(plan.CustomJWKS.ValueString(), state.CustomJWKS.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("custom_jwks"),
-				"Semantic JSON Equality Error",
-				fmt.Sprintf("Unable to compare JSON values: %s", err),
-			)
-			return
-		}
-		if !equal {
-			resp.Diagnostics.AddError(
-				"Update Not Supported",
-				"The Supabase Management API does not support updating third-party auth integrations. Changing any configurable attribute should replace this resource.",
-			)
-			return
-		}
-
-		state.CustomJWKS = plan.CustomJWKS
-	}
-
-	// Timeout-only and semantic-only custom_jwks changes do not require a Supabase API call.
+	// Neither change needs an API call, so only the state changes.
+	state.CustomJWKS = plan.CustomJWKS
 	state.Timeouts = plan.Timeouts
 
-	tflog.Trace(ctx, "updated third party auth local state")
+	tflog.Trace(ctx, "updated third-party auth integration in state")
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -377,47 +303,34 @@ func (r *ThirdPartyAuthResource) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 
-	tflog.Trace(ctx, "deleted third party auth")
+	tflog.Trace(ctx, "deleted third-party auth integration")
 }
 
+// ImportState sets the IDs from the import ID. Terraform then calls Read, which fills in the rest
+// and reports a missing integration.
 func (r *ThirdPartyAuthResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	parts := strings.SplitN(req.ID, "/", 2)
 	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
-		resp.Diagnostics.AddError(
-			"Invalid Import ID",
-			fmt.Sprintf("Expected import ID in format 'project_ref/tpa_id', got: %s", req.ID),
-		)
+		resp.Diagnostics.AddError("Invalid Import ID", fmt.Sprintf("Expected import ID in format '<project_ref>/<third_party_auth_id>', got: %s", req.ID))
+		return
+	}
+	projectRef, id := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	if _, err := uuid.Parse(id); err != nil {
+		resp.Diagnostics.AddError("Invalid Import ID", fmt.Sprintf("Expected import ID in format '<project_ref>/<third_party_auth_id>' with a UUID as the ID, got: %s", req.ID))
 		return
 	}
 
-	data := ThirdPartyAuthResourceModel{
-		ProjectRef: types.StringValue(strings.TrimSpace(parts[0])),
-		Id:         types.StringValue(strings.TrimSpace(parts[1])),
-		Timeouts: timeouts.Value{
-			Object: types.ObjectNull(map[string]attr.Type{
-				"create": types.StringType,
-			}),
-		},
-	}
-
-	err := readThirdPartyAuth(ctx, &data, r.client)
-	if errs.NotFound(err) {
-		resp.Diagnostics.AddError(
-			"Resource Not Found",
-			fmt.Sprintf("Third-party auth integration %s does not exist in project %s", data.Id.ValueString(), data.ProjectRef.ValueString()),
-		)
-		return
-	}
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", err.Error())
-		return
-	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_ref"), projectRef)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 }
 
 // createThirdPartyAuth creates the integration and copies the response into data.
-func createThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, body api.V1CreateProjectTpaIntegrationJSONRequestBody, client *api.ClientWithResponses) error {
+func createThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, client *api.ClientWithResponses) error {
+	body, err := buildThirdPartyAuthCreateBody(data)
+	if err != nil {
+		return err
+	}
+
 	httpResp, err := client.V1CreateProjectTpaIntegrationWithResponse(ctx, data.ProjectRef.ValueString(), body)
 	if err != nil {
 		return fmt.Errorf("unable to create third-party auth integration, got error: %w", err)
@@ -431,17 +344,17 @@ func createThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel
 
 // readThirdPartyAuth reads the integration into data. It returns an errs.NotFoundErr when the integration does not exist.
 func readThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, client *api.ClientWithResponses) error {
-	tpaID, err := parseThirdPartyAuthUUID(data.Id.ValueString())
+	id, err := parseThirdPartyAuthID(data.ID.ValueString())
 	if err != nil {
 		return err
 	}
 
-	httpResp, err := client.V1GetProjectTpaIntegrationWithResponse(ctx, data.ProjectRef.ValueString(), tpaID)
+	httpResp, err := client.V1GetProjectTpaIntegrationWithResponse(ctx, data.ProjectRef.ValueString(), id)
 	if err != nil {
 		return fmt.Errorf("unable to read third-party auth integration, got error: %w", err)
 	}
 	if httpResp.StatusCode() == http.StatusNotFound {
-		return errs.NewNotFoundErr("third-party auth integration", data.Id.ValueString())
+		return errs.NewNotFoundErr("third-party auth integration", data.ID.ValueString())
 	}
 	if httpResp.JSON200 == nil {
 		return fmt.Errorf("unable to read third-party auth integration, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
@@ -452,12 +365,12 @@ func readThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, 
 
 // deleteThirdPartyAuth deletes the integration. An integration that is already gone counts as deleted.
 func deleteThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, client *api.ClientWithResponses) error {
-	tpaID, err := parseThirdPartyAuthUUID(data.Id.ValueString())
+	id, err := parseThirdPartyAuthID(data.ID.ValueString())
 	if err != nil {
 		return err
 	}
 
-	httpResp, err := client.V1DeleteProjectTpaIntegrationWithResponse(ctx, data.ProjectRef.ValueString(), tpaID)
+	httpResp, err := client.V1DeleteProjectTpaIntegrationWithResponse(ctx, data.ProjectRef.ValueString(), id)
 	if err != nil {
 		return fmt.Errorf("unable to delete third-party auth integration, got error: %w", err)
 	}
@@ -471,64 +384,29 @@ func deleteThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel
 	return nil
 }
 
-func buildThirdPartyAuthCreateBody(data *ThirdPartyAuthResourceModel) (api.V1CreateProjectTpaIntegrationJSONRequestBody, diag.Diagnostics) {
-	body := api.V1CreateProjectTpaIntegrationJSONRequestBody{}
-	sourceCount := 0
-
-	if data.OIDCIssuerURL.IsUnknown() {
-		return body, diag.Diagnostics{diag.NewErrorDiagnostic(
-			"Unknown Third-Party Auth Source",
-			"The provider cannot create a third-party auth integration with an unknown oidc_issuer_url value.",
-		)}
-	}
+// buildThirdPartyAuthCreateBody builds the create request from the planned key source.
+// The config validators already ensure exactly one source is set.
+func buildThirdPartyAuthCreateBody(data *ThirdPartyAuthResourceModel) (api.V1CreateProjectTpaIntegrationJSONRequestBody, error) {
+	var body api.V1CreateProjectTpaIntegrationJSONRequestBody
 	if !data.OIDCIssuerURL.IsNull() {
-		sourceCount++
 		body.OidcIssuerUrl = Ptr(data.OIDCIssuerURL.ValueString())
 	}
-
-	if data.JWKSURL.IsUnknown() {
-		return body, diag.Diagnostics{diag.NewErrorDiagnostic(
-			"Unknown Third-Party Auth Source",
-			"The provider cannot create a third-party auth integration with an unknown jwks_url value.",
-		)}
-	}
 	if !data.JWKSURL.IsNull() {
-		sourceCount++
 		body.JwksUrl = Ptr(data.JWKSURL.ValueString())
 	}
-
-	if data.CustomJWKS.IsUnknown() {
-		return body, diag.Diagnostics{diag.NewErrorDiagnostic(
-			"Unknown Third-Party Auth Source",
-			"The provider cannot create a third-party auth integration with an unknown custom_jwks value.",
-		)}
-	}
 	if !data.CustomJWKS.IsNull() {
-		sourceCount++
-		if err := validatePublicJWKS([]byte(data.CustomJWKS.ValueString())); err != nil {
-			return body, diag.Diagnostics{diag.NewErrorDiagnostic("Invalid Public JWKS", err.Error())}
-		}
-
 		var customJWKS any
-		if diags := data.CustomJWKS.Unmarshal(&customJWKS); diags.HasError() {
-			return body, diags
+		if err := json.Unmarshal([]byte(data.CustomJWKS.ValueString()), &customJWKS); err != nil {
+			return body, fmt.Errorf("unable to parse custom_jwks, got error: %w", err)
 		}
 		body.CustomJwks = &customJWKS
 	}
-
-	if sourceCount != 1 {
-		return body, diag.Diagnostics{diag.NewErrorDiagnostic(
-			"Invalid Third-Party Auth Source",
-			"Exactly one of oidc_issuer_url, jwks_url, or custom_jwks must be configured with a known non-null value.",
-		)}
-	}
-
 	return body, nil
 }
 
 // setThirdPartyAuthState copies an API response into data.
 func setThirdPartyAuthState(ctx context.Context, data *ThirdPartyAuthResourceModel, tpa api.ThirdPartyAuth) error {
-	data.Id = types.StringValue(tpa.Id.String())
+	data.ID = types.StringValue(tpa.Id.String())
 	data.Type = types.StringValue(tpa.Type)
 	data.OIDCIssuerURL = NullableToString(tpa.OidcIssuerUrl)
 	data.JWKSURL = NullableToString(tpa.JwksUrl)
@@ -573,38 +451,25 @@ func publicJWKSFromResponse(ctx context.Context, attribute string, value nullabl
 	return jsontypes.NewNormalizedValue(string(raw)), nil
 }
 
-func parseThirdPartyAuthUUID(value string) (uuid.UUID, error) {
-	targetID, err := uuid.Parse(value)
+func parseThirdPartyAuthID(value string) (uuid.UUID, error) {
+	id, err := uuid.Parse(value)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("invalid third-party auth integration ID %q: %w", value, err)
 	}
-	return targetID, nil
+	return id, nil
 }
 
-func jsonStringsEqual(left, right string) (bool, error) {
-	normalizedLeft, err := normalizeJSON(left)
-	if err != nil {
-		return false, err
+// sameJSONValue reports whether two string values hold the same JSON, ignoring formatting.
+// A null or unknown value only matches an identical value.
+func sameJSONValue(left, right types.String) (bool, error) {
+	if left.Equal(right) {
+		return true, nil
+	}
+	if left.IsNull() || left.IsUnknown() || right.IsNull() || right.IsUnknown() {
+		return false, nil
 	}
 
-	normalizedRight, err := normalizeJSON(right)
-	if err != nil {
-		return false, err
-	}
-
-	return bytes.Equal(normalizedLeft, normalizedRight), nil
-}
-
-func normalizeJSON(value string) ([]byte, error) {
-	decoder := json.NewDecoder(strings.NewReader(value))
-	decoder.UseNumber()
-
-	var decoded any
-	if err := decoder.Decode(&decoded); err != nil {
-		return nil, err
-	}
-
-	return json.Marshal(decoded)
+	return jsonvalue.Equal(left.ValueString(), right.ValueString())
 }
 
 // jwkPrivateMembers are the JWK members that hold private or symmetric key material.

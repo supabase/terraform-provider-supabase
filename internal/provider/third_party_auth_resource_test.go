@@ -13,11 +13,15 @@ import (
 	"os"
 	"reflect"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/compare"
 	"github.com/hashicorp/terraform-plugin-testing/config"
@@ -416,121 +420,228 @@ resource "supabase_third_party_auth" "test" {
 	})
 }
 
-func TestBuildThirdPartyAuthCreateBody_CustomJWKSRejectsPrivateMaterial(t *testing.T) {
-	data := &ThirdPartyAuthResourceModel{
-		ProjectRef: types.StringValue(testProjectRef),
-		CustomJWKS: jsontypes.NewNormalizedValue(`{
-  "keys": [
-    {
-      "kty": "RSA",
-      "kid": "test-key",
-      "n": "abc",
-      "e": "AQAB",
-      "d": "private"
-    }
-  ]
-}`),
-	}
-
-	_, diags := buildThirdPartyAuthCreateBody(data)
-	if !diags.HasError() {
-		t.Fatalf("expected diagnostics for private custom_jwks")
-	}
-	if got := diags.Errors()[0].Detail(); !strings.Contains(got, "private or symmetric JWK member") {
-		t.Fatalf("expected private JWK diagnostic, got %q", got)
-	}
-}
-
-func TestBuildThirdPartyAuthCreateBody_RejectsUnknownSources(t *testing.T) {
-	testCases := []struct {
-		name string
-		data ThirdPartyAuthResourceModel
-	}{
-		{
-			name: "oidc_issuer_url",
-			data: ThirdPartyAuthResourceModel{
-				ProjectRef:    types.StringValue(testProjectRef),
-				OIDCIssuerURL: types.StringUnknown(),
-				JWKSURL:       types.StringNull(),
-				CustomJWKS:    jsontypes.NewNormalizedNull(),
-			},
-		},
-		{
-			name: "jwks_url",
-			data: ThirdPartyAuthResourceModel{
-				ProjectRef:    types.StringValue(testProjectRef),
-				OIDCIssuerURL: types.StringNull(),
-				JWKSURL:       types.StringUnknown(),
-				CustomJWKS:    jsontypes.NewNormalizedNull(),
-			},
-		},
-		{
-			name: "custom_jwks",
-			data: ThirdPartyAuthResourceModel{
-				ProjectRef:    types.StringValue(testProjectRef),
-				OIDCIssuerURL: types.StringNull(),
-				JWKSURL:       types.StringNull(),
-				CustomJWKS:    jsontypes.NewNormalizedUnknown(),
-			},
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			_, diags := buildThirdPartyAuthCreateBody(&testCase.data)
-			if !diags.HasError() {
-				t.Fatalf("expected diagnostics for unknown %s", testCase.name)
-			}
-			if got := diags.Errors()[0].Summary(); got != "Unknown Third-Party Auth Source" {
-				t.Fatalf("expected Unknown Third-Party Auth Source diagnostic, got %q", got)
-			}
-		})
-	}
-}
-
-func TestBuildThirdPartyAuthCreateBody_RequiresExactlyOneKnownSource(t *testing.T) {
-	testCases := []struct {
-		name string
-		data ThirdPartyAuthResourceModel
-	}{
-		{
-			name: "zero",
-			data: ThirdPartyAuthResourceModel{
-				ProjectRef:    types.StringValue(testProjectRef),
-				OIDCIssuerURL: types.StringNull(),
-				JWKSURL:       types.StringNull(),
-				CustomJWKS:    jsontypes.NewNormalizedNull(),
-			},
-		},
-		{
-			name: "multiple",
-			data: ThirdPartyAuthResourceModel{
-				ProjectRef:    types.StringValue(testProjectRef),
-				OIDCIssuerURL: types.StringValue("https://issuer.example.com"),
-				JWKSURL:       types.StringValue("https://issuer.example.com/.well-known/jwks.json"),
-				CustomJWKS:    jsontypes.NewNormalizedNull(),
-			},
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			_, diags := buildThirdPartyAuthCreateBody(&testCase.data)
-			if !diags.HasError() {
-				t.Fatalf("expected diagnostics for %s sources", testCase.name)
-			}
-			if got := diags.Errors()[0].Summary(); got != "Invalid Third-Party Auth Source" {
-				t.Fatalf("expected Invalid Third-Party Auth Source diagnostic, got %q", got)
-			}
-		})
-	}
-}
-
 const (
 	testPublicJWKS        = `{"keys":[{"kty":"RSA","kid":"k","n":"abc","e":"AQAB"}]}`
+	testPublicJWKSPretty  = "{\n  \"keys\": [\n    {\"kty\": \"RSA\", \"kid\": \"k\", \"n\": \"abc\", \"e\": \"AQAB\"}\n  ]\n}"
 	testPrivateJWKS       = `{"keys":[{"kty":"RSA","kid":"k","n":"abc","e":"AQAB","d":"private"}]}`
+	testOtherPublicJWKS   = `{"keys":[{"kty":"RSA","kid":"other","n":"def","e":"AQAB"}]}`
 	testOIDCIssuerExample = "https://issuer.example.com"
 )
+
+func TestThirdPartyAuthResource_CustomJWKSRequiresReplaceOnlyWhenJSONChanges(t *testing.T) {
+	t.Parallel()
+	s := testResourceSchema(t, NewThirdPartyAuthResource())
+	attribute, ok := s.Attributes["custom_jwks"].(schema.StringAttribute)
+	if !ok {
+		t.Fatal("custom_jwks is not a string attribute")
+	}
+
+	testCases := map[string]struct {
+		state, plan string
+		want        bool
+	}{
+		"unchanged":       {state: testPublicJWKS, plan: testPublicJWKS},
+		"formatting only": {state: testPublicJWKS, plan: testPublicJWKSPretty},
+		"different keys":  {state: testPublicJWKS, plan: testOtherPublicJWKS, want: true},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			req := planmodifier.StringRequest{
+				Path:       path.Root("custom_jwks"),
+				StateValue: types.StringValue(tc.state),
+				PlanValue:  types.StringValue(tc.plan),
+				State:      tfsdk.State{Schema: s, Raw: testObjectValue(t, s, map[string]string{"custom_jwks": tc.state})},
+				Plan:       tfsdk.Plan{Schema: s, Raw: testObjectValue(t, s, map[string]string{"custom_jwks": tc.plan})},
+			}
+			resp := &planmodifier.StringResponse{PlanValue: req.PlanValue}
+			for _, m := range attribute.PlanModifiers {
+				m.PlanModifyString(t.Context(), req, resp)
+			}
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected error: %v", resp.Diagnostics)
+			}
+			if resp.RequiresReplace != tc.want {
+				t.Fatalf("RequiresReplace = %v, want %v", resp.RequiresReplace, tc.want)
+			}
+		})
+	}
+}
+
+func TestThirdPartyAuthResource_UpdateOnlyAcceptsFormattingChanges(t *testing.T) {
+	t.Parallel()
+	s := testResourceSchema(t, NewThirdPartyAuthResource())
+
+	testCases := map[string]struct {
+		planJWKS string
+		wantErr  bool
+	}{
+		"formatting only": {planJWKS: testPublicJWKSPretty},
+		"different keys":  {planJWKS: testOtherPublicJWKS, wantErr: true},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			base := map[string]string{"project_ref": testProjectRef, "id": testThirdPartyAuthUUID}
+			withJWKS := func(jwks string) map[string]string {
+				attrs := maps.Clone(base)
+				attrs["custom_jwks"] = jwks
+				return attrs
+			}
+			stateRaw := testObjectValue(t, s, withJWKS(testPublicJWKS))
+			req := fwresource.UpdateRequest{
+				State: tfsdk.State{Schema: s, Raw: stateRaw},
+				Plan:  tfsdk.Plan{Schema: s, Raw: testObjectValue(t, s, withJWKS(tc.planJWKS))},
+			}
+			resp := &fwresource.UpdateResponse{State: tfsdk.State{Schema: s, Raw: stateRaw}}
+
+			// A nil client proves Update never calls the API.
+			(&ThirdPartyAuthResource{}).Update(t.Context(), req, resp)
+
+			if tc.wantErr {
+				if !resp.Diagnostics.HasError() || resp.Diagnostics.Errors()[0].Summary() != "Update Not Supported" {
+					t.Fatalf("expected Update Not Supported, got %v", resp.Diagnostics)
+				}
+				return
+			}
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected error: %v", resp.Diagnostics)
+			}
+			var got jsontypes.Normalized
+			resp.Diagnostics.Append(resp.State.GetAttribute(t.Context(), path.Root("custom_jwks"), &got)...)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("reading state: %v", resp.Diagnostics)
+			}
+			if got.ValueString() != tc.planJWKS {
+				t.Fatalf("state custom_jwks = %q, want the planned value %q", got.ValueString(), tc.planJWKS)
+			}
+		})
+	}
+}
+
+func TestSameJSONValue(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		left, right types.String
+		want        bool
+		wantErr     bool
+	}{
+		"identical":        {left: types.StringValue(`{"a":1}`), right: types.StringValue(`{"a":1}`), want: true},
+		"formatting only":  {left: types.StringValue(`{"a": 1, "b": [1, 2]}`), right: types.StringValue(`{"b":[1,2],"a":1}`), want: true},
+		"different values": {left: types.StringValue(`{"a":1}`), right: types.StringValue(`{"a":2}`)},
+		"both null":        {left: types.StringNull(), right: types.StringNull(), want: true},
+		"null and value":   {left: types.StringNull(), right: types.StringValue(`{}`)},
+		"unknown":          {left: types.StringUnknown(), right: types.StringValue(`{}`)},
+		"invalid JSON":     {left: types.StringValue(`{`), right: types.StringValue(`{}`), wantErr: true},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := sameJSONValue(tc.left, tc.right)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Fatalf("sameJSONValue() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestThirdPartyAuthResource_ImportState(t *testing.T) {
+	t.Parallel()
+	s := testResourceSchema(t, NewThirdPartyAuthResource())
+
+	testCases := map[string]struct {
+		id      string
+		wantErr bool
+	}{
+		"valid":             {id: testProjectRef + "/" + testThirdPartyAuthUUID},
+		"valid with spaces": {id: " " + testProjectRef + " / " + testThirdPartyAuthUUID + " "},
+		"empty":             {id: "", wantErr: true},
+		"no slash":          {id: testProjectRef, wantErr: true},
+		"empty ID":          {id: testProjectRef + "/", wantErr: true},
+		"empty project ref": {id: "/" + testThirdPartyAuthUUID, wantErr: true},
+		"blank project ref": {id: "  /" + testThirdPartyAuthUUID, wantErr: true},
+		"ID not a UUID":     {id: testProjectRef + "/not-a-uuid", wantErr: true},
+		"extra segment":     {id: testProjectRef + "/" + testThirdPartyAuthUUID + "/extra", wantErr: true},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			resp := &fwresource.ImportStateResponse{State: tfsdk.State{Schema: s, Raw: testObjectValue(t, s, nil)}}
+			// A nil client proves ImportState never calls the API: Terraform calls Read afterwards.
+			(&ThirdPartyAuthResource{}).ImportState(t.Context(), fwresource.ImportStateRequest{ID: tc.id}, resp)
+
+			if tc.wantErr {
+				if !resp.Diagnostics.HasError() || resp.Diagnostics.Errors()[0].Summary() != "Invalid Import ID" {
+					t.Fatalf("expected Invalid Import ID for %q, got %v", tc.id, resp.Diagnostics)
+				}
+				return
+			}
+			var id, projectRef types.String
+			resp.Diagnostics.Append(resp.State.GetAttribute(t.Context(), path.Root("id"), &id)...)
+			resp.Diagnostics.Append(resp.State.GetAttribute(t.Context(), path.Root("project_ref"), &projectRef)...)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected error: %v", resp.Diagnostics)
+			}
+			if id.ValueString() != testThirdPartyAuthUUID || projectRef.ValueString() != testProjectRef {
+				t.Fatalf("state id = %q, project_ref = %q; want %q and %q", id.ValueString(), projectRef.ValueString(), testThirdPartyAuthUUID, testProjectRef)
+			}
+		})
+	}
+}
+
+func TestBuildThirdPartyAuthCreateBody(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		data    ThirdPartyAuthResourceModel
+		want    api.V1CreateProjectTpaIntegrationJSONRequestBody
+		wantErr bool
+	}{
+		"oidc_issuer_url": {
+			data: ThirdPartyAuthResourceModel{OIDCIssuerURL: types.StringValue(testOIDCIssuerExample), JWKSURL: types.StringNull(), CustomJWKS: jsontypes.NewNormalizedNull()},
+			want: api.V1CreateProjectTpaIntegrationJSONRequestBody{OidcIssuerUrl: Ptr(testOIDCIssuerExample)},
+		},
+		"jwks_url": {
+			data: ThirdPartyAuthResourceModel{OIDCIssuerURL: types.StringNull(), JWKSURL: types.StringValue(testOIDCIssuerExample + "/jwks.json"), CustomJWKS: jsontypes.NewNormalizedNull()},
+			want: api.V1CreateProjectTpaIntegrationJSONRequestBody{JwksUrl: Ptr(testOIDCIssuerExample + "/jwks.json")},
+		},
+		"custom_jwks": {
+			data: ThirdPartyAuthResourceModel{OIDCIssuerURL: types.StringNull(), JWKSURL: types.StringNull(), CustomJWKS: jsontypes.NewNormalizedValue(testPublicJWKS)},
+			want: func() api.V1CreateProjectTpaIntegrationJSONRequestBody {
+				var jwks any
+				if err := json.Unmarshal([]byte(testPublicJWKS), &jwks); err != nil {
+					panic(err)
+				}
+				return api.V1CreateProjectTpaIntegrationJSONRequestBody{CustomJwks: &jwks}
+			}(),
+		},
+		"invalid custom_jwks": {
+			data:    ThirdPartyAuthResourceModel{OIDCIssuerURL: types.StringNull(), JWKSURL: types.StringNull(), CustomJWKS: jsontypes.NewNormalizedValue(`{`)},
+			wantErr: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := buildThirdPartyAuthCreateBody(&tc.data)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if !tc.wantErr && !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("body = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestSetThirdPartyAuthState(t *testing.T) {
 	t.Parallel()
@@ -620,21 +731,18 @@ func TestSetThirdPartyAuthState(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if data.Id.ValueString() != testThirdPartyAuthUUID {
-				t.Fatalf("ID = %q, want %q", data.Id.ValueString(), testThirdPartyAuthUUID)
+			if data.ID.ValueString() != testThirdPartyAuthUUID {
+				t.Fatalf("ID = %q, want %q", data.ID.ValueString(), testThirdPartyAuthUUID)
 			}
 			// Encoding sorts object keys, so compare the JSON rather than the raw strings.
-			sameJWKS := func(got, want jsontypes.Normalized) bool {
-				if got.IsNull() || want.IsNull() {
-					return got.IsNull() == want.IsNull()
-				}
-				equal, err := jsonStringsEqual(got.ValueString(), want.ValueString())
-				if err != nil {
-					t.Fatal(err)
-				}
-				return equal
+			sameCustom, err := sameJSONValue(data.CustomJWKS.StringValue, tc.wantCustom.StringValue)
+			if err != nil {
+				t.Fatal(err)
 			}
-			sameCustom, sameResolved := sameJWKS(data.CustomJWKS, tc.wantCustom), sameJWKS(data.ResolvedJWKS, tc.wantResolved)
+			sameResolved, err := sameJSONValue(data.ResolvedJWKS.StringValue, tc.wantResolved.StringValue)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !sameCustom || !sameResolved {
 				t.Fatalf("custom_jwks = %v, resolved_jwks = %v; want %v and %v", data.CustomJWKS, data.ResolvedJWKS, tc.wantCustom, tc.wantResolved)
 			}
