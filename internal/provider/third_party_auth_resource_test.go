@@ -406,6 +406,45 @@ func TestThirdPartyAuthResource_CustomJWKSUsesPublicJWKSValidator(t *testing.T) 
 	t.Fatal("custom_jwks does not use publicJWKSValidator")
 }
 
+func TestThirdPartyAuthResource_URLAttributesAreValidated(t *testing.T) {
+	t.Parallel()
+	s := testResourceSchema(t, NewThirdPartyAuthResource())
+
+	testCases := map[string]struct {
+		attribute string
+		value     string
+		wantErr   bool
+	}{
+		"issuer https":           {attribute: "oidc_issuer_url", value: "https://login.example.com"},
+		"issuer http":            {attribute: "oidc_issuer_url", value: "http://login.example.com", wantErr: true},
+		"issuer without scheme":  {attribute: "oidc_issuer_url", value: "login.example.com", wantErr: true},
+		"jwks_url https":         {attribute: "jwks_url", value: "https://login.example.com/.well-known/jwks.json"},
+		"jwks_url http":          {attribute: "jwks_url", value: "http://login.example.com/.well-known/jwks.json"},
+		"jwks_url other scheme":  {attribute: "jwks_url", value: "ftp://login.example.com/jwks.json", wantErr: true},
+		"jwks_url without host":  {attribute: "jwks_url", value: "https:///jwks.json", wantErr: true},
+		"jwks_url not a URL":     {attribute: "jwks_url", value: "not a url", wantErr: true},
+		"jwks_url relative path": {attribute: "jwks_url", value: "/.well-known/jwks.json", wantErr: true},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			attribute, ok := s.Attributes[tc.attribute].(schema.StringAttribute)
+			if !ok {
+				t.Fatalf("%s is not a string attribute", tc.attribute)
+			}
+			req := validator.StringRequest{Path: path.Root(tc.attribute), ConfigValue: types.StringValue(tc.value)}
+			resp := &validator.StringResponse{}
+			for _, v := range attribute.Validators {
+				v.ValidateString(t.Context(), req, resp)
+			}
+			if got := resp.Diagnostics.HasError(); got != tc.wantErr {
+				t.Fatalf("HasError() = %v, want %v: %v", got, tc.wantErr, resp.Diagnostics)
+			}
+		})
+	}
+}
+
 func TestPublicJWKSValidator(t *testing.T) {
 	t.Parallel()
 
