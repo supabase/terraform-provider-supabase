@@ -12,7 +12,7 @@ description: |-
 
 ## Example Usage
 
-Each example registers a provider by its OIDC issuer URL. The linked Supabase guide for each provider explains how to configure the provider itself, such as adding the `role` claim to its tokens.
+Most examples register a provider by its OIDC issuer URL. The linked Supabase guide for each provider explains how to configure the provider itself, such as adding the `role` claim to its tokens.
 
 ### Auth0
 
@@ -37,6 +37,12 @@ See [Clerk](https://supabase.com/docs/guides/auth/third-party/clerk).
 See [Firebase Auth](https://supabase.com/docs/guides/auth/third-party/firebase-auth).
 
 {{ tffile "examples/resources/supabase_third_party_auth/firebase.tf" }}
+
+### JWKS URL
+
+For a provider that publishes its signing keys at a URL but doesn't support OIDC discovery, or for keys you host yourself.
+
+{{ tffile "examples/resources/supabase_third_party_auth/jwks-url.tf" }}
 
 ### WorkOS
 

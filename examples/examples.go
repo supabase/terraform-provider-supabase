@@ -27,6 +27,8 @@ var (
 	ThirdPartyAuthClerkConfig string
 	//go:embed resources/supabase_third_party_auth/workos.tf
 	ThirdPartyAuthWorkOSConfig string
+	//go:embed resources/supabase_third_party_auth/jwks-url.tf
+	ThirdPartyAuthJWKSURLConfig string
 	//go:embed data-sources/supabase_branch/data-source.tf
 	BranchDataSourceConfig string
 	//go:embed data-sources/supabase_pooler/data-source.tf
