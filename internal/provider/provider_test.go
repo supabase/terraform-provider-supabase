@@ -33,6 +33,18 @@ var testAccProtoV6ProviderFactoriesActual = map[string]func() (tfprotov6.Provide
 	"supabase": providerserver.NewProtocol6WithError(New("test")()),
 }
 
+// offlineProviderConfig configures the provider in HCL instead of environment
+// variables, so tests that never reach the API can use resource.ParallelTest.
+// testAccPreCheck sets environment variables, which Go forbids in parallel tests.
+// The endpoint is a closed local port, so an accidental API call fails at once
+// and never reaches a real Supabase API with the fake token.
+const offlineProviderConfig = `
+provider "supabase" {
+  access_token = "test"
+  endpoint     = "http://127.0.0.1:1"
+}
+`
+
 func testAccPreCheck(t *testing.T) {
 	// You can add code here to run prior to any test case execution, for example assertions
 	// about the appropriate environment variables being set are common to see in a pre-check

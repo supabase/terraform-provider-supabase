@@ -17,6 +17,16 @@ var (
 	ApiKeyResourceConfig string
 	//go:embed resources/supabase_third_party_auth/resource.tf
 	ThirdPartyAuthResourceConfig string
+	//go:embed resources/supabase_third_party_auth/firebase.tf
+	ThirdPartyAuthFirebaseConfig string
+	//go:embed resources/supabase_third_party_auth/auth0.tf
+	ThirdPartyAuthAuth0Config string
+	//go:embed resources/supabase_third_party_auth/aws-cognito.tf
+	ThirdPartyAuthAWSCognitoConfig string
+	//go:embed resources/supabase_third_party_auth/clerk.tf
+	ThirdPartyAuthClerkConfig string
+	//go:embed resources/supabase_third_party_auth/workos.tf
+	ThirdPartyAuthWorkOSConfig string
 	//go:embed data-sources/supabase_branch/data-source.tf
 	BranchDataSourceConfig string
 	//go:embed data-sources/supabase_pooler/data-source.tf

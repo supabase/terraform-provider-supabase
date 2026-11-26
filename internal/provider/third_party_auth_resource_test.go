@@ -6,13 +6,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 	"math/big"
 	"net/http"
 	"os"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -21,6 +21,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/compare"
@@ -33,88 +34,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/oapi-codegen/nullable"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/examples"
 	"github.com/supabase/terraform-provider-supabase/internal/acctest"
-	"gopkg.in/h2non/gock.v1"
 )
 
-func thirdPartyAuthUUID(t *testing.T, value string) uuid.UUID {
-	t.Helper()
-
-	parsed, err := uuid.Parse(value)
-	if err != nil {
-		t.Fatalf("failed to parse test UUID: %v", err)
-	}
-	return parsed
-}
-
-func oidcThirdPartyAuthResponse(t *testing.T, issuerURL string) api.ThirdPartyAuth {
-	t.Helper()
-
-	return api.ThirdPartyAuth{
-		Id:            thirdPartyAuthUUID(t, testThirdPartyAuthUUID),
-		Type:          "oidc",
-		OidcIssuerUrl: nullable.NewNullableWithValue(issuerURL),
-		JwksUrl:       nullable.NewNullNullable[string](),
-		CustomJwks:    nullable.NewNullNullable[interface{}](),
-		ResolvedJwks: nullable.NewNullableWithValue[interface{}](map[string]any{
-			"keys": []any{
-				map[string]any{
-					"kty": "RSA",
-					"kid": "test-key",
-					"n":   "abc",
-					"e":   "AQAB",
-				},
-			},
-		}),
-		InsertedAt: "2026-01-01T00:00:00Z",
-		UpdatedAt:  "2026-01-01T00:00:00Z",
-		ResolvedAt: nullable.NewNullableWithValue("2026-01-01T00:01:00Z"),
-	}
-}
-
-func matchJSONBody(t *testing.T, expected map[string]any) func(*http.Request, *gock.Request) (bool, error) {
-	t.Helper()
-
-	return func(req *http.Request, _ *gock.Request) (bool, error) {
-		bodyBytes, err := io.ReadAll(req.Body)
-		if err != nil {
-			return false, err
-		}
-
-		var actual map[string]any
-		if err := json.Unmarshal(bodyBytes, &actual); err != nil {
-			return false, err
-		}
-
-		if !reflect.DeepEqual(actual, expected) {
-			return false, fmt.Errorf("unexpected request body: got %#v, want %#v", actual, expected)
-		}
-
-		return true, nil
-	}
-}
-
-func mockThirdPartyAuthCreateReadiness() {
-	gock.New(defaultApiEndpoint).
-		Get(projectApiPath).
-		Reply(http.StatusOK).
-		JSON(api.V1ProjectWithDatabaseResponse{
-			Id:             testProjectRef,
-			Name:           "test",
-			OrganizationId: "test-org",
-			Region:         "us-east-1",
-			Status:         api.V1ProjectWithDatabaseResponseStatusACTIVEHEALTHY,
-		})
-	gock.New(defaultApiEndpoint).
-		Get(healthApiPath).
-		Reply(http.StatusOK).
-		JSON([]api.V1ServiceHealthResponse{
-			{Name: api.V1ServiceHealthResponseNameAuth, Status: api.ACTIVEHEALTHY, Healthy: true},
-		})
-}
-
-// The API reports every integration as type "custom", whichever source
-// (oidc_issuer_url, jwks_url or custom_jwks) was configured.
+// The API derives the type from the configured URL. The live tests use Google's
+// issuer, which isn't one of the providers Supabase recognises, so they see "custom".
 const thirdPartyAuthAPIType = "custom"
 
 const (
@@ -178,14 +103,23 @@ func TestAccThirdPartyAuthResource_basic(t *testing.T) {
 	vars := testAccThirdPartyAuthLiveVariables(organizationID, acctest.RandomName(), config.Variables{
 		"oidc_issuer_url": config.StringVariable(thirdPartyAuthOIDCIssuer),
 	})
+	var projectRef, integrationID string
 
 	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
-			// Create and Read testing
+			// Create the integration and check every attribute.
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
 				ConfigVariables: vars,
+				Check: func(s *terraform.State) error {
+					rs, ok := s.RootModule().Resources[resourceName]
+					if !ok {
+						return fmt.Errorf("resource %s not found in state", resourceName)
+					}
+					projectRef, integrationID = rs.Primary.Attributes["project_ref"], rs.Primary.ID
+					return nil
+				},
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
@@ -208,7 +142,7 @@ func TestAccThirdPartyAuthResource_basic(t *testing.T) {
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("resolved_at"), knownvalue.NotNull()),
 				},
 			},
-			// ImportState testing
+			// Import it and check the imported state matches.
 			{
 				ConfigDirectory:   config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
 				ConfigVariables:   vars,
@@ -216,6 +150,48 @@ func TestAccThirdPartyAuthResource_basic(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateIdFunc: testAccThirdPartyAuthImportStateID(projectResourceName, resourceName),
+			},
+			// Importing an integration that doesn't exist fails with a clear error.
+			{
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
+				ConfigVariables: vars,
+				ResourceName:    resourceName,
+				ImportState:     true,
+				ImportStateIdFunc: func(s *terraform.State) (string, error) {
+					project, ok := s.RootModule().Resources[projectResourceName]
+					if !ok {
+						return "", fmt.Errorf("resource %s not found in state", projectResourceName)
+					}
+					return project.Primary.ID + "/" + uuid.NewString(), nil
+				},
+				ExpectError: regexp.MustCompile(`Cannot import non-existent remote object`),
+			},
+			// After the integration is deleted outside Terraform, Read removes it from state, so Terraform plans to
+			// create it again. The final destroy then deletes an integration that is already gone, which covers
+			// Delete treating a 404 as success.
+			{
+				PreConfig: func() {
+					client, err := sweeperClient()
+					if err != nil {
+						t.Fatal(err)
+					}
+					resp, err := client.V1DeleteProjectTpaIntegrationWithResponse(t.Context(), projectRef, uuid.MustParse(integrationID))
+					if err != nil {
+						t.Fatalf("deleting the integration outside Terraform: %v", err)
+					}
+					if resp.StatusCode() != http.StatusOK {
+						t.Fatalf("deleting the integration outside Terraform: got status %d: %s", resp.StatusCode(), resp.Body)
+					}
+				},
+				ConfigDirectory: config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
+				ConfigVariables: vars,
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(resourceName, plancheck.ResourceActionCreate),
+					},
+				},
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
 			},
 		},
 	})
@@ -285,11 +261,11 @@ func TestAccThirdPartyAuthResource_customJWKS(t *testing.T) {
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("custom_jwks"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("oidc_issuer_url"), knownvalue.Null()),
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("jwks_url"), knownvalue.Null()),
-					// inline keys are never resolved remotely, so the API returns no resolved JWKS
+					// Inline keys are never fetched from a URL, so the API returns no resolved JWKS.
 					statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("resolved_jwks"), knownvalue.Null()),
 				},
 			},
-			// Re-formatting the same JWKS updates in place (the string differs) but must not replace the resource
+			// Reformatting the same JWKS changes the string, so it updates in place, but it must not replace the resource.
 			{
 				ConfigDirectory: config.StaticDirectory("test-fixtures/ThirdPartyAuth/basic/"),
 				ConfigVariables: testAccThirdPartyAuthLiveVariables(organizationID, projectName, config.Variables{
@@ -341,13 +317,13 @@ func TestAccThirdPartyAuthResource_update(t *testing.T) {
 				config.Variables{"oidc_issuer_url": config.StringVariable(thirdPartyAuthOIDCIssuer)},
 				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("type"), knownvalue.StringExact(thirdPartyAuthAPIType)),
 			),
-			// oidc_issuer_url -> jwks_url
+			// Switching from oidc_issuer_url to jwks_url replaces the integration.
 			step(plancheck.ResourceActionDestroyBeforeCreate,
 				config.Variables{"jwks_url": config.StringVariable(thirdPartyAuthJWKSURL)},
 				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("type"), knownvalue.StringExact(thirdPartyAuthAPIType)),
 				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("oidc_issuer_url"), knownvalue.Null()),
 			),
-			// Changing the URL itself also replaces
+			// Changing the URL itself also replaces it.
 			step(plancheck.ResourceActionDestroyBeforeCreate,
 				config.Variables{"jwks_url": config.StringVariable("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")},
 				statecheck.ExpectKnownValue(resourceName, tfjsonpath.New("jwks_url"), knownvalue.StringExact("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")),
@@ -356,65 +332,25 @@ func TestAccThirdPartyAuthResource_update(t *testing.T) {
 	})
 }
 
-func TestAccThirdPartyAuthResource_ExactlyOneSourceRequired(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+// Plans the embedded documentation examples, so a broken example fails the tests
+// before it reaches the docs. Planning new resources makes no API calls, and the
+// examples' project ref is a placeholder, so this is the one plan-only test that
+// doesn't run against the live API.
+func TestAccThirdPartyAuthResource_example(t *testing.T) {
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactoriesActual,
 		Steps: []resource.TestStep{
 			{
-				Config: fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref = %q
-}
-`, testProjectRef),
-				ExpectError: regexp.MustCompile(`Exactly one of these attributes must be configured`),
-			},
-		},
-	})
-}
-
-func TestAccThirdPartyAuthResource_ExactlyOneSourceAllowed(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref     = %q
-  oidc_issuer_url = "https://issuer.example.com"
-  jwks_url        = "https://issuer.example.com/.well-known/jwks.json"
-}
-`, testProjectRef),
-				ExpectError: regexp.MustCompile(`Exactly one of these attributes must be configured`),
-			},
-		},
-	})
-}
-
-func TestAccThirdPartyAuthResource_CustomJWKSRejectsPrivateMaterial(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref = %q
-  custom_jwks = jsonencode({
-    keys = [
-      {
-        kty = "RSA"
-        kid = "test-key"
-        n   = "abc"
-        e   = "AQAB"
-        d   = "private"
-      }
-    ]
-  })
-}
-`, testProjectRef),
-				ExpectError: regexp.MustCompile(`private or symmetric JWK member`),
+				Config: offlineProviderConfig + strings.Join([]string{
+					examples.ThirdPartyAuthResourceConfig,
+					examples.ThirdPartyAuthFirebaseConfig,
+					examples.ThirdPartyAuthAuth0Config,
+					examples.ThirdPartyAuthAWSCognitoConfig,
+					examples.ThirdPartyAuthClerkConfig,
+					examples.ThirdPartyAuthWorkOSConfig,
+				}, "\n"),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
 			},
 		},
 	})
@@ -427,6 +363,84 @@ const (
 	testOtherPublicJWKS   = `{"keys":[{"kty":"RSA","kid":"other","n":"def","e":"AQAB"}]}`
 	testOIDCIssuerExample = "https://issuer.example.com"
 )
+
+func TestThirdPartyAuthResource_ConfigValidatorsRequireExactlyOneSource(t *testing.T) {
+	t.Parallel()
+	s := testResourceSchema(t, NewThirdPartyAuthResource())
+
+	testCases := map[string]struct {
+		attrs   map[string]string
+		wantErr bool
+	}{
+		"none":     {attrs: map[string]string{"project_ref": testProjectRef}, wantErr: true},
+		"one":      {attrs: map[string]string{"project_ref": testProjectRef, "oidc_issuer_url": testOIDCIssuerExample}},
+		"multiple": {attrs: map[string]string{"project_ref": testProjectRef, "oidc_issuer_url": testOIDCIssuerExample, "jwks_url": testOIDCIssuerExample + "/jwks.json"}, wantErr: true},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			req := fwresource.ValidateConfigRequest{Config: tfsdk.Config{Schema: s, Raw: testObjectValue(t, s, tc.attrs)}}
+			resp := &fwresource.ValidateConfigResponse{}
+			for _, v := range (&ThirdPartyAuthResource{}).ConfigValidators(t.Context()) {
+				v.ValidateResource(t.Context(), req, resp)
+			}
+			if got := resp.Diagnostics.HasError(); got != tc.wantErr {
+				t.Fatalf("HasError() = %v, want %v: %v", got, tc.wantErr, resp.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestThirdPartyAuthResource_CustomJWKSUsesPublicJWKSValidator(t *testing.T) {
+	t.Parallel()
+	attribute, ok := testResourceSchema(t, NewThirdPartyAuthResource()).Attributes["custom_jwks"].(schema.StringAttribute)
+	if !ok {
+		t.Fatal("custom_jwks is not a string attribute")
+	}
+	for _, v := range attribute.Validators {
+		if _, ok := v.(publicJWKSValidator); ok {
+			return
+		}
+	}
+	t.Fatal("custom_jwks does not use publicJWKSValidator")
+}
+
+func TestPublicJWKSValidator(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		value   types.String
+		wantErr string
+	}{
+		"null":           {value: types.StringNull()},
+		"unknown":        {value: types.StringUnknown()},
+		"public key":     {value: types.StringValue(testPublicJWKS)},
+		"private member": {value: types.StringValue(testPrivateJWKS), wantErr: `private or symmetric JWK member "d"`},
+		"symmetric key":  {value: types.StringValue(`{"keys":[{"kty":"oct","k":"secret"}]}`), wantErr: `private or symmetric JWK member "k"`},
+		"empty keys":     {value: types.StringValue(`{"keys":[]}`), wantErr: "at least one public JWK"},
+		"key not object": {value: types.StringValue(`{"keys":["nope"]}`), wantErr: "must be an object"},
+		"no keys":        {value: types.StringValue(`{}`), wantErr: "keys array"},
+		"not JSON":       {value: types.StringValue(`nope`), wantErr: "valid JSON"},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			resp := &validator.StringResponse{}
+			publicJWKSValidator{}.ValidateString(t.Context(), validator.StringRequest{ConfigValue: tc.value}, resp)
+			if tc.wantErr == "" {
+				if resp.Diagnostics.HasError() {
+					t.Fatalf("unexpected error: %v", resp.Diagnostics)
+				}
+				return
+			}
+			if !resp.Diagnostics.HasError() || !strings.Contains(resp.Diagnostics.Errors()[0].Detail(), tc.wantErr) {
+				t.Fatalf("expected an error containing %q, got %v", tc.wantErr, resp.Diagnostics)
+			}
+		})
+	}
+}
 
 func TestThirdPartyAuthResource_CustomJWKSRequiresReplaceOnlyWhenJSONChanges(t *testing.T) {
 	t.Parallel()
@@ -748,57 +762,4 @@ func TestSetThirdPartyAuthState(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestAccThirdPartyAuthResource_ReadRemovesDeletedResource(t *testing.T) {
-	defer gock.OffAll()
-
-	issuerURL := "https://issuer.example.com"
-	response := oidcThirdPartyAuthResponse(t, issuerURL)
-
-	mockThirdPartyAuthCreateReadiness()
-	gock.New(defaultApiEndpoint).
-		Post(thirdPartyAuthApiPath).
-		AddMatcher(matchJSONBody(t, map[string]any{
-			"oidc_issuer_url": issuerURL,
-		})).
-		Reply(http.StatusCreated).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Get(thirdPartyAuthItemApiPath).
-		Reply(http.StatusOK).
-		JSON(response)
-	gock.New(defaultApiEndpoint).
-		Get(thirdPartyAuthItemApiPath).
-		Reply(http.StatusNotFound).
-		JSON(map[string]any{"message": "not found"})
-	gock.New(defaultApiEndpoint).
-		Delete(thirdPartyAuthItemApiPath).
-		Reply(http.StatusNotFound).
-		JSON(map[string]any{"message": "not found"})
-
-	config := fmt.Sprintf(`
-resource "supabase_third_party_auth" "test" {
-  project_ref     = %q
-  oidc_issuer_url = %q
-}
-`, testProjectRef, issuerURL)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: config,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("supabase_third_party_auth.test", "id", testThirdPartyAuthUUID),
-				),
-			},
-			{
-				Config:             config,
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: true,
-			},
-		},
-	})
 }
