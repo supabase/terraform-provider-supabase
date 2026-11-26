@@ -499,61 +499,61 @@
             "attributes": {
               "custom_jwks": {
                 "type": "string",
-                "description": "Custom public JWKS as serialised JSON. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured. This field follows Terraform provider industry practice for public verification keys and is not marked sensitive; do not include private or symmetric JWK material.",
+                "description": "The provider's public signing keys as a JSON Web Key Set, for example built with `jsonencode()`. Private or symmetric key material is rejected. Reformatting the JSON doesn't replace the integration.",
                 "description_kind": "markdown",
                 "optional": true
               },
               "id": {
                 "type": "string",
-                "description": "Third-party auth integration identifier",
+                "description": "UUID of the integration. To import an existing integration, find its UUID with the Management API's [list endpoint](https://supabase.com/docs/reference/api/v1-list-project-tpa-integrations).",
                 "description_kind": "markdown",
                 "computed": true
               },
               "inserted_at": {
                 "type": "string",
-                "description": "Timestamp when the integration was created",
+                "description": "When the integration was created.",
                 "description_kind": "markdown",
                 "computed": true
               },
               "jwks_url": {
                 "type": "string",
-                "description": "JWKS URL. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured.",
+                "description": "URL of the provider's JSON Web Key Set (JWKS).",
                 "description_kind": "markdown",
                 "optional": true
               },
               "oidc_issuer_url": {
                 "type": "string",
-                "description": "OIDC issuer URL. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured.",
+                "description": "OpenID Connect (OIDC) issuer URL of the provider. It must use HTTPS. Supabase reads the provider's signing keys from the issuer's discovery document.",
                 "description_kind": "markdown",
                 "optional": true
               },
               "project_ref": {
                 "type": "string",
-                "description": "Project reference ID",
+                "description": "Reference ID of the Supabase project, for example `abcdefghijklmnopqrst`. Find it in the project's dashboard URL or under **Project Settings** > **General**. Changing it replaces the integration.",
                 "description_kind": "markdown",
                 "required": true
               },
               "resolved_at": {
                 "type": "string",
-                "description": "Timestamp when JWKS was last resolved",
+                "description": "When Supabase last fetched `resolved_jwks`.",
                 "description_kind": "markdown",
                 "computed": true
               },
               "resolved_jwks": {
                 "type": "string",
-                "description": "Resolved JWKS as serialised JSON",
+                "description": "The signing keys Supabase fetched from `oidc_issuer_url` or `jwks_url`, as JSON. Supabase checks for new keys periodically, so a key rotation doesn't appear immediately.",
                 "description_kind": "markdown",
                 "computed": true
               },
               "type": {
                 "type": "string",
-                "description": "Third-party auth integration type",
+                "description": "Integration type, as reported by Supabase.",
                 "description_kind": "markdown",
                 "computed": true
               },
               "updated_at": {
                 "type": "string",
-                "description": "Timestamp when the integration was last updated",
+                "description": "When the integration was last updated.",
                 "description_kind": "markdown",
                 "computed": true
               }
@@ -574,7 +574,7 @@
                 }
               }
             },
-            "description": "Third-party auth resource",
+            "description": "Registers a third-party auth provider with a Supabase project, so the project accepts JSON Web Tokens (JWTs) the provider issues. The provider must sign its JWTs with asymmetric keys and include a `kid` header. See [Third-party auth](https://supabase.com/docs/guides/auth/third-party/overview) in the Supabase docs. Configure exactly one of `oidc_issuer_url`, `jwks_url` or `custom_jwks`. Changing any of them replaces the integration.",
             "description_kind": "markdown"
           }
         }

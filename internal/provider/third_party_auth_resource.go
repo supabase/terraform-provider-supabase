@@ -138,7 +138,10 @@ func (r *ThirdPartyAuthResource) ConfigValidators(ctx context.Context) []resourc
 
 func (r *ThirdPartyAuthResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Third-party auth resource",
+		MarkdownDescription: "Registers a third-party auth provider with a Supabase project, so the project accepts JSON Web Tokens (JWTs) the provider issues. " +
+			"The provider must sign its JWTs with asymmetric keys and include a `kid` header. " +
+			"See [Third-party auth](https://supabase.com/docs/guides/auth/third-party/overview) in the Supabase docs. " +
+			"Configure exactly one of `oidc_issuer_url`, `jwks_url` or `custom_jwks`. Changing any of them replaces the integration.",
 		Blocks: map[string]schema.Block{
 			"timeouts": timeouts.Block(ctx, timeouts.Opts{
 				Create: true,
@@ -146,21 +149,23 @@ func (r *ThirdPartyAuthResource) Schema(ctx context.Context, req resource.Schema
 		},
 		Attributes: map[string]schema.Attribute{
 			"project_ref": schema.StringAttribute{
-				MarkdownDescription: "Project reference ID",
-				Required:            true,
+				MarkdownDescription: "Reference ID of the Supabase project, for example `abcdefghijklmnopqrst`. " +
+					"Find it in the project's dashboard URL or under **Project Settings** > **General**. Changing it replaces the integration.",
+				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"oidc_issuer_url": schema.StringAttribute{
-				MarkdownDescription: "OIDC issuer URL. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured.",
-				Optional:            true,
+				MarkdownDescription: "OpenID Connect (OIDC) issuer URL of the provider. It must use HTTPS. " +
+					"Supabase reads the provider's signing keys from the issuer's discovery document.",
+				Optional: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"jwks_url": schema.StringAttribute{
-				MarkdownDescription: "JWKS URL. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured.",
+				MarkdownDescription: "URL of the provider's JSON Web Key Set (JWKS).",
 				Optional:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -168,8 +173,8 @@ func (r *ThirdPartyAuthResource) Schema(ctx context.Context, req resource.Schema
 			},
 			"custom_jwks": schema.StringAttribute{
 				CustomType: jsontypes.NormalizedType{},
-				MarkdownDescription: "Custom public JWKS as serialised JSON. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured. " +
-					"This field follows Terraform provider industry practice for public verification keys and is not marked sensitive; do not include private or symmetric JWK material.",
+				MarkdownDescription: "The provider's public signing keys as a JSON Web Key Set, for example built with `jsonencode()`. " +
+					"Private or symmetric key material is rejected. Reformatting the JSON doesn't replace the integration.",
 				Optional: true,
 				PlanModifiers: []planmodifier.String{
 					semanticJSONRequiresReplaceModifier{},
@@ -179,43 +184,45 @@ func (r *ThirdPartyAuthResource) Schema(ctx context.Context, req resource.Schema
 				},
 			},
 			"id": schema.StringAttribute{
-				MarkdownDescription: "Third-party auth integration identifier",
-				Computed:            true,
+				MarkdownDescription: "UUID of the integration. To import an existing integration, find its UUID with the Management API's " +
+					"[list endpoint](https://supabase.com/docs/reference/api/v1-list-project-tpa-integrations).",
+				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"type": schema.StringAttribute{
-				MarkdownDescription: "Third-party auth integration type",
+				MarkdownDescription: "Integration type, as reported by Supabase.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"resolved_jwks": schema.StringAttribute{
-				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Resolved JWKS as serialised JSON",
-				Computed:            true,
+				CustomType: jsontypes.NormalizedType{},
+				MarkdownDescription: "The signing keys Supabase fetched from `oidc_issuer_url` or `jwks_url`, as JSON. " +
+					"Supabase checks for new keys periodically, so a key rotation doesn't appear immediately.",
+				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"inserted_at": schema.StringAttribute{
-				MarkdownDescription: "Timestamp when the integration was created",
+				MarkdownDescription: "When the integration was created.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"updated_at": schema.StringAttribute{
-				MarkdownDescription: "Timestamp when the integration was last updated",
+				MarkdownDescription: "When the integration was last updated.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"resolved_at": schema.StringAttribute{
-				MarkdownDescription: "Timestamp when JWKS was last resolved",
+				MarkdownDescription: "When Supabase last fetched `resolved_jwks`.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
