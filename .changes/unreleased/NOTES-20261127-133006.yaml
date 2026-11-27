@@ -1,0 +1,5 @@
+kind: NOTES
+body: 'resource/supabase_third_party_auth: Deprecate `custom_jwks`. Supabase stores it but doesn''t use it to verify tokens. Use `jwks_url` instead'
+time: 2026-11-27T13:30:06.724473-05:00
+custom:
+    PR: "446"

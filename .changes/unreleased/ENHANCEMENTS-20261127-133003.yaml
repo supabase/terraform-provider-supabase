@@ -1,0 +1,5 @@
+kind: ENHANCEMENTS
+body: 'resource/supabase_third_party_auth: Describe every attribute, and add an example for each supported provider'
+time: 2026-11-27T13:30:03.336184-05:00
+custom:
+    PR: "441"

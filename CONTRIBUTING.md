@@ -86,9 +86,9 @@ When the tests pass, the output of `make test` ends with a line similar to the f
 ok  	github.com/supabase/terraform-provider-supabase/internal/provider	12.561s
 ```
 
-Every test mocks the Management API with [gock](https://github.com/h2non/gock), so you don't need a Supabase account or an access token, and the tests never create or change anything real.
+There are two kinds of tests. _Unit tests_ check the code directly, so they need no Supabase account or network. _Acceptance tests_ run Terraform against the live Management API, and they create and delete real projects in a Supabase organization. To run them, set `SUPABASE_ACCESS_TOKEN` to an access token and `ORGANIZATION_ID` to the organization's slug, which is in your dashboard URL. Without `ORGANIZATION_ID`, they're skipped, so `make test` on its own never changes anything real. `make testacc` runs the tests verbosely and several at a time. Some older acceptance tests still run offline against [gock](https://github.com/h2non/gock) mocks; we're phasing those out.
 
-Most tests are Terraform _acceptance tests_, which the Terraform testing framework skips unless the `TF_ACC` environment variable is set. `make test` sets it for you. If you run `go test` yourself, set `TF_ACC=1` too, because otherwise `go test` still reports success while running fewer than half the tests.
+The Terraform testing framework also skips acceptance tests unless the `TF_ACC` environment variable is set. `make test` sets it for you. If you run `go test` yourself, set `TF_ACC=1` too, because otherwise `go test` still reports success while skipping those tests.
 
 While you work, you can run only the tests you care about by passing extra flags through `TESTARGS`. For example, to run the API key resource tests with verbose output, run the following command:
 
@@ -167,7 +167,7 @@ Then register the constructor in `Resources()` or `DataSources()` in [`provider.
 
 Add an example in `examples/resources/supabase_<name>/resource.tf`, with an `import.sh` next to it that shows the import ID in the same style as the other resources. A data source gets `examples/data-sources/supabase_<name>/data-source.tf` instead. Embed the example in [`examples/examples.go`](examples/examples.go) and use it as the configuration in at least one test, so a broken example fails the tests before it reaches the docs.
 
-Write the tests in `<name>_resource_test.go`, and mock every API call with gock. Shared API paths live in [`constants_test.go`](internal/provider/constants_test.go). Finally, regenerate the docs as described in the next section.
+Write the tests in `<name>_resource_test.go`, with their Terraform configurations in `internal/provider/test-fixtures/`. Acceptance tests run against the live Management API. Anything that isn't an integration test, such as a validator, import ID parsing or how the resource handles an API response, gets a plain Go unit test that calls the code directly. [`third_party_auth_resource_test.go`](internal/provider/third_party_auth_resource_test.go) shows both kinds. We're actively phasing out gock, so don't add new gock mocks or copy the remaining gock tests. If you change a resource that's still tested with gock, cover your change with a unit test or a live acceptance test instead. Shared fixture IDs live in [`constants_test.go`](internal/provider/constants_test.go). Finally, regenerate the docs as described in the next section.
 
 ## Updating the docs
 
