@@ -541,7 +541,7 @@
               },
               "resolved_jwks": {
                 "type": "string",
-                "description": "The signing keys Supabase fetched from `oidc_issuer_url` or `jwks_url`, as JSON. Supabase checks for new keys periodically, so a key rotation doesn't appear immediately.",
+                "description": "The signing keys Supabase fetched from `oidc_issuer_url` or `jwks_url`, as JSON. Supabase checks for new keys periodically, so a key rotation doesn't appear immediately. If the keys include private or symmetric key material, this attribute is null, so that material never reaches the Terraform state.",
                 "description_kind": "markdown",
                 "computed": true
               },

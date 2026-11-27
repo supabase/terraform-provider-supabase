@@ -526,63 +526,119 @@ func TestBuildThirdPartyAuthCreateBody_RequiresExactlyOneKnownSource(t *testing.
 	}
 }
 
-func TestSetThirdPartyAuthState_CustomJWKSRejectsPrivateMaterial(t *testing.T) {
-	data := &ThirdPartyAuthResourceModel{
-		ProjectRef: types.StringValue(testProjectRef),
-	}
-	diags := setThirdPartyAuthState(data, api.ThirdPartyAuth{
-		Id:   thirdPartyAuthUUID(t, testThirdPartyAuthUUID),
-		Type: "custom_jwks",
-		CustomJwks: nullable.NewNullableWithValue[interface{}](map[string]any{
-			"keys": []any{
-				map[string]any{
-					"kty": "RSA",
-					"kid": "test-key",
-					"n":   "abc",
-					"e":   "AQAB",
-					"d":   "private",
-				},
-			},
-		}),
-		ResolvedJwks: nullable.NewNullNullable[interface{}](),
-		InsertedAt:   "2026-01-01T00:00:00Z",
-		UpdatedAt:    "2026-01-01T00:00:00Z",
-	})
-	if !diags.HasError() {
-		t.Fatalf("expected diagnostics for private custom_jwks returned by API")
-	}
-	if got := diags.Errors()[0].Detail(); !strings.Contains(got, "private or symmetric JWK member") {
-		t.Fatalf("expected private JWK diagnostic, got %q", got)
-	}
-}
+const (
+	testPublicJWKS        = `{"keys":[{"kty":"RSA","kid":"k","n":"abc","e":"AQAB"}]}`
+	testPrivateJWKS       = `{"keys":[{"kty":"RSA","kid":"k","n":"abc","e":"AQAB","d":"private"}]}`
+	testOIDCIssuerExample = "https://issuer.example.com"
+)
 
-func TestSetThirdPartyAuthState_ResolvedJWKSRejectsPrivateMaterial(t *testing.T) {
-	data := &ThirdPartyAuthResourceModel{
-		ProjectRef: types.StringValue(testProjectRef),
+func TestSetThirdPartyAuthState(t *testing.T) {
+	t.Parallel()
+
+	jwks := func(raw string) nullable.Nullable[any] {
+		var v any
+		if err := json.Unmarshal([]byte(raw), &v); err != nil {
+			panic(err)
+		}
+		return nullable.NewNullableWithValue(v)
 	}
-	diags := setThirdPartyAuthState(data, api.ThirdPartyAuth{
-		Id:         thirdPartyAuthUUID(t, testThirdPartyAuthUUID),
-		Type:       "oidc",
-		CustomJwks: nullable.NewNullNullable[interface{}](),
-		ResolvedJwks: nullable.NewNullableWithValue[interface{}](map[string]any{
-			"keys": []any{
-				map[string]any{
-					"kty": "RSA",
-					"kid": "test-key",
-					"n":   "abc",
-					"e":   "AQAB",
-					"d":   "private",
-				},
-			},
-		}),
-		InsertedAt: "2026-01-01T00:00:00Z",
-		UpdatedAt:  "2026-01-01T00:00:00Z",
-	})
-	if !diags.HasError() {
-		t.Fatalf("expected diagnostics for private resolved_jwks returned by API")
+
+	testCases := map[string]struct {
+		custom, resolved         nullable.Nullable[any]
+		wantCustom, wantResolved jsontypes.Normalized
+	}{
+		"public keys are stored": {
+			custom:       nullable.NewNullNullable[any](),
+			resolved:     jwks(testPublicJWKS),
+			wantCustom:   jsontypes.NewNormalizedNull(),
+			wantResolved: jsontypes.NewNormalizedValue(testPublicJWKS),
+		},
+		"private custom_jwks is dropped": {
+			custom:       jwks(testPrivateJWKS),
+			resolved:     nullable.NewNullNullable[any](),
+			wantCustom:   jsontypes.NewNormalizedNull(),
+			wantResolved: jsontypes.NewNormalizedNull(),
+		},
+		"private resolved_jwks is dropped": {
+			custom:       nullable.NewNullNullable[any](),
+			resolved:     jwks(testPrivateJWKS),
+			wantCustom:   jsontypes.NewNormalizedNull(),
+			wantResolved: jsontypes.NewNormalizedNull(),
+		},
+		// custom_jwks isn't validated by the API, so private material is dropped even when the document isn't a well-formed JWKS.
+		"a bare private JWK is dropped": {
+			custom:       jwks(`{"kty":"RSA","kid":"k","n":"abc","e":"AQAB","d":"private"}`),
+			resolved:     nullable.NewNullNullable[any](),
+			wantCustom:   jsontypes.NewNormalizedNull(),
+			wantResolved: jsontypes.NewNormalizedNull(),
+		},
+		"a private key after a non-object key is dropped": {
+			custom:       jwks(`{"keys":["not a key",{"kty":"oct","k":"secret"}]}`),
+			resolved:     nullable.NewNullNullable[any](),
+			wantCustom:   jsontypes.NewNormalizedNull(),
+			wantResolved: jsontypes.NewNormalizedNull(),
+		},
+		"a private key in a keys object is dropped": {
+			custom:       jwks(`{"keys":{"kty":"RSA","d":"private"}}`),
+			resolved:     nullable.NewNullNullable[any](),
+			wantCustom:   jsontypes.NewNormalizedNull(),
+			wantResolved: jsontypes.NewNormalizedNull(),
+		},
+		"a private key under a capitalised Keys member is dropped": {
+			custom:       jwks(`{"Keys":[{"kty":"RSA","d":"private"}]}`),
+			resolved:     nullable.NewNullNullable[any](),
+			wantCustom:   jsontypes.NewNormalizedNull(),
+			wantResolved: jsontypes.NewNormalizedNull(),
+		},
+		"a public document that isn't a JWKS is stored as returned": {
+			custom:       jwks(`{"Keys":[{"kty":"RSA","kid":"k","n":"abc","e":"AQAB"}]}`),
+			resolved:     nullable.NewNullNullable[any](),
+			wantCustom:   jsontypes.NewNormalizedValue(`{"Keys":[{"kty":"RSA","kid":"k","n":"abc","e":"AQAB"}]}`),
+			wantResolved: jsontypes.NewNormalizedNull(),
+		},
+		"a provider with no keys is stored as returned": {
+			custom:       nullable.NewNullNullable[any](),
+			resolved:     jwks(`{"keys":[]}`),
+			wantCustom:   jsontypes.NewNormalizedNull(),
+			wantResolved: jsontypes.NewNormalizedValue(`{"keys":[]}`),
+		},
 	}
-	if got := diags.Errors()[0].Detail(); !strings.Contains(got, "private or symmetric JWK member") {
-		t.Fatalf("expected private JWK diagnostic, got %q", got)
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var data ThirdPartyAuthResourceModel
+			err := setThirdPartyAuthState(t.Context(), &data, api.ThirdPartyAuth{
+				Id:            uuid.MustParse(testThirdPartyAuthUUID),
+				Type:          thirdPartyAuthAPIType,
+				OidcIssuerUrl: nullable.NewNullableWithValue(testOIDCIssuerExample),
+				CustomJwks:    tc.custom,
+				ResolvedJwks:  tc.resolved,
+				InsertedAt:    "2026-01-01T00:00:00Z",
+				UpdatedAt:     "2026-01-01T00:00:00Z",
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if data.Id.ValueString() != testThirdPartyAuthUUID {
+				t.Fatalf("ID = %q, want %q", data.Id.ValueString(), testThirdPartyAuthUUID)
+			}
+			// Encoding sorts object keys, so compare the JSON rather than the raw strings.
+			sameJWKS := func(got, want jsontypes.Normalized) bool {
+				if got.IsNull() || want.IsNull() {
+					return got.IsNull() == want.IsNull()
+				}
+				equal, err := jsonStringsEqual(got.ValueString(), want.ValueString())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return equal
+			}
+			sameCustom, sameResolved := sameJWKS(data.CustomJWKS, tc.wantCustom), sameJWKS(data.ResolvedJWKS, tc.wantResolved)
+			if !sameCustom || !sameResolved {
+				t.Fatalf("custom_jwks = %v, resolved_jwks = %v; want %v and %v", data.CustomJWKS, data.ResolvedJWKS, tc.wantCustom, tc.wantResolved)
+			}
+		})
 	}
 }
 
