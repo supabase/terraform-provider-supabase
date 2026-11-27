@@ -3,40 +3,86 @@
 page_title: "supabase_third_party_auth Resource - terraform-provider-supabase"
 subcategory: ""
 description: |-
-  Third-party auth resource
+  Registers a third-party auth provider with a Supabase project, so the project accepts JSON Web Tokens (JWTs) the provider issues. The provider must sign its JWTs with asymmetric keys and include a kid header. See Third-party auth https://supabase.com/docs/guides/auth/third-party/overview in the Supabase docs. Configure exactly one of oidc_issuer_url, jwks_url or custom_jwks. Changing any of them replaces the integration.
 ---
 
 # supabase_third_party_auth (Resource)
 
-Third-party auth resource
+Registers a third-party auth provider with a Supabase project, so the project accepts JSON Web Tokens (JWTs) the provider issues. The provider must sign its JWTs with asymmetric keys and include a `kid` header. See [Third-party auth](https://supabase.com/docs/guides/auth/third-party/overview) in the Supabase docs. Configure exactly one of `oidc_issuer_url`, `jwks_url` or `custom_jwks`. Changing any of them replaces the integration.
 
 ## Example Usage
 
+Each example registers a provider by its OIDC issuer URL. The linked Supabase guide for each provider explains how to configure the provider itself, such as adding the `role` claim to its tokens.
+
+### Auth0
+
+See [Auth0](https://supabase.com/docs/guides/auth/third-party/auth0).
+
 ```terraform
-resource "supabase_third_party_auth" "oidc" {
+# Your Auth0 tenant's domain, including its region if it has one.
+resource "supabase_third_party_auth" "auth0" {
   project_ref     = "mayuaycdtijbctgqbycg"
-  oidc_issuer_url = "https://issuer.example.com"
+  oidc_issuer_url = "https://my-tenant.us.auth0.com/"
 }
+```
 
-resource "supabase_third_party_auth" "jwks_url" {
-  project_ref = "mayuaycdtijbctgqbycg"
-  jwks_url    = "https://issuer.example.com/.well-known/jwks.json"
+### AWS Cognito
+
+See [AWS Cognito](https://supabase.com/docs/guides/auth/third-party/aws-cognito).
+
+```terraform
+# Your Cognito user pool's region and ID.
+resource "supabase_third_party_auth" "aws_cognito" {
+  project_ref     = "mayuaycdtijbctgqbycg"
+  oidc_issuer_url = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_AbCdEfGhI"
 }
+```
 
-resource "supabase_third_party_auth" "custom_jwks" {
-  project_ref = "mayuaycdtijbctgqbycg"
+### Clerk
 
-  # custom_jwks must contain public JWKS material only.
-  custom_jwks = jsonencode({
-    keys = [
-      {
-        kty = "RSA"
-        kid = "example-key"
-        n   = "example-modulus"
-        e   = "AQAB"
-      }
-    ]
-  })
+See [Clerk](https://supabase.com/docs/guides/auth/third-party/clerk).
+
+```terraform
+# Your Clerk instance's domain.
+resource "supabase_third_party_auth" "clerk" {
+  project_ref     = "mayuaycdtijbctgqbycg"
+  oidc_issuer_url = "https://example.clerk.accounts.dev"
+}
+```
+
+### Firebase Auth
+
+See [Firebase Auth](https://supabase.com/docs/guides/auth/third-party/firebase-auth).
+
+```terraform
+# Replace my-firebase-project with your Firebase project ID.
+resource "supabase_third_party_auth" "firebase" {
+  project_ref     = "mayuaycdtijbctgqbycg"
+  oidc_issuer_url = "https://securetoken.google.com/my-firebase-project"
+}
+```
+
+### WorkOS
+
+See [WorkOS](https://supabase.com/docs/guides/auth/third-party/workos).
+
+```terraform
+# Replace client_01EXAMPLE with your WorkOS client ID.
+resource "supabase_third_party_auth" "workos" {
+  project_ref     = "mayuaycdtijbctgqbycg"
+  oidc_issuer_url = "https://api.workos.com/user_management/client_01EXAMPLE"
+}
+```
+
+### Custom OIDC provider
+
+For any other provider that supports OpenID Connect. See [Custom OIDC provider](https://supabase.com/docs/guides/auth/third-party/custom-oidc).
+
+```terraform
+# Any provider that supports OpenID Connect (OIDC) discovery.
+resource "supabase_third_party_auth" "custom_oidc" {
+  project_ref     = "mayuaycdtijbctgqbycg"
+  oidc_issuer_url = "https://login.example.com"
 }
 ```
 
@@ -45,23 +91,23 @@ resource "supabase_third_party_auth" "custom_jwks" {
 
 ### Required
 
-- `project_ref` (String) Project reference ID
+- `project_ref` (String) Reference ID of the Supabase project, for example `abcdefghijklmnopqrst`. Find it in the project's dashboard URL or under **Project Settings** > **General**. Changing it replaces the integration.
 
 ### Optional
 
-- `custom_jwks` (String) Custom public JWKS as serialised JSON. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured. This field follows Terraform provider industry practice for public verification keys and is not marked sensitive; do not include private or symmetric JWK material.
-- `jwks_url` (String) JWKS URL. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured.
-- `oidc_issuer_url` (String) OIDC issuer URL. Exactly one of `oidc_issuer_url`, `jwks_url`, or `custom_jwks` must be configured.
+- `custom_jwks` (String) The provider's public signing keys as a JSON Web Key Set, for example built with `jsonencode()`. Private or symmetric key material is rejected. Reformatting the JSON doesn't replace the integration.
+- `jwks_url` (String) URL of the provider's JSON Web Key Set (JWKS).
+- `oidc_issuer_url` (String) OpenID Connect (OIDC) issuer URL of the provider. It must use HTTPS. Supabase reads the provider's signing keys from the issuer's discovery document.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
-- `id` (String) Third-party auth integration identifier
-- `inserted_at` (String) Timestamp when the integration was created
-- `resolved_at` (String) Timestamp when JWKS was last resolved
-- `resolved_jwks` (String) Resolved JWKS as serialised JSON
-- `type` (String) Third-party auth integration type
-- `updated_at` (String) Timestamp when the integration was last updated
+- `id` (String) UUID of the integration. To import an existing integration, find its UUID with the Management API's [list endpoint](https://supabase.com/docs/reference/api/v1-list-project-tpa-integrations).
+- `inserted_at` (String) When the integration was created.
+- `resolved_at` (String) When Supabase last fetched `resolved_jwks`.
+- `resolved_jwks` (String) The signing keys Supabase fetched from `oidc_issuer_url` or `jwks_url`, as JSON. Supabase checks for new keys periodically, so a key rotation doesn't appear immediately.
+- `type` (String) Integration type, as reported by Supabase.
+- `updated_at` (String) When the integration was last updated.
 
 <a id="nestedblock--timeouts"></a>
 ### Nested Schema for `timeouts`
@@ -82,6 +128,8 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 #
 # - project_ref: Found in the Supabase dashboard under Project Settings -> General,
 #   or in the project's URL: https://supabase.com/dashboard/project/<project_ref>
-# - third_party_auth_id: The UUID of the third-party auth integration.
-terraform import supabase_third_party_auth.oidc <project_ref>/<third_party_auth_id>
+# - third_party_auth_id: The UUID of the integration. Find it with the Management
+#   API's list endpoint:
+#   https://supabase.com/docs/reference/api/v1-list-project-tpa-integrations
+terraform import supabase_third_party_auth.custom_oidc <project_ref>/<third_party_auth_id>
 ```
