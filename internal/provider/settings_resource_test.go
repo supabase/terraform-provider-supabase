@@ -41,6 +41,29 @@ var allServicesHealthy = []api.V1ServiceHealthResponse{
 	{Name: api.V1ServiceHealthResponseNameStorage, Status: api.ACTIVEHEALTHY, Healthy: true},
 }
 
+// matchJSONBody is a gock matcher that fails unless the request body equals expected.
+func matchJSONBody(t *testing.T, expected map[string]any) func(*http.Request, *gock.Request) (bool, error) {
+	t.Helper()
+
+	return func(req *http.Request, _ *gock.Request) (bool, error) {
+		bodyBytes, err := io.ReadAll(req.Body)
+		if err != nil {
+			return false, err
+		}
+
+		var actual map[string]any
+		if err := json.Unmarshal(bodyBytes, &actual); err != nil {
+			return false, err
+		}
+
+		if !reflect.DeepEqual(actual, expected) {
+			return false, fmt.Errorf("unexpected request body: got %#v, want %#v", actual, expected)
+		}
+
+		return true, nil
+	}
+}
+
 // jsonSubsetCheck is a knownvalue.Check for JSON-encoded string attributes. It
 // passes when every expected key is present with an equal value, ignoring any
 // extra keys the API returns.
