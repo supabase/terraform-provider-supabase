@@ -517,7 +517,7 @@
               },
               "jwks_url": {
                 "type": "string",
-                "description": "URL of the provider's JSON Web Key Set (JWKS).",
+                "description": "URL of the provider's JSON Web Key Set (JWKS). It must use HTTP or HTTPS. HTTPS is recommended.",
                 "description_kind": "markdown",
                 "optional": true
               },

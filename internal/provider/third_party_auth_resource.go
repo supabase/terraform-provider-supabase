@@ -27,6 +27,7 @@ import (
 	"github.com/supabase/terraform-provider-supabase/internal/errs"
 	"github.com/supabase/terraform-provider-supabase/internal/jsonvalue"
 	"github.com/supabase/terraform-provider-supabase/internal/planmodifiers"
+	"github.com/supabase/terraform-provider-supabase/internal/validators"
 )
 
 var (
@@ -119,12 +120,18 @@ func (r *ThirdPartyAuthResource) Schema(ctx context.Context, req resource.Schema
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+				Validators: []validator.String{
+					validators.URL("https"),
+				},
 			},
 			"jwks_url": schema.StringAttribute{
-				MarkdownDescription: "URL of the provider's JSON Web Key Set (JWKS).",
+				MarkdownDescription: "URL of the provider's JSON Web Key Set (JWKS). It must use HTTP or HTTPS. HTTPS is recommended.",
 				Optional:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					validators.URL("https", "http"),
 				},
 			},
 			"custom_jwks": schema.StringAttribute{

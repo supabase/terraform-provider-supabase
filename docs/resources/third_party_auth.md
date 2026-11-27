@@ -96,7 +96,7 @@ resource "supabase_third_party_auth" "custom_oidc" {
 ### Optional
 
 - `custom_jwks` (String) The provider's public signing keys as a JSON Web Key Set, for example built with `jsonencode()`. Private or symmetric key material is rejected. Reformatting the JSON doesn't replace the integration.
-- `jwks_url` (String) URL of the provider's JSON Web Key Set (JWKS).
+- `jwks_url` (String) URL of the provider's JSON Web Key Set (JWKS). It must use HTTP or HTTPS. HTTPS is recommended.
 - `oidc_issuer_url` (String) OpenID Connect (OIDC) issuer URL of the provider. It must use HTTPS. Supabase reads the provider's signing keys from the issuer's discovery document.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
