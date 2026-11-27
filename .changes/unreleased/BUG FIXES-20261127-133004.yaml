@@ -1,0 +1,5 @@
+kind: BUG FIXES
+body: 'resource/supabase_third_party_auth: Store a JWKS that includes private or symmetric key material as null with a warning, instead of failing create and every later refresh'
+time: 2026-11-27T13:30:04.46823-05:00
+custom:
+    PR: "442"
