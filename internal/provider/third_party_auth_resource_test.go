@@ -348,6 +348,7 @@ func TestAccThirdPartyAuthResource_example(t *testing.T) {
 					examples.ThirdPartyAuthAWSCognitoConfig,
 					examples.ThirdPartyAuthClerkConfig,
 					examples.ThirdPartyAuthWorkOSConfig,
+					examples.ThirdPartyAuthJWKSURLConfig,
 				}, "\n"),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: true,
@@ -442,6 +443,17 @@ func TestThirdPartyAuthResource_URLAttributesAreValidated(t *testing.T) {
 				t.Fatalf("HasError() = %v, want %v: %v", got, tc.wantErr, resp.Diagnostics)
 			}
 		})
+	}
+}
+
+func TestThirdPartyAuthResource_CustomJWKSIsDeprecated(t *testing.T) {
+	t.Parallel()
+	attribute, ok := testResourceSchema(t, NewThirdPartyAuthResource()).Attributes["custom_jwks"].(schema.StringAttribute)
+	if !ok {
+		t.Fatal("custom_jwks is not a string attribute")
+	}
+	if !strings.Contains(attribute.DeprecationMessage, "jwks_url") {
+		t.Fatalf("custom_jwks deprecation message should point to jwks_url, got %q", attribute.DeprecationMessage)
 	}
 }
 

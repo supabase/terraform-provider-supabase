@@ -3,16 +3,16 @@
 page_title: "supabase_third_party_auth Resource - terraform-provider-supabase"
 subcategory: ""
 description: |-
-  Registers a third-party auth provider with a Supabase project, so the project accepts JSON Web Tokens (JWTs) the provider issues. The provider must sign its JWTs with asymmetric keys and include a kid header. See Third-party auth https://supabase.com/docs/guides/auth/third-party/overview in the Supabase docs. Configure exactly one of oidc_issuer_url, jwks_url or custom_jwks. Changing any of them replaces the integration.
+  Registers a third-party auth provider with a Supabase project, so the project accepts JSON Web Tokens (JWTs) the provider issues. The provider must sign its JWTs with asymmetric keys and include a kid header. See Third-party auth https://supabase.com/docs/guides/auth/third-party/overview in the Supabase docs. Configure exactly one of oidc_issuer_url or jwks_url. custom_jwks is deprecated. Changing any of them replaces the integration.
 ---
 
 # supabase_third_party_auth (Resource)
 
-Registers a third-party auth provider with a Supabase project, so the project accepts JSON Web Tokens (JWTs) the provider issues. The provider must sign its JWTs with asymmetric keys and include a `kid` header. See [Third-party auth](https://supabase.com/docs/guides/auth/third-party/overview) in the Supabase docs. Configure exactly one of `oidc_issuer_url`, `jwks_url` or `custom_jwks`. Changing any of them replaces the integration.
+Registers a third-party auth provider with a Supabase project, so the project accepts JSON Web Tokens (JWTs) the provider issues. The provider must sign its JWTs with asymmetric keys and include a `kid` header. See [Third-party auth](https://supabase.com/docs/guides/auth/third-party/overview) in the Supabase docs. Configure exactly one of `oidc_issuer_url` or `jwks_url`. `custom_jwks` is deprecated. Changing any of them replaces the integration.
 
 ## Example Usage
 
-Each example registers a provider by its OIDC issuer URL. The linked Supabase guide for each provider explains how to configure the provider itself, such as adding the `role` claim to its tokens.
+Most examples register a provider by its OIDC issuer URL. The linked Supabase guide for each provider explains how to configure the provider itself, such as adding the `role` claim to its tokens.
 
 ### Auth0
 
@@ -62,6 +62,18 @@ resource "supabase_third_party_auth" "firebase" {
 }
 ```
 
+### JWKS URL
+
+For a provider that publishes its signing keys at a URL but doesn't support OIDC discovery, or for keys you host yourself.
+
+```terraform
+# The URL must return a JSON Web Key Set with the provider's public keys.
+resource "supabase_third_party_auth" "jwks_url" {
+  project_ref = "mayuaycdtijbctgqbycg"
+  jwks_url    = "https://login.example.com/.well-known/jwks.json"
+}
+```
+
 ### WorkOS
 
 See [WorkOS](https://supabase.com/docs/guides/auth/third-party/workos).
@@ -95,7 +107,7 @@ resource "supabase_third_party_auth" "custom_oidc" {
 
 ### Optional
 
-- `custom_jwks` (String) The provider's public signing keys as a JSON Web Key Set, for example built with `jsonencode()`. Private or symmetric key material is rejected. Reformatting the JSON doesn't replace the integration.
+- `custom_jwks` (String, Deprecated) Supabase stores this value but doesn't use it to verify tokens, so tokens signed with these keys are rejected. It will be removed in a future major version. Publish the keys at a URL and use `jwks_url` instead. The provider's public signing keys as a JSON Web Key Set, for example built with `jsonencode()`. Private or symmetric key material is rejected. Reformatting the JSON doesn't replace the integration.
 - `jwks_url` (String) URL of the provider's JSON Web Key Set (JWKS). It must use HTTP or HTTPS. HTTPS is recommended.
 - `oidc_issuer_url` (String) OpenID Connect (OIDC) issuer URL of the provider. It must use HTTPS. Supabase reads the provider's signing keys from the issuer's discovery document.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))

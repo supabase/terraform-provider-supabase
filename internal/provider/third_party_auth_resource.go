@@ -58,6 +58,12 @@ type ThirdPartyAuthResourceModel struct {
 	Timeouts      timeouts.Value       `tfsdk:"timeouts"`
 }
 
+// customJWKSDeprecationMessage is shown whenever custom_jwks is configured. Supabase stopped using
+// custom_jwks to build the keys its services trust, but the Management API still accepts and stores it.
+const customJWKSDeprecationMessage = "custom_jwks is deprecated and will be removed in a future major version. " +
+	"Supabase stores this value but doesn't use it to verify tokens, so tokens signed with these keys are rejected. " +
+	"Publish the keys at a URL and use jwks_url instead."
+
 // publicJWKSValidator rejects custom_jwks values that aren't a JWKS of public keys.
 type publicJWKSValidator struct{}
 
@@ -98,7 +104,7 @@ func (r *ThirdPartyAuthResource) Schema(ctx context.Context, req resource.Schema
 		MarkdownDescription: "Registers a third-party auth provider with a Supabase project, so the project accepts JSON Web Tokens (JWTs) the provider issues. " +
 			"The provider must sign its JWTs with asymmetric keys and include a `kid` header. " +
 			"See [Third-party auth](https://supabase.com/docs/guides/auth/third-party/overview) in the Supabase docs. " +
-			"Configure exactly one of `oidc_issuer_url`, `jwks_url` or `custom_jwks`. Changing any of them replaces the integration.",
+			"Configure exactly one of `oidc_issuer_url` or `jwks_url`. `custom_jwks` is deprecated. Changing any of them replaces the integration.",
 		Blocks: map[string]schema.Block{
 			"timeouts": timeouts.Block(ctx, timeouts.Opts{
 				Create: true,
@@ -136,9 +142,12 @@ func (r *ThirdPartyAuthResource) Schema(ctx context.Context, req resource.Schema
 			},
 			"custom_jwks": schema.StringAttribute{
 				CustomType: jsontypes.NormalizedType{},
-				MarkdownDescription: "The provider's public signing keys as a JSON Web Key Set, for example built with `jsonencode()`. " +
+				MarkdownDescription: "Supabase stores this value but doesn't use it to verify tokens, so tokens signed with these keys are rejected. " +
+					"It will be removed in a future major version. Publish the keys at a URL and use `jwks_url` instead. " +
+					"The provider's public signing keys as a JSON Web Key Set, for example built with `jsonencode()`. " +
 					"Private or symmetric key material is rejected. Reformatting the JSON doesn't replace the integration.",
-				Optional: true,
+				DeprecationMessage: customJWKSDeprecationMessage,
+				Optional:           true,
 				PlanModifiers: []planmodifier.String{
 					planmodifiers.RequiresReplaceIfJSONChanged(),
 				},
