@@ -105,7 +105,7 @@ resource "supabase_third_party_auth" "custom_oidc" {
 - `id` (String) UUID of the integration. To import an existing integration, find its UUID with the Management API's [list endpoint](https://supabase.com/docs/reference/api/v1-list-project-tpa-integrations).
 - `inserted_at` (String) When the integration was created.
 - `resolved_at` (String) When Supabase last fetched `resolved_jwks`.
-- `resolved_jwks` (String) The signing keys Supabase fetched from `oidc_issuer_url` or `jwks_url`, as JSON. Supabase checks for new keys periodically, so a key rotation doesn't appear immediately.
+- `resolved_jwks` (String) The signing keys Supabase fetched from `oidc_issuer_url` or `jwks_url`, as JSON. Supabase checks for new keys periodically, so a key rotation doesn't appear immediately. If the keys include private or symmetric key material, this attribute is null, so that material never reaches the Terraform state.
 - `type` (String) Integration type, as reported by Supabase.
 - `updated_at` (String) When the integration was last updated.
 

@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,6 +27,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/oapi-codegen/nullable"
 	"github.com/supabase/cli/pkg/api"
+	"github.com/supabase/terraform-provider-supabase/internal/errs"
 )
 
 var (
@@ -201,7 +204,8 @@ func (r *ThirdPartyAuthResource) Schema(ctx context.Context, req resource.Schema
 			"resolved_jwks": schema.StringAttribute{
 				CustomType: jsontypes.NormalizedType{},
 				MarkdownDescription: "The signing keys Supabase fetched from `oidc_issuer_url` or `jwks_url`, as JSON. " +
-					"Supabase checks for new keys periodically, so a key rotation doesn't appear immediately.",
+					"Supabase checks for new keys periodically, so a key rotation doesn't appear immediately. " +
+					"If the keys include private or symmetric key material, this attribute is null, so that material never reaches the Terraform state.",
 				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
@@ -264,8 +268,14 @@ func (r *ThirdPartyAuthResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	resp.Diagnostics.Append(createThirdPartyAuth(ctx, &data, r.client)...)
+	body, diags := buildThirdPartyAuthCreateBody(&data)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := createThirdPartyAuth(ctx, &data, body, r.client); err != nil {
+		resp.Diagnostics.AddError("Client Error", err.Error())
 		return
 	}
 
@@ -282,14 +292,14 @@ func (r *ThirdPartyAuthResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	found, diags := readThirdPartyAuth(ctx, &data, r.client)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	err := readThirdPartyAuth(ctx, &data, r.client)
+	if errs.NotFound(err) {
+		tflog.Info(ctx, "third-party auth integration not found, removing it from state")
+		resp.State.RemoveResource(ctx)
 		return
 	}
-
-	if !found {
-		resp.State.RemoveResource(ctx)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", err.Error())
 		return
 	}
 
@@ -362,8 +372,8 @@ func (r *ThirdPartyAuthResource) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 
-	resp.Diagnostics.Append(deleteThirdPartyAuth(ctx, &data, r.client)...)
-	if resp.Diagnostics.HasError() {
+	if err := deleteThirdPartyAuth(ctx, &data, r.client); err != nil {
+		resp.Diagnostics.AddError("Client Error", err.Error())
 		return
 	}
 
@@ -390,83 +400,72 @@ func (r *ThirdPartyAuthResource) ImportState(ctx context.Context, req resource.I
 		},
 	}
 
-	found, diags := readThirdPartyAuth(ctx, &data, r.client)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	if !found {
+	err := readThirdPartyAuth(ctx, &data, r.client)
+	if errs.NotFound(err) {
 		resp.Diagnostics.AddError(
 			"Resource Not Found",
 			fmt.Sprintf("Third-party auth integration %s does not exist in project %s", data.Id.ValueString(), data.ProjectRef.ValueString()),
 		)
 		return
 	}
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", err.Error())
+		return
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func createThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	body, diags := buildThirdPartyAuthCreateBody(data)
-	if diags.HasError() {
-		return diags
-	}
-
+// createThirdPartyAuth creates the integration and copies the response into data.
+func createThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, body api.V1CreateProjectTpaIntegrationJSONRequestBody, client *api.ClientWithResponses) error {
 	httpResp, err := client.V1CreateProjectTpaIntegrationWithResponse(ctx, data.ProjectRef.ValueString(), body)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to create third-party auth integration, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to create third-party auth integration, got error: %w", err)
 	}
 	if httpResp.JSON201 == nil {
-		msg := fmt.Sprintf("Unable to create third-party auth integration, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to create third-party auth integration, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 	}
 
-	return setThirdPartyAuthState(data, *httpResp.JSON201)
+	return setThirdPartyAuthState(ctx, data, *httpResp.JSON201)
 }
 
-func readThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, client *api.ClientWithResponses) (bool, diag.Diagnostics) {
-	tpaID, diags := parseThirdPartyAuthUUID(data.Id.ValueString())
-	if diags.HasError() {
-		return false, diags
+// readThirdPartyAuth reads the integration into data. It returns an errs.NotFoundErr when the integration does not exist.
+func readThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, client *api.ClientWithResponses) error {
+	tpaID, err := parseThirdPartyAuthUUID(data.Id.ValueString())
+	if err != nil {
+		return err
 	}
 
 	httpResp, err := client.V1GetProjectTpaIntegrationWithResponse(ctx, data.ProjectRef.ValueString(), tpaID)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to read third-party auth integration, got error: %s", err)
-		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to read third-party auth integration, got error: %w", err)
 	}
 	if httpResp.StatusCode() == http.StatusNotFound {
-		return false, nil
+		return errs.NewNotFoundErr("third-party auth integration", data.Id.ValueString())
 	}
 	if httpResp.JSON200 == nil {
-		msg := fmt.Sprintf("Unable to read third-party auth integration, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
-		return false, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to read third-party auth integration, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 	}
 
-	if diags := setThirdPartyAuthState(data, *httpResp.JSON200); diags.HasError() {
-		return false, diags
-	}
-	return true, nil
+	return setThirdPartyAuthState(ctx, data, *httpResp.JSON200)
 }
 
-func deleteThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, client *api.ClientWithResponses) diag.Diagnostics {
-	tpaID, diags := parseThirdPartyAuthUUID(data.Id.ValueString())
-	if diags.HasError() {
-		return diags
+// deleteThirdPartyAuth deletes the integration. An integration that is already gone counts as deleted.
+func deleteThirdPartyAuth(ctx context.Context, data *ThirdPartyAuthResourceModel, client *api.ClientWithResponses) error {
+	tpaID, err := parseThirdPartyAuthUUID(data.Id.ValueString())
+	if err != nil {
+		return err
 	}
 
 	httpResp, err := client.V1DeleteProjectTpaIntegrationWithResponse(ctx, data.ProjectRef.ValueString(), tpaID)
 	if err != nil {
-		msg := fmt.Sprintf("Unable to delete third-party auth integration, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to delete third-party auth integration, got error: %w", err)
 	}
 	if httpResp.StatusCode() == http.StatusNotFound {
 		return nil
 	}
 	if httpResp.StatusCode() != http.StatusOK {
-		msg := fmt.Sprintf("Unable to delete third-party auth integration, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+		return fmt.Errorf("unable to delete third-party auth integration, got status %d: %s", httpResp.StatusCode(), httpResp.Body)
 	}
 
 	return nil
@@ -527,9 +526,8 @@ func buildThirdPartyAuthCreateBody(data *ThirdPartyAuthResourceModel) (api.V1Cre
 	return body, nil
 }
 
-func setThirdPartyAuthState(data *ThirdPartyAuthResourceModel, tpa api.ThirdPartyAuth) diag.Diagnostics {
-	var err error
-
+// setThirdPartyAuthState copies an API response into data.
+func setThirdPartyAuthState(ctx context.Context, data *ThirdPartyAuthResourceModel, tpa api.ThirdPartyAuth) error {
 	data.Id = types.StringValue(tpa.Id.String())
 	data.Type = types.StringValue(tpa.Type)
 	data.OIDCIssuerURL = NullableToString(tpa.OidcIssuerUrl)
@@ -538,58 +536,49 @@ func setThirdPartyAuthState(data *ThirdPartyAuthResourceModel, tpa api.ThirdPart
 	data.UpdatedAt = types.StringValue(tpa.UpdatedAt)
 	data.ResolvedAt = NullableToString(tpa.ResolvedAt)
 
-	if data.CustomJWKS, err = nullablePublicJWKSAnyToNormalized(tpa.CustomJwks); err != nil {
-		msg := fmt.Sprintf("Unable to parse custom JWKS, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	var err error
+	if data.CustomJWKS, err = publicJWKSFromResponse(ctx, "custom_jwks", tpa.CustomJwks); err != nil {
+		return err
 	}
-	if data.ResolvedJWKS, err = nullablePublicJWKSAnyToNormalized(tpa.ResolvedJwks); err != nil {
-		msg := fmt.Sprintf("Unable to parse resolved JWKS, got error: %s", err)
-		return diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
+	if data.ResolvedJWKS, err = publicJWKSFromResponse(ctx, "resolved_jwks", tpa.ResolvedJwks); err != nil {
+		return err
 	}
-
 	return nil
 }
 
-func parseThirdPartyAuthUUID(value string) (uuid.UUID, diag.Diagnostics) {
-	targetID, err := uuid.Parse(value)
-	if err != nil {
-		msg := fmt.Sprintf("Invalid third-party auth integration ID %q: %s", value, err)
-		return uuid.Nil, diag.Diagnostics{diag.NewErrorDiagnostic("Client Error", msg)}
-	}
-	return targetID, nil
-}
-
-func nullableAnyToNormalized(value nullable.Nullable[interface{}]) (jsontypes.Normalized, error) {
+// publicJWKSFromResponse converts a JWKS returned by the API into a state value.
+// Private or symmetric key material never reaches the state: the value becomes null and a warning is logged.
+// The rest of the document is stored as returned, without the stricter checks applied to configuration.
+func publicJWKSFromResponse(ctx context.Context, attribute string, value nullable.Nullable[any]) (jsontypes.Normalized, error) {
 	if !value.IsSpecified() || value.IsNull() {
 		return jsontypes.NewNormalizedNull(), nil
 	}
 
-	return anyToNormalized(value.MustGet())
-}
-
-func nullablePublicJWKSAnyToNormalized(value nullable.Nullable[interface{}]) (jsontypes.Normalized, error) {
-	normalized, err := nullableAnyToNormalized(value)
-	if err != nil || normalized.IsNull() {
-		return normalized, err
+	raw, err := json.Marshal(value.MustGet())
+	if err != nil {
+		return jsontypes.NewNormalizedNull(), fmt.Errorf("unable to encode %s from the API, got error: %w", attribute, err)
 	}
-
-	if err := validatePublicJWKS([]byte(normalized.ValueString())); err != nil {
-		return jsontypes.NewNormalizedNull(), err
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return jsontypes.NewNormalizedNull(), fmt.Errorf("unable to decode %s from the API, got error: %w", attribute, err)
 	}
-
-	return normalized, nil
-}
-
-func anyToNormalized(value any) (jsontypes.Normalized, error) {
-	if value == nil {
+	if location, member, found := privateJWKMember(decoded, ""); found {
+		tflog.Warn(ctx, "Dropping JWKS with private key material from the API response", map[string]any{
+			"attribute": attribute,
+			"location":  location,
+			"member":    member,
+		})
 		return jsontypes.NewNormalizedNull(), nil
 	}
+	return jsontypes.NewNormalizedValue(string(raw)), nil
+}
 
-	data, err := json.Marshal(value)
+func parseThirdPartyAuthUUID(value string) (uuid.UUID, error) {
+	targetID, err := uuid.Parse(value)
 	if err != nil {
-		return jsontypes.NewNormalizedNull(), err
+		return uuid.Nil, fmt.Errorf("invalid third-party auth integration ID %q: %w", value, err)
 	}
-	return jsontypes.NewNormalizedValue(string(data)), nil
+	return targetID, nil
 }
 
 func jsonStringsEqual(left, right string) (bool, error) {
@@ -618,48 +607,61 @@ func normalizeJSON(value string) ([]byte, error) {
 	return json.Marshal(decoded)
 }
 
+// jwkPrivateMembers are the JWK members that hold private or symmetric key material.
+var jwkPrivateMembers = []string{"d", "p", "q", "dp", "dq", "qi", "oth", "k"}
+
+// privateJWKMember finds the first private or symmetric key member in a decoded JSON document. It returns the
+// location of the object that holds it, such as keys[0], and the member's name. It searches every object, not only
+// the keys array, so it also finds key material in a document that isn't a well-formed JWKS.
+func privateJWKMember(value any, location string) (string, string, bool) {
+	switch v := value.(type) {
+	case map[string]any:
+		for _, member := range jwkPrivateMembers {
+			if _, ok := v[member]; ok {
+				return location, member, true
+			}
+		}
+		for _, name := range slices.Sorted(maps.Keys(v)) {
+			child := name
+			if location != "" {
+				child = location + "." + name
+			}
+			if found, member, ok := privateJWKMember(v[name], child); ok {
+				return found, member, true
+			}
+		}
+	case []any:
+		for i, item := range v {
+			if found, member, ok := privateJWKMember(item, fmt.Sprintf("%s[%d]", location, i)); ok {
+				return found, member, true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// validatePublicJWKS checks that a custom_jwks value is a JWKS object with at least one key and no private key material.
 func validatePublicJWKS(data []byte) error {
 	var jwks map[string]any
 	if err := json.Unmarshal(data, &jwks); err != nil {
 		return fmt.Errorf("custom_jwks must be valid JSON: %w", err)
 	}
 
-	keysValue, ok := jwks["keys"]
+	keys, ok := jwks["keys"].([]any)
 	if !ok {
 		return fmt.Errorf("custom_jwks must be a JWKS object with a keys array")
-	}
-
-	keys, ok := keysValue.([]any)
-	if !ok {
-		return fmt.Errorf("custom_jwks.keys must be an array")
 	}
 	if len(keys) == 0 {
 		return fmt.Errorf("custom_jwks.keys must contain at least one public JWK")
 	}
-
-	privateMembers := map[string]struct{}{
-		"d":   {},
-		"p":   {},
-		"q":   {},
-		"dp":  {},
-		"dq":  {},
-		"qi":  {},
-		"oth": {},
-		"k":   {},
-	}
-
-	for i, keyValue := range keys {
-		key, ok := keyValue.(map[string]any)
-		if !ok {
+	for i, key := range keys {
+		if _, ok := key.(map[string]any); !ok {
 			return fmt.Errorf("custom_jwks.keys[%d] must be an object", i)
 		}
-
-		for member := range privateMembers {
-			if _, ok := key[member]; ok {
-				return fmt.Errorf("custom_jwks.keys[%d] contains private or symmetric JWK member %q; provide public JWKS material only", i, member)
-			}
-		}
 	}
 
+	if location, member, found := privateJWKMember(jwks, "custom_jwks"); found {
+		return fmt.Errorf("%s contains private or symmetric JWK member %q; provide public JWKS material only", location, member)
+	}
 	return nil
 }
